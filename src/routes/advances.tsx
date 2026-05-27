@@ -1,0 +1,273 @@
+import { Layout } from "@/components/Layout";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
+  inr, type Advance, type Customer,
+} from "@/lib/storage";
+import { formatDate } from "@/lib/utils";
+import { useApi, useApiMutation } from "@/hooks/useApi";
+import { advancesAPI, customerAPI } from "@/lib/api";
+import { useMemo, useState } from "react";
+import { Plus, Trash2 } from "lucide-react";
+
+export default function AdvancePage() {
+  const { data: advances = [], isLoading } = useApi<Advance[]>(["advances"], () => advancesAPI.getAll());
+  const { data: customers = [] } = useApi<Customer[]>(["customers"], () => customerAPI.getAll());
+
+  const createMutation = useApiMutation((data: Advance) => advancesAPI.create(data), ["advances"]);
+  const updateMutation = useApiMutation((data: { id: string; body: Advance }) => advancesAPI.update(data.id, data.body), ["advances"]);
+  const deleteMutation = useApiMutation((id: string) => advancesAPI.delete(id), ["advances"]);
+
+  const [open, setOpen] = useState(false);
+  const [form, setForm] = useState({
+    date: new Date().toISOString().slice(0, 10),
+    customerId: "",
+    customerName: "",
+    customerMobile: "",
+    metal: "Gold" as Advance["metal"],
+    purity: "22K",
+    ratePerGram: 0,
+    amount: 0,
+    note: "",
+  });
+
+  const totals = useMemo(() => {
+    const active = advances.filter((a) => a.status === "Active");
+    return {
+      activeCount: active.length,
+      activeAmount: active.reduce((s, a) => s + a.amount, 0),
+      activeWeight: active.reduce((s, a) => s + a.weightLocked, 0),
+    };
+  }, [advances]);
+
+  async function add() {
+    if (!form.customerName || !form.amount || !form.ratePerGram) return;
+    const weightLocked = form.amount / form.ratePerGram;
+    const payload = {
+      ...form,
+      weightLocked,
+      status: "Active",
+    };
+    try {
+      await createMutation.mutateAsync(payload as any);
+      setForm({ ...form, customerName: "", customerMobile: "", customerId: "", amount: 0, note: "" });
+      setOpen(false);
+    } catch (error) {
+      console.error("[Advances] Error saving to DB:", error);
+    }
+  }
+
+  function pickCustomer(id: string) {
+    const c = customers.find((x) => x.id === id || (x as any)._id === id);
+    if (c) setForm({ ...form, customerId: (c as any)._id || c.id, customerName: c.name, customerMobile: c.mobile || (c as any).phone || "" });
+  }
+
+  async function setStatus(id: string, status: Advance["status"]) {
+    const adv = advances.find((a) => a.id === id || (a as any)._id === id);
+    if (adv) await updateMutation.mutateAsync({ id, body: { ...adv, status } });
+  }
+
+  async function remove(id: string) {
+    await deleteMutation.mutateAsync(id);
+  }
+
+  const sorted = [...advances].sort((a, b) => b.date.localeCompare(a.date));
+
+  return (
+    <Layout>
+      <header className="flex items-end justify-between mb-6">
+        <div>
+          <h1 className="text-4xl">Advance Payments</h1>
+          <p className="text-muted-foreground mt-1">
+            Lock today&apos;s rate when customer pays advance for future jewelry purchase.
+          </p>
+        </div>
+
+        <Dialog open={open} onOpenChange={setOpen}>
+          <DialogTrigger asChild>
+            <Button size="lg">
+              <Plus className="w-4 h-4 mr-2" /> New Advance
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="max-w-2xl max-h-[75vh] overflow-y-auto" aria-describedby={undefined}>
+            <DialogHeader>
+              <DialogTitle>New Advance Payment</DialogTitle>
+            </DialogHeader>
+
+            <div className="space-y-3">
+              <div>
+                <Label>Date</Label>
+                <Input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} />
+              </div>
+
+              {customers.length > 0 && (
+                <div>
+                  <Label>Existing Customer (optional)</Label>
+                  <Select value={form.customerId} onValueChange={pickCustomer}>
+                    <SelectTrigger><SelectValue placeholder="Pick customer" /></SelectTrigger>
+                    <SelectContent>
+                      {customers.map((c) => (
+                        <SelectItem key={(c as any)._id || c.id} value={(c as any)._id || c.id}>
+                          {c.name} — {c.mobile || (c as any).phone}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              <div>
+                <Label>Customer Name</Label>
+                <Input value={form.customerName} onChange={(e) => setForm({ ...form, customerName: e.target.value })} />
+              </div>
+              <div>
+                <Label>Mobile</Label>
+                <Input value={form.customerMobile} onChange={(e) => setForm({ ...form, customerMobile: e.target.value })} />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <Label>Metal</Label>
+                  <Select value={form.metal} onValueChange={(v) => setForm({ ...form, metal: v as Advance["metal"] })}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Gold">Gold</SelectItem>
+                      <SelectItem value="Silver">Silver</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label>Purity</Label>
+                  <Input value={form.purity} onChange={(e) => setForm({ ...form, purity: e.target.value })} />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <Label>Rate / gram</Label>
+                  <Input type="number" value={form.ratePerGram || ""} onChange={(e) => setForm({ ...form, ratePerGram: +e.target.value })} />
+                </div>
+                <div>
+                  <Label>Advance Amount</Label>
+                  <Input type="number" value={form.amount || ""} onChange={(e) => setForm({ ...form, amount: +e.target.value })} />
+                </div>
+              </div>
+
+              {form.amount > 0 && form.ratePerGram > 0 && (
+                <div className="text-sm p-3 rounded-md bg-secondary">
+                  Locked weight: <strong>{(form.amount / form.ratePerGram).toFixed(3)} g</strong> at {inr(form.ratePerGram)}/g
+                </div>
+              )}
+
+              <div>
+                <Label>Note</Label>
+                <Input value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} placeholder="For necklace, bangles..." />
+              </div>
+
+              <Button className="w-full" onClick={add}>Save Advance</Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      </header>
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+        <KPI label="Active Advances" value={totals.activeCount} />
+        <KPI label="Locked Amount" value={inr(totals.activeAmount)} />
+        <KPI label="Locked Weight" value={`${totals.activeWeight.toFixed(3)} g`} />
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <Card className="lg:col-span-1">
+          <CardHeader>
+            <CardTitle className="font-display">New Advance</CardTitle>
+          </CardHeader>
+          <CardContent className="text-sm text-muted-foreground">
+            Use the <strong>New Advance</strong> button at the top right to open the form and log a payment.
+          </CardContent>
+        </Card>
+
+        <Card className="lg:col-span-2">
+          <CardHeader><CardTitle className="font-display">All Advances</CardTitle></CardHeader>
+          <CardContent className="p-0">
+            {isLoading ? (
+              <p className="text-sm text-muted-foreground py-8 text-center">Loading advances...</p>
+            ) : sorted.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-8 text-center">No advance payments yet.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="text-left text-muted-foreground border-b">
+                    <tr>
+                      <th className="py-2">Date</th>
+                      <th>Customer</th>
+                      <th>Metal</th>
+                      <th className="text-right">Rate</th>
+                      <th className="text-right">Amount</th>
+                      <th className="text-right">Weight</th>
+                      <th>Status</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sorted.map((a) => (
+                      <tr key={(a as any)._id || a.id} className="border-b last:border-0 hover:bg-muted/40">
+                        <td className="py-2 pl-4">{formatDate(a.date)}</td>
+                        <td className="px-2">
+                          <div className="font-medium">{a.customerName}</div>
+                          <div className="text-xs text-muted-foreground">{a.customerMobile}</div>
+                        </td>
+                        <td className="px-2">{a.metal} {a.purity}</td>
+                        <td className="text-right">{inr(a.ratePerGram)}</td>
+                        <td className="text-right">{inr(a.amount)}</td>
+                        <td className="text-right">{a.weightLocked.toFixed(3)} g</td>
+                        <td className="px-2 text-right">
+                          <Select value={a.status} onValueChange={(v) => setStatus((a as any)._id || a.id, v as Advance["status"]) }>
+                            <SelectTrigger className="h-8 w-32"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="Active">Active</SelectItem>
+                              <SelectItem value="Redeemed">Redeemed</SelectItem>
+                              <SelectItem value="Cancelled">Cancelled</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </td>
+                        <td className="text-right pr-4">
+                          <Button variant="ghost" size="icon" onClick={() => remove((a as any)._id || a.id)}>
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    </Layout>
+  );
+}
+
+function KPI({ label, value }: { label: string; value: string | number }) {
+  return (
+    <Card>
+      <CardContent className="pt-6">
+        <div className="text-sm text-muted-foreground">{label}</div>
+        <div className="text-2xl font-display mt-1">{value}</div>
+      </CardContent>
+    </Card>
+  );
+}
+

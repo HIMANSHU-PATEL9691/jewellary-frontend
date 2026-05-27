@@ -1,0 +1,117 @@
+import { useState } from "react";
+import { Layout } from "@/components/Layout";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { inr, type Purchase, type Supplier } from "@/lib/storage";
+import { formatDate } from "@/lib/utils";
+import { useApi, useApiMutation } from "@/hooks/useApi";
+import { purchasesAPI, supplierAPI } from "@/lib/api";
+import { Plus, Trash2, ShoppingBag } from "lucide-react";
+
+function calcTotal(p: Purchase) {
+  const base = p.weight * p.ratePerGram + p.makingCharge;
+  return base + (base * p.gstPct) / 100;
+}
+
+export default function PurchasesPage() {
+  const { data: list = [], isLoading } = useApi<Purchase[]>(["purchases"], () => purchasesAPI.getAll());
+  const { data: suppliers = [] } = useApi<Supplier[]>(["suppliers"], () => supplierAPI.getAll());
+
+  const createMutation = useApiMutation((data: Purchase) => purchasesAPI.create(data), ["purchases"]);
+  const deleteMutation = useApiMutation((id: string) => purchasesAPI.delete(id), ["purchases"]);
+
+  const [open, setOpen] = useState(false);
+  const empty: Purchase = { id: "", billNo: "", date: new Date().toISOString().slice(0,10), supplierId: "", supplierName: "", metal: "Gold", purity: "22K", weight: 0, ratePerGram: 0, makingCharge: 0, gstPct: 3, total: 0, paymentMode: "Cash", note: "" };
+  const [form, setForm] = useState<Purchase>(empty);
+
+  const save = async () => {
+    if (!form.supplierName || !form.weight) return;
+    const billNo = form.billNo || `PUR-${(list.length + 1).toString().padStart(4, "0")}`;
+    const total = calcTotal(form);
+    try {
+      await createMutation.mutateAsync({ ...form, billNo, total });
+      setForm(empty); 
+      setOpen(false);
+    } catch (error) {
+      console.error("[Purchases] Error saving to DB:", error);
+    }
+  };
+  const remove = async (id: string) => {
+    await deleteMutation.mutateAsync(id);
+  };
+  const monthKey = `${new Date().getFullYear()}-${new Date().getMonth()}`;
+  const monthTotal = list.filter(p => { const d = new Date(p.date); return `${d.getFullYear()}-${d.getMonth()}` === monthKey; }).reduce((s, p) => s + p.total, 0);
+
+  return (
+    <Layout>
+      <header className="flex items-end justify-between mb-6">
+        <div><h1 className="text-4xl">Purchases</h1><p className="text-muted-foreground mt-1">Stock & metal purchased from suppliers.</p></div>
+        <Dialog open={open} onOpenChange={setOpen}>
+          <DialogTrigger asChild><Button size="lg"><Plus className="w-4 h-4 mr-2"/>New Purchase</Button></DialogTrigger>
+          <DialogContent className="max-w-2xl max-h-[75vh] overflow-y-auto" aria-describedby={undefined}><DialogHeader><DialogTitle>Record Purchase</DialogTitle></DialogHeader>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs">Supplier *</Label>
+                <select className="w-full h-10 border rounded-md px-3 bg-background" value={form.supplierId || ""} onChange={e => {
+                  const s = suppliers.find(x => x.id === e.target.value || (x as any)._id === e.target.value);
+                  setForm({...form, supplierId: e.target.value, supplierName: s?.name || form.supplierName});
+                }}>
+                  <option value="">— Pick or type below —</option>
+                  {suppliers.map(s => <option key={(s as any)._id || s.id} value={(s as any)._id || s.id}>{s.name}</option>)}
+                </select>
+              </div>
+              <Field label="Supplier Name" v={form.supplierName} on={v => setForm({...form, supplierName: v})} />
+              <div><Label className="text-xs">Metal</Label>
+                <select className="w-full h-10 border rounded-md px-3 bg-background" value={form.metal} onChange={e => setForm({...form, metal: e.target.value as Purchase["metal"]})}>
+                  <option>Gold</option><option>Silver</option><option>Diamond</option><option>Other</option>
+                </select></div>
+              <Field label="Purity" v={form.purity || ""} on={v => setForm({...form, purity: v})} />
+              <Field label="Weight (g) *" type="number" v={String(form.weight)} on={v => setForm({...form, weight: +v})} />
+              <Field label="Rate ₹/g" type="number" v={String(form.ratePerGram)} on={v => setForm({...form, ratePerGram: +v})} />
+              <Field label="Making Charge ₹" type="number" v={String(form.makingCharge)} on={v => setForm({...form, makingCharge: +v})} />
+              <Field label="GST %" type="number" v={String(form.gstPct)} on={v => setForm({...form, gstPct: +v})} />
+              <Field label="Bill Date" type="date" v={form.date} on={v => setForm({...form, date: v})} />
+              <div><Label className="text-xs">Payment Mode</Label>
+                <select className="w-full h-10 border rounded-md px-3 bg-background" value={form.paymentMode} onChange={e => setForm({...form, paymentMode: e.target.value as Purchase["paymentMode"]})}>
+                  {["Cash","UPI","Card","Bank","Credit"].map(m => <option key={m}>{m}</option>)}
+                </select></div>
+              <div className="col-span-2"><Field label="Note" v={form.note || ""} on={v => setForm({...form, note: v})} /></div>
+              <div className="col-span-2 text-right text-sm text-muted-foreground">Total: <span className="font-display text-lg text-foreground ml-2">{inr(calcTotal(form))}</span></div>
+            </div>
+            <Button onClick={save} className="mt-2">Save</Button>
+          </DialogContent>
+        </Dialog>
+      </header>
+
+      <div className="grid grid-cols-3 gap-4 mb-6">
+        <Stat label="Total Purchases" value={list.length} />
+        <Stat label="This Month" value={inr(monthTotal)} />
+        <Stat label="Suppliers Used" value={new Set(list.map(p => p.supplierName)).size} />
+      </div>
+
+      <Card>
+        <CardHeader><CardTitle className="font-display flex items-center gap-2"><ShoppingBag className="w-5 h-5"/>Purchase Bills</CardTitle></CardHeader>
+        <CardContent>
+          {isLoading ? <p className="text-center text-muted-foreground py-12">Loading purchases...</p> : list.length === 0 ? <p className="text-center text-muted-foreground py-12">No purchases yet.</p> :
+          <table className="w-full text-sm"><thead className="text-left text-muted-foreground border-b"><tr><th className="py-2">Bill</th><th>Date</th><th>Supplier</th><th>Metal</th><th>Wt</th><th>Rate</th><th>Mode</th><th className="text-right">Total</th><th></th></tr></thead>
+            <tbody>{list.map(p => (<tr key={(p as any)._id || p.id} className="border-b last:border-0">
+              <td className="py-2 font-medium">{p.billNo}</td><td>{formatDate(p.date)}</td><td>{p.supplierName}</td>
+              <td>{p.metal} {p.purity}</td><td>{p.weight}g</td><td>{inr(p.ratePerGram)}</td><td>{p.paymentMode}</td>
+              <td className="text-right">{inr(p.total)}</td>
+              <td className="text-right"><Button size="sm" variant="ghost" onClick={() => remove((p as any)._id || p.id)}><Trash2 className="w-4 h-4"/></Button></td>
+            </tr>))}</tbody></table>}
+        </CardContent>
+      </Card>
+    </Layout>
+  );
+}
+
+function Field({ label, v, on, type = "text" }: { label: string; v: string; on: (v: string) => void; type?: string }) {
+  return <div><Label className="text-xs">{label}</Label><Input type={type} value={v} onChange={e => on(e.target.value)} /></div>;
+}
+function Stat({ label, value }: { label: string; value: string | number }) {
+  return <Card><CardContent className="pt-6"><div className="text-sm text-muted-foreground">{label}</div><div className="text-2xl font-display mt-1">{value}</div></CardContent></Card>;
+}
