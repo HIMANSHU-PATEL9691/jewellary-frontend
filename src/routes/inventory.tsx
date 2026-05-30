@@ -23,7 +23,7 @@ import { Badge } from "@/components/ui/badge";
 import { useState, useRef } from "react";
 import { Textarea } from "@/components/ui/textarea";
 import { Plus, Trash2, Pencil, Search, Image as ImageIcon, Upload } from "lucide-react";
-import { useLocalState, uid, inr, type Product } from "@/lib/storage";
+import { useLocalState, uid, type Product } from "@/lib/storage";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { inventoryAPI } from "@/lib/api";
 import * as XLSX from 'xlsx';
@@ -272,7 +272,6 @@ export default function InventoryPage() {
                         <th className="p-2 text-left">Name</th>
                         <th className="p-2 text-left">Category</th>
                         <th className="p-2 text-right">Net Wt.</th>
-                        <th className="p-2 text-right">Rate/g</th>
                         <th className="p-2 text-right">Stock</th>
                       </tr>
                     </thead>
@@ -282,7 +281,6 @@ export default function InventoryPage() {
                           <td className="p-2 font-medium">{p.name}</td>
                           <td className="p-2">{p.category}</td>
                           <td className="p-2 text-right">{p.netWeight}g</td>
-                          <td className="p-2 text-right">{inr(p.ratePerGram)}</td>
                           <td className="p-2 text-right">{p.stock}</td>
                         </tr>
                       ))}
@@ -391,35 +389,11 @@ export default function InventoryPage() {
               <div className="md:col-span-2 grid grid-cols-3 gap-3 bg-muted/30 p-3 rounded-lg border border-border">
                 <Field label="Gross Wt (g)"><NumIn v={draft.grossWeight} on={(v) => set("grossWeight", v)} /></Field>
                 <Field label="Net Wt (g)">
-                  <NumIn v={draft.netWeight} on={(v) => setDraft(d => {
-                    const patch: any = { netWeight: v };
-                    if (d.makingChargePct) patch.makingCharge = (v * d.ratePerGram * d.makingChargePct) / 100;
-                    return { ...d, ...patch };
-                  })} />
+                  <NumIn v={draft.netWeight} on={(v) => set("netWeight", v)} />
                 </Field>
                 <Field label="Stone Wt (g)"><NumIn v={draft.stoneWeight} on={(v) => set("stoneWeight", v)} /></Field>
               </div>
 
-              <div className="md:col-span-2 grid grid-cols-3 gap-3 bg-muted/30 p-3 rounded-lg border border-border">
-                <Field label="Rate / g (₹)">
-                  <NumIn v={draft.ratePerGram} on={(v) => setDraft(d => {
-                    const patch: any = { ratePerGram: v };
-                    if (d.makingChargePct) patch.makingCharge = (d.netWeight * v * d.makingChargePct) / 100;
-                    return { ...d, ...patch };
-                  })} />
-                </Field>
-                <Field label="Making (%)">
-                  <NumIn v={draft.makingChargePct || 0} on={(v) => {
-                    const amt = draft.netWeight * draft.ratePerGram;
-                    setDraft(d => ({ ...d, makingChargePct: v, makingCharge: (amt * v) / 100 }));
-                  }} />
-                </Field>
-                <Field label="Making (₹)">
-                  <NumIn v={draft.makingCharge} on={(v) => setDraft(d => ({ ...d, makingCharge: v, makingChargePct: 0 }))} />
-                </Field>
-              </div>
-
-              <Field label="GST %"><NumIn v={draft.gstPct} on={(v) => set("gstPct", v)} /></Field>
               <Field label="Stock Qty"><NumIn v={draft.stock} on={(v) => set("stock", v)} /></Field>
               
               <div className="md:col-span-2">
@@ -490,9 +464,7 @@ export default function InventoryPage() {
                   <th>Subcat</th>
                   <th>Purity</th>
                   <th>Net Wt</th>
-                  <th>Rate/g</th>
                   <th>Stock</th>
-                  <th>Value</th>
                   <th></th>
                 </tr>
               </thead>
@@ -516,9 +488,7 @@ export default function InventoryPage() {
                     <td>{p.subcategory || "—"}</td>
                     <td>{p.purity}</td>
                     <td>{p.netWeight} g</td>
-                    <td>{inr(p.ratePerGram)}</td>
                     <td>{p.stock}</td>
-                    <td>{inr(p.netWeight * p.ratePerGram * p.stock)}</td>
                     <td>
                       <div className="flex gap-1 justify-end pr-3">
                         <Button size="icon" variant="ghost" onClick={() => startEdit(p)}>

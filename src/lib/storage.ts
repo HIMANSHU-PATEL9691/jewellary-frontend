@@ -171,7 +171,10 @@ export type Karigar = {
   name: string;
   mobile: string;
   specialty: string; // Goldsmith, Polisher, Stone Setter...
+  category?: string;
   address?: string;
+  username?: string;
+  password?: string;
   pendingWeight: number; // grams issued not returned
   createdAt: string;
 };
@@ -226,6 +229,7 @@ export type Order = {
   estimatedWeight: number;
   estimatedPrice: number;
   advancePaid: number;
+  karigarId?: string;
   dueDate?: string;
   status: "Pending" | "In Progress" | "Ready" | "Delivered" | "Cancelled";
   note?: string;

@@ -14,7 +14,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { inr, type Girvi } from "@/lib/storage";
+import { inr, type Girvi, useLocalState } from "@/lib/storage";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { girviAPI, customerAPI } from "@/lib/api";
 import { useMemo, useState } from "react";
@@ -56,6 +56,7 @@ function calculateForwardedInterest(girvi: Girvi) {
 export default function GirviPage() {
   const { data: girvis = [], isLoading } = useApi<Girvi[]>(["girvis"], () => girviAPI.getAll());
   const { data: customers = [] } = useApi<any[]>(["customers"], () => customerAPI.getAll());
+  const [forwardedShops] = useLocalState<any[]>("ajms.forwardedShops", []);
   const createMutation = useApiMutation((data: Girvi) => girviAPI.create(data), ["girvis"]);
   const updateMutation = useApiMutation((data: { id: string; body: Girvi }) => girviAPI.update(data.id, data.body), ["girvis"]);
   const deleteMutation = useApiMutation((id: string) => girviAPI.delete(id), ["girvis"]);
@@ -457,7 +458,20 @@ export default function GirviPage() {
                 <div className="grid grid-cols-2 gap-2 mb-2">
                   <div>
                     <Label>Shop Name</Label>
-                    <Input value={form.forwardedShopName || ""} onChange={(e) => setForm({ ...form, forwardedShopName: e.target.value })} placeholder="Shop Name" />
+                    <div className="flex gap-1">
+                      <Input value={form.forwardedShopName || ""} onChange={(e) => setForm({ ...form, forwardedShopName: e.target.value })} placeholder="Shop Name" className="flex-1" />
+                      {forwardedShops.length > 0 && (
+                        <Select onValueChange={(val) => {
+                          const match = forwardedShops.find(s => s.name === val);
+                          if (match) setForm({...form, forwardedShopName: match.name, forwardedShopGstNo: match.gst || "", forwardedShopAddress: match.address || ""});
+                        }}>
+                          <SelectTrigger className="w-10 px-0 flex justify-center bg-muted"><SelectValue placeholder=""/></SelectTrigger>
+                          <SelectContent>
+                            {forwardedShops.map(s => <SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      )}
+                    </div>
                   </div>
                   <div>
                     <Label>Shop GST No.</Label>
@@ -570,7 +584,7 @@ export default function GirviPage() {
                               )}
                               <div>
                                 <div className="font-medium whitespace-nowrap">{g.itemType} {g.purity}</div>
-                                <div className="text-xs text-muted-foreground line-clamp-1 max-w-[150px]" title={g.itemDescription}>{g.itemDescription}</div>
+                                <div className="text-xs text-muted-foreground line-clamp-1 max-w-37.5" title={g.itemDescription}>{g.itemDescription}</div>
                               {(g.forwardedShopName || g.forwardedTo) && <div className="mt-1 text-[10px] font-semibold text-purple-700 border border-purple-200 bg-purple-50 inline-block px-1.5 py-0.5 rounded truncate max-w-35" title={g.forwardedShopName || g.forwardedTo}>Fwd: {g.forwardedShopName || g.forwardedTo}</div>}
                               </div>
                             </div>

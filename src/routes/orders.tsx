@@ -6,16 +6,17 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { inr, type Order } from "@/lib/storage";
+import { inr, type Order, type Karigar } from "@/lib/storage";
 import { formatDate } from "@/lib/utils";
 import { useApi, useApiMutation } from "@/hooks/useApi";
-import { ordersAPI, customerAPI } from "@/lib/api";
+import { ordersAPI, customerAPI, karigarsAPI } from "@/lib/api";
 import { Plus, Trash2, ShoppingBag } from "lucide-react";
 import { toast } from "sonner";
 
 export default function OrdersPage() {
   const { data: list = [], isLoading } = useApi<Order[]>(["orders"], () => ordersAPI.getAll());
   const { data: customers = [] } = useApi<any[]>(["customers"], () => customerAPI.getAll());
+  const { data: karigars = [] } = useApi<Karigar[]>(["karigars"], () => karigarsAPI.getAll());
   
   const createMutation = useApiMutation((data: Order) => ordersAPI.create(data), ["orders"]);
   const updateMutation = useApiMutation((data: { id: string; body: Order }) => ordersAPI.update(data.id, data.body), ["orders"]);
@@ -23,6 +24,7 @@ export default function OrdersPage() {
 
   const [open, setOpen] = useState(false);
   const [searchCust, setSearchCust] = useState("");
+  const [searchKar, setSearchKar] = useState("");
   const empty: Order = {
     id: "",
     orderNo: "",
@@ -35,6 +37,7 @@ export default function OrdersPage() {
     estimatedWeight: 0,
     estimatedPrice: 0,
     advancePaid: 0,
+    karigarId: "",
     dueDate: "",
     status: "Pending",
     note: ""
@@ -122,6 +125,27 @@ export default function OrdersPage() {
               <Field label="Advance Paid ₹" type="number" v={String(form.advancePaid || "")} on={v => setForm({...form, advancePaid: +v})} />
               <Field label="Date" type="date" v={form.date} on={v => setForm({...form, date: v})} />
               <Field label="Due Date" type="date" v={form.dueDate || ""} on={v => setForm({...form, dueDate: v})} />
+              <div className="col-span-2 grid grid-cols-2 gap-3">
+                <div>
+                  <Label className="text-xs">Search Karigar</Label>
+                  <Input placeholder="Search name..." value={searchKar} onChange={e => {
+                    setSearchKar(e.target.value);
+                    const match = karigars.find(k => k.name.toLowerCase() === e.target.value.toLowerCase() || (k.mobile||"").includes(e.target.value));
+                    if (match) setForm({...form, karigarId: match._id || match.id});
+                  }} />
+                </div>
+                <div>
+                  <Label className="text-xs">Assign Karigar</Label>
+                  <Select value={form.karigarId || ""} onValueChange={val => setForm({...form, karigarId: val})}>
+                    <SelectTrigger><SelectValue placeholder="Unassigned" /></SelectTrigger>
+                    <SelectContent>
+                      {karigars.filter(k => k.name.toLowerCase().includes(searchKar.toLowerCase()) || (k.mobile||"").includes(searchKar)).map(k => (
+                        <SelectItem key={k._id || k.id} value={k._id || k.id}>{k.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
               <div className="col-span-2"><Field label="Note" v={form.note || ""} on={v => setForm({...form, note: v})} /></div>
             </div>
             <Button onClick={save} className="mt-2">Save Order</Button>

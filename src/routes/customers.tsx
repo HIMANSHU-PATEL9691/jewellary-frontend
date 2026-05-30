@@ -22,6 +22,7 @@ import { toast } from "sonner";
 
 interface Customer {
   _id?: string;
+  id?: string;
   name: string;
   phone: string;
   phone2?: string;
@@ -43,6 +44,24 @@ const empty: Customer = {
   notes: "",
 };
 
+const defaultManualDue = {
+  customerId: "NEW",
+  customerName: "",
+  phone: "",
+  phone2: "",
+  address: "",
+  gstNumber: "",
+  pan: "",
+  notes: "",
+  itemName: "",
+  purity: "22K",
+  netWeight: "" as number | "",
+  ratePerGram: "" as number | "",
+  makingCharge: "" as number | "",
+  totalValue: "" as number | "",
+  dueAmount: "" as number | "",
+};
+
 export default function CustomersPage() {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState<Customer>(empty);
@@ -59,6 +78,11 @@ export default function CustomersPage() {
   const { data: invoices = [] } = useApi<Invoice[]>(["invoices"], () => invoicesAPI.getAll());
   const { data: orders = [] } = useApi<Order[]>(["orders"], () => ordersAPI.getAll());
   const { data: girvis = [] } = useApi<Girvi[]>(["girvis"], () => girviAPI.getAll());
+
+  const createInvoiceMutation = useApiMutation(
+    (data: any) => invoicesAPI.create(data),
+    ["invoices"]
+  );
 
   // Create mutation
   const createMutation = useApiMutation(
@@ -105,8 +129,8 @@ export default function CustomersPage() {
 
   const save = async () => {
     console.log("[Frontend Component] Attempting to save customer draft:", draft);
-    if (!draft.name || !draft.phone || !draft.address || !draft.notes) {
-      toast.error("Name, phone, address, and notes are required");
+    if (!draft.name || !draft.phone) {
+      toast.error("Name and phone are required");
       return;
     }
 
@@ -149,7 +173,7 @@ export default function CustomersPage() {
   const custOrders = orders.filter(o => o.customerMobile === selectedCustomer?.phone);
   const custGirvis = girvis.filter(g => g.customerMobile === selectedCustomer?.phone || g.customerMobile2 === selectedCustomer?.phone);
 
-  const totalSales = custInvoices.reduce((s, i) => s + i.total, 0);
+  const totalSales = custInvoices.filter(i => !i.number?.startsWith("MAN-")).reduce((s, i) => s + i.total, 0);
   const totalPaid = custInvoices.reduce((s, i) => s + (i.amountPaid !== undefined ? i.amountPaid : i.total), 0);
   const totalDue = custInvoices.reduce((s, i) => s + (i.balanceDue || 0), 0);
 
@@ -158,6 +182,72 @@ export default function CustomersPage() {
   const [payAmount, setPayAmount] = useState<number | "">("");
   const [payMode, setPayMode] = useState("Cash");
   const [payNote, setPayNote] = useState("");
+
+  const [manualDueOpen, setManualDueOpen] = useState(false);
+  const [manualDue, setManualDue] = useState(defaultManualDue);
+
+  const saveManualDue = async () => {
+    if (!manualDue.itemName || manualDue.totalValue === "" || manualDue.dueAmount === "") {
+      toast.error("Please fill required fields (Item Name, Total, Due)");
+      return;
+    }
+    
+    let cid = manualDue.customerId;
+    let cName = manualDue.customerName;
+    let cPhone = manualDue.phone;
+
+    if (!cid || cid === "NEW") {
+      if (!cName || !cPhone) {
+         toast.error("Customer name and phone are required for a new customer");
+         return;
+      }
+      try {
+        const newCust = await createMutation.mutateAsync({
+          name: cName,
+          phone: cPhone,
+          phone2: manualDue.phone2,
+          address: manualDue.address,
+          gstNumber: manualDue.gstNumber,
+          pan: manualDue.pan,
+          notes: manualDue.notes,
+        } as Customer);
+        cid = newCust._id || newCust.id || "";
+      } catch (e: any) {
+        toast.error("Failed to create customer: " + (e.message || "Unknown error"));
+        return;
+      }
+    }
+
+    const total = Number(manualDue.totalValue);
+    const due = Number(manualDue.dueAmount);
+    const paid = total - due;
+
+    const inv: any = {
+      number: "MAN-" + Date.now().toString().slice(-6),
+      type: "NON-GST",
+      customerId: cid,
+      customerName: cName,
+      customerMobile: cPhone,
+      items: [{ productId: "manual", name: `Manual Due: ${manualDue.itemName}`, purity: manualDue.purity || "-", netWeight: Number(manualDue.netWeight) || 0, ratePerGram: Number(manualDue.ratePerGram) || 0, makingCharge: Number(manualDue.makingCharge) || 0, stoneCharge: 0, makingChargePct: 0, gstPct: 0, qty: 1 }],
+      discount: 0,
+      oldGoldAmount: 0,
+      paymentMode: "Cash",
+      subtotal: total,
+      gstAmount: 0,
+      total: total,
+      amountPaid: paid,
+      balanceDue: due,
+      payments: paid > 0 ? [{ date: new Date().toISOString(), amount: paid, mode: "Cash", note: "Initial Partial Payment" }] : [],
+    };
+    try {
+      await createInvoiceMutation.mutateAsync(inv);
+      toast.success("Manual due added successfully");
+      setManualDueOpen(false);
+      setManualDue(defaultManualDue);
+    } catch (e) {
+      toast.error("Failed to add manual due");
+    }
+  };
 
   const openPayModal = (inv: Invoice) => {
     setPayInvoice(inv);
@@ -213,6 +303,12 @@ export default function CustomersPage() {
     })
     .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
+  const groupedPayments = allPayments.reduce((acc, p) => {
+    if (!acc[p.invoiceNo]) acc[p.invoiceNo] = [];
+    acc[p.invoiceNo].push(p);
+    return acc;
+  }, {} as Record<string, typeof allPayments>);
+
   return (
     <Layout>
       <header className="flex items-end justify-between mb-6">
@@ -220,6 +316,13 @@ export default function CustomersPage() {
           <h1 className="text-4xl">Customers</h1>
           <p className="text-muted-foreground mt-1">{customers.length} on file.</p>
         </div>
+        <div className="flex gap-2">
+          <Button variant="outline" size="lg" onClick={() => {
+            setManualDue(defaultManualDue);
+            setManualDueOpen(true);
+          }}>
+            <Plus className="w-4 h-4 mr-2" /> Manual Due
+          </Button>
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
             <Button size="lg" onClick={startNew} disabled={isLoading_UI}>
@@ -254,7 +357,7 @@ export default function CustomersPage() {
                   placeholder="Secondary mobile number"
                 />
               </F>
-              <F label="Address *">
+              <F label="Address (optional)">
                 <Input
                   value={draft.address || ""}
                   onChange={(e) => set("address", e.target.value)}
@@ -275,7 +378,7 @@ export default function CustomersPage() {
                   placeholder="PAN number"
                 />
               </F>
-              <F label="Notes *">
+              <F label="Notes (optional)">
                 <Input
                   value={draft.notes || ""}
                   onChange={(e) => set("notes", e.target.value)}
@@ -287,7 +390,7 @@ export default function CustomersPage() {
               <Button variant="outline" onClick={() => setOpen(false)} disabled={isLoading_UI}>
                 Cancel
               </Button>
-              <Button onClick={save} disabled={isLoading_UI || !draft.name || !draft.phone || !draft.address || !draft.notes}>
+              <Button onClick={save} disabled={isLoading_UI || !draft.name || !draft.phone}>
                 {isLoading_UI ? (
                   <>
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" /> Saving...
@@ -299,6 +402,7 @@ export default function CustomersPage() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+        </div>
       </header>
 
       <div className="relative mb-4 max-w-md">
@@ -456,7 +560,23 @@ export default function CustomersPage() {
 
               {/* Invoices List */}
               <div className="mt-4">
-                <h3 className="font-display text-lg mb-3 flex items-center gap-2"><Receipt className="w-5 h-5"/> Billing History</h3>
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="font-display text-lg flex items-center gap-2"><Receipt className="w-5 h-5"/> Billing History</h3>
+                  <Button size="sm" variant="outline" onClick={() => {
+                    setManualDue({
+                      ...defaultManualDue,
+                      customerId: selectedCustomer?._id || selectedCustomer?.id || "NEW",
+                      customerName: selectedCustomer?.name || "",
+                      phone: selectedCustomer?.phone || "",
+                      phone2: selectedCustomer?.phone2 || "",
+                      address: selectedCustomer?.address || "",
+                      gstNumber: selectedCustomer?.gstNumber || "",
+                      pan: selectedCustomer?.pan || "",
+                      notes: selectedCustomer?.notes || "",
+                    });
+                    setManualDueOpen(true);
+                  }}>+ Add Manual Due</Button>
+                </div>
                 <Card className="shadow-none border-border">
                   <CardContent className="p-0">
                     {custInvoices.length === 0 ? (
@@ -468,6 +588,7 @@ export default function CustomersPage() {
                             <th className="py-2 px-4">Invoice</th>
                             <th>Date</th>
                             <th>Type</th>
+                            <th>Items</th>
                             <th className="text-right">Total</th>
                             <th className="text-right">Paid</th>
                             <th className="text-right px-4">Due</th>
@@ -479,7 +600,12 @@ export default function CustomersPage() {
                             <tr key={inv.id} className="border-b last:border-0 hover:bg-muted/40">
                               <td className="py-2 px-4 font-medium">{inv.number}</td>
                               <td>{formatDate(inv.createdAt)}</td>
-                              <td>{inv.type}</td>
+                              <td>{inv.type === "NON-GST" && inv.number?.startsWith("MAN-") ? "Manual Due" : inv.type}</td>
+                              <td className="py-2">
+                                <div className="text-xs text-muted-foreground truncate max-w-40" title={inv.items?.map(it => it.name).join(", ")}>
+                                  {inv.items?.map(it => it.name).join(", ") || "—"}
+                                </div>
+                              </td>
                               <td className="text-right">{inr(inv.total)}</td>
                               <td className="text-right text-green-600">{inr(inv.amountPaid !== undefined ? inv.amountPaid : inv.total)}</td>
                               <td className="text-right px-4 text-rose-600 font-medium">{inr(inv.balanceDue || 0)}</td>
@@ -501,32 +627,40 @@ export default function CustomersPage() {
               <div className="mt-4">
                 <h3 className="font-display text-lg mb-3 flex items-center gap-2"><Wallet className="w-5 h-5"/> Payment History</h3>
                 <Card className="shadow-none border-border">
-                  <CardContent className="p-0">
-                    {allPayments.length === 0 ? (
+                  <CardContent className="p-4">
+                    {Object.keys(groupedPayments).length === 0 ? (
                       <p className="text-sm text-muted-foreground py-6 text-center">No payments recorded.</p>
                     ) : (
-                      <table className="w-full text-sm">
-                        <thead className="text-left text-muted-foreground border-b bg-muted/20">
-                          <tr>
-                            <th className="py-2 px-4">Date</th>
-                            <th>Invoice</th>
-                            <th>Mode</th>
-                            <th>Note</th>
-                            <th className="text-right px-4">Amount Paid</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {allPayments.map((p, idx) => (
-                            <tr key={idx} className="border-b last:border-0 hover:bg-muted/40">
-                              <td className="py-2 px-4">{formatDate(p.date)}</td>
-                              <td className="font-medium">{p.invoiceNo}</td>
-                              <td>{p.mode}</td>
-                              <td className="text-muted-foreground">{p.note || "—"}</td>
-                              <td className="text-right px-4 text-green-600 font-medium">{inr(p.amount)}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                      <div className="flex flex-col gap-4">
+                        {Object.entries(groupedPayments).map(([invNo, pmts]) => (
+                          <div key={invNo} className="border border-border rounded-lg overflow-hidden">
+                            <div className="bg-muted/20 px-4 py-2 font-medium text-sm text-primary flex justify-between items-center border-b border-border/50">
+                              <span>Bill / Due: {invNo}</span>
+                              <span className="text-xs text-muted-foreground">Total Paid: <span className="text-green-600 font-bold">{inr(pmts.reduce((s, p) => s + p.amount, 0))}</span></span>
+                            </div>
+                            <table className="w-full text-sm">
+                              <thead className="text-left text-muted-foreground border-b border-border/50">
+                                <tr>
+                                  <th className="py-2 px-4 w-1/4">Date</th>
+                                  <th className="w-1/4">Mode</th>
+                                  <th className="w-1/4">Note</th>
+                                  <th className="text-right px-4 w-1/4">Amount Paid</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {pmts.map((p, idx) => (
+                                  <tr key={idx} className="border-b border-border/50 last:border-0 hover:bg-muted/40">
+                                    <td className="py-2 px-4">{formatDate(p.date)}</td>
+                                    <td>{p.mode}</td>
+                                    <td className="text-muted-foreground">{p.note || "—"}</td>
+                                    <td className="text-right px-4 text-green-600 font-medium">{inr(p.amount)}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        ))}
+                      </div>
                     )}
                   </CardContent>
                 </Card>
@@ -631,6 +765,111 @@ export default function CustomersPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setPayModalOpen(false)}>Cancel</Button>
             <Button onClick={submitPayment} disabled={updateInvoiceMutation.isPending || !payAmount}>Save Payment</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Manual Due Dialog */}
+      <Dialog open={manualDueOpen} onOpenChange={setManualDueOpen}>
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto" aria-describedby={undefined}>
+          <DialogHeader>
+            <DialogTitle>Add Manual Due</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-6 py-2">
+            {/* Customer Section */}
+            <div className="p-4 border rounded-lg bg-muted/10 space-y-4">
+              <h3 className="font-semibold text-primary">1. Customer Details</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="sm:col-span-2">
+                  <F label="Select Customer">
+                    <Select value={manualDue.customerId} onValueChange={(val) => {
+                      if (val === "NEW") {
+                        setManualDue({ ...manualDue, customerId: "NEW", customerName: "", phone: "", phone2: "", address: "", gstNumber: "", pan: "", notes: "" });
+                      } else {
+                        const c = customers.find((x: Customer) => x._id === val || x.id === val);
+                        if (c) {
+                          setManualDue({ ...manualDue, customerId: c._id || c.id || "", customerName: c.name, phone: c.phone, phone2: c.phone2||"", address: c.address||"", gstNumber: c.gstNumber||"", pan: c.pan||"", notes: c.notes||"" });
+                        }
+                      }
+                    }}>
+                      <SelectTrigger className="bg-background"><SelectValue placeholder="Select or create customer" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="NEW" className="font-semibold text-primary">+ Create New Customer</SelectItem>
+                        {customers.map((c: Customer) => (
+                          <SelectItem key={c._id || c.id} value={c._id || c.id || ""}>{c.name} - {c.phone}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </F>
+                </div>
+                <F label="Customer Name *"><Input className="bg-background" value={manualDue.customerName} onChange={e => setManualDue({...manualDue, customerName: e.target.value})} disabled={manualDue.customerId !== "NEW"} /></F>
+                <F label="Mobile No *"><Input className="bg-background" value={manualDue.phone} onChange={e => setManualDue({...manualDue, phone: e.target.value})} disabled={manualDue.customerId !== "NEW"} /></F>
+                <F label="Mobile No 2 (optional)"><Input className="bg-background" value={manualDue.phone2} onChange={e => setManualDue({...manualDue, phone2: e.target.value})} disabled={manualDue.customerId !== "NEW"} /></F>
+                <F label="GST No (optional)"><Input className="bg-background" value={manualDue.gstNumber} onChange={e => setManualDue({...manualDue, gstNumber: e.target.value})} disabled={manualDue.customerId !== "NEW"} /></F>
+                <F label="PAN No (optional)"><Input className="bg-background" value={manualDue.pan} onChange={e => setManualDue({...manualDue, pan: e.target.value})} disabled={manualDue.customerId !== "NEW"} /></F>
+                <div className="sm:col-span-2"><F label="Address (optional)"><Input className="bg-background" value={manualDue.address} onChange={e => setManualDue({...manualDue, address: e.target.value})} disabled={manualDue.customerId !== "NEW"} /></F></div>
+                <div className="sm:col-span-2"><F label="Notes (optional)"><Input className="bg-background" value={manualDue.notes} onChange={e => setManualDue({...manualDue, notes: e.target.value})} disabled={manualDue.customerId !== "NEW"} /></F></div>
+              </div>
+            </div>
+
+            {/* Product Section */}
+            <div className="p-4 border rounded-lg bg-muted/10 space-y-4">
+              <h3 className="font-semibold text-primary">2. Product Details</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="sm:col-span-2">
+                  <F label="Item Name / Description *">
+                    <Input className="bg-background" value={manualDue.itemName} onChange={e => setManualDue({...manualDue, itemName: e.target.value})} placeholder="E.g., Gold Chain, Old repair balance..." />
+                  </F>
+                </div>
+                <F label="Purity"><Input className="bg-background" value={manualDue.purity} onChange={e => setManualDue({...manualDue, purity: e.target.value})} placeholder="22K" /></F>
+                <F label="Net Weight (g)">
+                  <Input className="bg-background" type="number" value={manualDue.netWeight} onChange={e => {
+                    const nw = e.target.value === "" ? "" : Number(e.target.value);
+                    const rg = Number(manualDue.ratePerGram) || 0;
+                    const mc = Number(manualDue.makingCharge) || 0;
+                    const tv = nw !== "" ? (nw * rg) + mc : (manualDue.totalValue || "");
+                    setManualDue({...manualDue, netWeight: nw, totalValue: tv});
+                  }} />
+                </F>
+                <F label="Rate / g (₹)">
+                  <Input className="bg-background" type="number" value={manualDue.ratePerGram} onChange={e => {
+                    const rg = e.target.value === "" ? "" : Number(e.target.value);
+                    const nw = Number(manualDue.netWeight) || 0;
+                    const mc = Number(manualDue.makingCharge) || 0;
+                    const tv = rg !== "" ? (nw * rg) + mc : (manualDue.totalValue || "");
+                    setManualDue({...manualDue, ratePerGram: rg, totalValue: tv});
+                  }} />
+                </F>
+                <F label="Making Charge (₹)">
+                  <Input className="bg-background" type="number" value={manualDue.makingCharge} onChange={e => {
+                    const mc = e.target.value === "" ? "" : Number(e.target.value);
+                    const nw = Number(manualDue.netWeight) || 0;
+                    const rg = Number(manualDue.ratePerGram) || 0;
+                    const tv = mc !== "" ? (nw * rg) + mc : (manualDue.totalValue || "");
+                    setManualDue({...manualDue, makingCharge: mc, totalValue: tv});
+                  }} />
+                </F>
+              </div>
+            </div>
+
+            {/* Financials Section */}
+            <div className="p-4 border rounded-lg bg-muted/10 space-y-4">
+              <h3 className="font-semibold text-primary">3. Financials</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <F label="Total Item Value (₹) *">
+                  <Input className="bg-background font-medium text-lg" type="number" value={manualDue.totalValue} onChange={e => setManualDue({...manualDue, totalValue: e.target.value === "" ? "" : Number(e.target.value)})} />
+                </F>
+                <F label="Due Amount (₹) *">
+                  <Input className="bg-background font-medium text-lg text-rose-600" type="number" value={manualDue.dueAmount} onChange={e => setManualDue({...manualDue, dueAmount: e.target.value === "" ? "" : Number(e.target.value)})} />
+                </F>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setManualDueOpen(false)}>Cancel</Button>
+            <Button onClick={saveManualDue} disabled={createInvoiceMutation.isPending || !manualDue.itemName || manualDue.totalValue === "" || manualDue.dueAmount === "" || (!manualDue.customerName && manualDue.customerId === "NEW")}>
+              Save Manual Due
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

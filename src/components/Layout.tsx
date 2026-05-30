@@ -17,8 +17,12 @@ import {
   ShoppingCart,
   BarChart3,
   Menu,
+  ClipboardList,
   BookOpen,
+  AlertCircle,
+  Store,
   X,
+  LogOut,
 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
@@ -26,7 +30,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 
 type NavItem = { to: string; label: string; icon: typeof LayoutDashboard };
 
-const groups: { title: string; items: NavItem[] }[] = [
+const adminGroups: { title: string; items: NavItem[] }[] = [
   { title: "Overview", items: [{ to: "/", label: "Dashboard", icon: LayoutDashboard }] },
   { title: "Sales", items: [
     { to: "/billing", label: "POS / Billing", icon: ShoppingCart },
@@ -44,19 +48,32 @@ const groups: { title: string; items: NavItem[] }[] = [
   ]},
   { title: "Operations", items: [
     { to: "/repairs", label: "Repairs", icon: Wrench },
+    { to: "/karigar-tasks", label: "Karigar Tasks", icon: ClipboardList },
     { to: "/schemes", label: "Schemes", icon: PiggyBank },
   ]},
   { title: "Finance", items: [
     { to: "/purchases", label: "Purchases", icon: ShoppingBag },
     { to: "/expenses", label: "Expenses", icon: Wallet },
+    { to: "/dues", label: "Customer Dues", icon: AlertCircle },
     { to: "/advances", label: "Advance", icon: HandCoins },
     { to: "/girvi", label: "Girvi (Loans)", icon: Landmark },
+    { to: "/forwarded-shops", label: "Forwarded Shops", icon: Store },
     { to: "/reports", label: "Reports", icon: BarChart3 },
     { to: "/ledger", label: "Daily Ledger", icon: BookOpen },
   ]},
 ];
 
 function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
+  const authRaw = localStorage.getItem("ajms.auth");
+  const authUser = authRaw ? JSON.parse(authRaw) : null;
+  const isKarigar = authUser?.role === "karigar";
+
+  const groups = isKarigar ? [
+    { title: "My Workspace", items: [
+      { to: "/karigar-tasks", label: "My Tasks", icon: ClipboardList }
+    ]}
+  ] : adminGroups;
+
   return (
     <>
       <div className="px-6 py-6 border-b border-sidebar-border flex items-center justify-between">
@@ -107,6 +124,15 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
         </nav>
       </ScrollArea>
       <div className="p-4 text-xs text-muted-foreground border-t border-sidebar-border">
+        <button 
+          onClick={() => {
+            localStorage.removeItem("ajms.auth");
+            window.location.reload();
+          }}
+          className="flex items-center gap-2 text-rose-500 hover:text-rose-600 font-medium mb-4 w-full text-left transition-colors"
+        >
+          <LogOut className="w-4 h-4" /> Log out securely
+        </button>
         <div>CLOUDIEFY @ 2026</div>
         <a
           href="https://www.cloudiefy.com/"

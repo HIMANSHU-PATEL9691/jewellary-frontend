@@ -1,0 +1,190 @@
+import { useState, useMemo } from "react";
+import { Layout } from "@/components/Layout";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useApi, useApiMutation } from "@/hooks/useApi";
+import { karigarsAPI, repairsAPI, ordersAPI, jobworkAPI } from "@/lib/api";
+import { type Karigar, type Repair, type Order, type JobWork, useLocalState } from "@/lib/storage";
+import { formatDate } from "@/lib/utils";
+import { Hammer, Wrench, ShoppingBag, ClipboardList } from "lucide-react";
+import { toast } from "sonner";
+
+export default function KarigarTasksPage() {
+  const { data: karigars = [], isLoading: isLoadingK } = useApi<Karigar[]>(["karigars"], () => karigarsAPI.getAll());
+  const { data: repairs = [], isLoading: isLoadingR } = useApi<Repair[]>(["repairs"], () => repairsAPI.getAll());
+  const { data: orders = [], isLoading: isLoadingO } = useApi<Order[]>(["orders"], () => ordersAPI.getAll());
+  const { data: jobwork = [], isLoading: isLoadingJ } = useApi<JobWork[]>(["jobwork"], () => jobworkAPI.getAll());
+
+  const updateRepairMutation = useApiMutation((data: { id: string; body: Repair }) => repairsAPI.update(data.id, data.body), ["repairs"]);
+  const updateOrderMutation = useApiMutation((data: { id: string; body: Order }) => ordersAPI.update(data.id, data.body), ["orders"]);
+  const updateJobworkMutation = useApiMutation((data: { id: string; body: JobWork }) => jobworkAPI.update(data.id, data.body), ["jobwork"]);
+
+  const [authUser] = useLocalState<any>("ajms.auth", null);
+  const isKarigar = authUser?.role === "karigar";
+
+  const [selectedKarigarId, setSelectedKarigarId] = useState<string>(isKarigar ? authUser.id : "");
+
+  const assignedRepairs = useMemo(() => {
+    return repairs.filter((r) => r.karigarId === selectedKarigarId).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  }, [repairs, selectedKarigarId]);
+
+  const assignedOrders = useMemo(() => {
+    return orders.filter((o) => o.karigarId === selectedKarigarId).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  }, [orders, selectedKarigarId]);
+
+  const assignedJobWork = useMemo(() => {
+    return jobwork.filter((j) => (j.karigarId === selectedKarigarId) || (!j.karigarId && j.karigarName === karigars.find(k => k._id === selectedKarigarId || k.id === selectedKarigarId)?.name)).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  }, [jobwork, selectedKarigarId, karigars]);
+
+  const updateRepairStatus = async (id: string, status: Repair["status"]) => {
+    const repair = repairs.find(r => r._id === id || r.id === id);
+    if (repair) {
+      await updateRepairMutation.mutateAsync({ id, body: { ...repair, status } });
+      toast.success(`Repair status updated to ${status}`);
+    }
+  };
+
+  const updateOrderStatus = async (id: string, status: Order["status"]) => {
+    const order = orders.find(o => o._id === id || o.id === id);
+    if (order) {
+      await updateOrderMutation.mutateAsync({ id, body: { ...order, status } });
+      toast.success(`Order status updated to ${status}`);
+    }
+  };
+
+  const updateJobWorkStatus = async (id: string, status: JobWork["status"]) => {
+    const job = jobwork.find(j => j._id === id || j.id === id);
+    if (job) {
+      await updateJobworkMutation.mutateAsync({ id, body: { ...job, status } });
+      toast.success(`Job Work status updated to ${status}`);
+    }
+  };
+
+  const isLoading = isLoadingK || isLoadingR || isLoadingO || isLoadingJ;
+
+  return (
+    <Layout>
+      <header className="flex flex-col sm:flex-row items-start sm:items-end justify-between gap-4 mb-6">
+        <div>
+          <h1 className="text-4xl">Karigar Dashboard</h1>
+          <p className="text-muted-foreground mt-1">Track assigned repairs, custom orders, and job work.</p>
+        </div>
+        {isKarigar ? (
+          <div className="bg-primary/10 text-primary px-4 py-2 rounded-md border border-primary/20 font-medium">
+            Logged in as: {authUser.name}
+          </div>
+        ) : (
+          <div className="w-full sm:w-72">
+            <Select value={selectedKarigarId} onValueChange={setSelectedKarigarId}>
+              <SelectTrigger className="h-12 bg-background border-primary shadow-sm">
+                <SelectValue placeholder="Select Karigar Profile" />
+              </SelectTrigger>
+              <SelectContent>
+                {karigars.map(k => (
+                  <SelectItem key={k._id || k.id} value={k._id || k.id || ""}>
+                    {k.name} ({k.specialty || k.category || "General"})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+      </header>
+
+      {isLoading ? (
+        <p className="text-center py-12 text-muted-foreground">Loading tasks...</p>
+      ) : !selectedKarigarId ? (
+        <div className="flex flex-col items-center justify-center py-24 text-muted-foreground bg-muted/20 border border-dashed rounded-lg">
+          <Hammer className="w-12 h-12 mb-4 opacity-50" />
+          <p className="text-lg">Select a Karigar from the dropdown above to view their dashboard.</p>
+        </div>
+      ) : (
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <Card className="border-border">
+              <CardContent className="pt-6">
+                <div className="text-sm text-muted-foreground flex items-center gap-1"><Wrench className="w-4 h-4"/> Repairs Assigned</div>
+                <div className="text-2xl font-display mt-1 text-primary">{assignedRepairs.filter(r => r.status !== "Delivered").length}</div>
+              </CardContent>
+            </Card>
+            <Card className="border-border">
+              <CardContent className="pt-6">
+                <div className="text-sm text-muted-foreground flex items-center gap-1"><ShoppingBag className="w-4 h-4"/> Orders Assigned</div>
+                <div className="text-2xl font-display mt-1 text-primary">{assignedOrders.filter(o => o.status !== "Delivered" && o.status !== "Cancelled").length}</div>
+              </CardContent>
+            </Card>
+            <Card className="border-border">
+              <CardContent className="pt-6">
+                <div className="text-sm text-muted-foreground flex items-center gap-1"><ClipboardList className="w-4 h-4"/> Job Work Assigned</div>
+                <div className="text-2xl font-display mt-1 text-primary">{assignedJobWork.filter(j => j.status !== "Settled").length}</div>
+              </CardContent>
+            </Card>
+          </div>
+
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+            {/* REPAIRS */}
+            <Card>
+              <CardHeader><CardTitle className="font-display flex items-center gap-2"><Wrench className="w-5 h-5"/> Repairs ({assignedRepairs.length})</CardTitle></CardHeader>
+              <CardContent className="p-0">
+                <table className="w-full text-sm"><thead className="text-left text-muted-foreground border-b bg-muted/20"><tr><th className="py-2 px-4">Ticket</th><th>Item</th><th>Due</th><th className="px-4 text-right">Status</th></tr></thead>
+                  <tbody>{assignedRepairs.map(r => (<tr key={r._id || r.id} className="border-b last:border-0 hover:bg-muted/40">
+                    <td className="py-2 px-4"><div className="font-medium">{r.ticketNo}</div><div className="text-xs text-muted-foreground">{formatDate(r.date)}</div></td>
+                    <td><div className="font-medium">{r.itemDescription}</div><div className="text-xs text-rose-500">{r.problem}</div></td>
+                    <td>{r.deliveryDate ? formatDate(r.deliveryDate) : "—"}</td>
+                    <td className="px-4 py-2 text-right">
+                      <select className="border rounded px-2 py-1 bg-background text-xs cursor-pointer" value={r.status} onChange={e => updateRepairStatus(r._id || r.id || "", e.target.value as Repair["status"])}>
+                        {['Received', 'In Progress', 'Ready', 'Delivered'].map((s) => <option key={s} value={s}>{s}</option>)}
+                      </select>
+                    </td>
+                  </tr>))}
+                  {assignedRepairs.length === 0 && <tr><td colSpan={4} className="text-center py-6 text-muted-foreground">No repairs assigned.</td></tr>}
+                  </tbody></table>
+              </CardContent>
+            </Card>
+
+            {/* ORDERS */}
+            <Card>
+              <CardHeader><CardTitle className="font-display flex items-center gap-2"><ShoppingBag className="w-5 h-5"/> Custom Orders ({assignedOrders.length})</CardTitle></CardHeader>
+              <CardContent className="p-0">
+                <table className="w-full text-sm"><thead className="text-left text-muted-foreground border-b bg-muted/20"><tr><th className="py-2 px-4">Order</th><th>Item</th><th>Due</th><th className="px-4 text-right">Status</th></tr></thead>
+                  <tbody>{assignedOrders.map(o => (<tr key={o._id || o.id} className="border-b last:border-0 hover:bg-muted/40">
+                    <td className="py-2 px-4"><div className="font-medium">{o.orderNo}</div><div className="text-xs text-muted-foreground">{formatDate(o.date)}</div></td>
+                    <td><div className="font-medium">{o.itemDescription}</div><div className="text-xs text-muted-foreground">{o.metal} {o.purity} • {o.estimatedWeight}g</div></td>
+                    <td>{o.dueDate ? formatDate(o.dueDate) : "—"}</td>
+                    <td className="px-4 py-2 text-right">
+                      <select className="border rounded px-2 py-1 bg-background text-xs cursor-pointer" value={o.status} onChange={e => updateOrderStatus(o._id || o.id || "", e.target.value as Order["status"])}>
+                        {["Pending","In Progress","Ready","Delivered","Cancelled"].map(s => <option key={s} value={s}>{s}</option>)}
+                      </select>
+                    </td>
+                  </tr>))}
+                  {assignedOrders.length === 0 && <tr><td colSpan={4} className="text-center py-6 text-muted-foreground">No custom orders assigned.</td></tr>}
+                  </tbody></table>
+              </CardContent>
+            </Card>
+
+            {/* JOB WORK */}
+            <Card className="xl:col-span-2">
+              <CardHeader><CardTitle className="font-display flex items-center gap-2"><ClipboardList className="w-5 h-5"/> Job Work ({assignedJobWork.length})</CardTitle></CardHeader>
+              <CardContent className="p-0">
+                <table className="w-full text-sm"><thead className="text-left text-muted-foreground border-b bg-muted/20"><tr><th className="py-2 px-4">Job No</th><th>Item</th><th>Metal Issued</th><th>Due</th><th className="px-4 text-right">Status</th></tr></thead>
+                  <tbody>{assignedJobWork.map(j => (<tr key={j._id || j.id} className="border-b last:border-0 hover:bg-muted/40">
+                    <td className="py-2 px-4"><div className="font-medium">{j.jobNo}</div><div className="text-xs text-muted-foreground">{formatDate(j.date)}</div></td>
+                    <td><div className="font-medium">{j.itemDescription}</div><div className="text-xs text-muted-foreground">{j.metal} {j.purity}</div></td>
+                    <td><div className="font-medium text-amber-600">{j.issuedWeight}g</div></td>
+                    <td>{j.dueDate ? formatDate(j.dueDate) : "—"}</td>
+                    <td className="px-4 py-2 text-right">
+                      <select className="border rounded px-2 py-1 bg-background text-xs cursor-pointer" value={j.status} onChange={e => updateJobWorkStatus(j._id || j.id || "", e.target.value as JobWork["status"])}>
+                        {["Issued","In Progress","Received","Settled"].map(s => <option key={s} value={s}>{s}</option>)}
+                      </select>
+                    </td>
+                  </tr>))}
+                  {assignedJobWork.length === 0 && <tr><td colSpan={5} className="text-center py-6 text-muted-foreground">No job works assigned.</td></tr>}
+                  </tbody></table>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      )}
+    </Layout>
+  );
+}

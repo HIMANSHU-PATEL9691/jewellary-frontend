@@ -24,6 +24,8 @@ interface Karigar {
   address: string;
   note: string;
   pendingWeight?: number;
+  username?: string;
+  password?: string;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -35,7 +37,7 @@ export default function KarigarsPage() {
   const deleteMutation = useApiMutation((id: string) => karigarsAPI.delete(id), ["karigars"]);
 
   const [open, setOpen] = useState(false);
-  const empty: Karigar = { name: "", mobile: "", mobile2: "", companyName: "", email: "", category: "", gstNumber: "", address: "", note: "", pendingWeight: 0 };
+  const empty: Karigar = { name: "", mobile: "", mobile2: "", companyName: "", email: "", category: "", gstNumber: "", address: "", note: "", pendingWeight: 0, username: "", password: "" };
   const [form, setForm] = useState<Karigar>(empty);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [q, setQ] = useState("");
@@ -45,8 +47,8 @@ export default function KarigarsPage() {
   const [newCat, setNewCat] = useState("");
 
   const save = async () => {
-    if (!form.name || !form.mobile || !form.companyName || !form.category || !form.address || !form.note) {
-      toast.error("Name, mobile, company name, category, address, and note are required");
+    if (!form.name || !form.mobile || !form.companyName || !form.category || !form.address || !form.note || !form.username || !form.password) {
+      toast.error("Name, mobile, company name, category, address, note, username, and password are required");
       return;
     }
     try {
@@ -116,6 +118,11 @@ export default function KarigarsPage() {
               <Field label="Mobile No 2 (optional)" v={form.mobile2 || ""} on={v => setForm({...form, mobile2: v})} />
               <Field label="Email (optional)" v={form.email || ""} on={v => setForm({...form, email: v})} />
               
+              <div className="col-span-2 grid grid-cols-2 gap-4 mt-2 p-3 bg-muted/30 rounded-md border border-border">
+                <Field label="Login Username *" v={form.username || ""} on={v => setForm({...form, username: v})} />
+                <Field label="Login Password *" v={form.password || ""} on={v => setForm({...form, password: v})} />
+              </div>
+
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium text-muted-foreground">Category *</Label>
                 <div className="flex gap-2 items-center">
@@ -160,7 +167,7 @@ export default function KarigarsPage() {
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setOpen(false)} disabled={isLoading_UI}>Cancel</Button>
-              <Button onClick={save} disabled={isLoading_UI || !form.name || !form.mobile || !form.companyName || !form.category || !form.address || !form.note}>
+              <Button onClick={save} disabled={isLoading_UI || !form.name || !form.mobile || !form.companyName || !form.category || !form.address || !form.note || !form.username || !form.password}>
                 {isLoading_UI ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Saving...</> : "Save"}
               </Button>
             </DialogFooter>

@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 
 import Dashboard from "./routes/index";
 import BillingPage from "./routes/billing";
@@ -17,8 +17,32 @@ import SuppliersPage from "./routes/suppliers";
 import GoldRatesPage from "./routes/gold-rates";
 import OrdersPage from "./routes/orders";
 import LedgerPage from "./routes/ledger";
+import DuesPage from "./routes/dues";
+import ForwardedShopsPage from "./routes/forwarded-shops";
+import KarigarTasksPage from "./routes/karigar-tasks";
+import LoginPage from "./routes/login";
+import { useLocalState } from "./lib/storage";
 
 export default function App() {
+  // Stores the login state securely in the local storage so it persists on refresh
+  const [authUser, setAuthUser] = useLocalState<any>("ajms.auth", null);
+
+  if (!authUser) {
+    return <LoginPage onLogin={(user) => setAuthUser(user)} />;
+  }
+
+  // STRIKED DOWN KARIGAR ROUTE
+  if (authUser.role === "karigar") {
+    return (
+      <BrowserRouter>
+        <Routes>
+          <Route path="/karigar-tasks" element={<KarigarTasksPage />} />
+          <Route path="*" element={<Navigate to="/karigar-tasks" replace />} />
+        </Routes>
+      </BrowserRouter>
+    );
+  }
+
   return (
     <BrowserRouter>
       <Routes>
@@ -39,6 +63,9 @@ export default function App() {
         <Route path="/gold-rates" element={<GoldRatesPage />} />
         <Route path="/orders" element={<OrdersPage />} />
         <Route path="/ledger" element={<LedgerPage />} />
+        <Route path="/dues" element={<DuesPage />} />
+        <Route path="/forwarded-shops" element={<ForwardedShopsPage />} />
+        <Route path="/karigar-tasks" element={<KarigarTasksPage />} />
         <Route path="*" element={<div className="flex min-h-screen items-center justify-center text-2xl font-bold text-muted-foreground">404 - Page Not Found</div>} />
       </Routes>
     </BrowserRouter>
