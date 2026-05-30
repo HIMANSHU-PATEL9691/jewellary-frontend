@@ -31,6 +31,7 @@ export default function AdvancePage() {
   const deleteMutation = useApiMutation((id: string) => advancesAPI.delete(id), ["advances"]);
 
   const [open, setOpen] = useState(false);
+  const [searchCust, setSearchCust] = useState("");
   const [form, setForm] = useState({
     date: new Date().toISOString().slice(0, 10),
     customerId: "",
@@ -67,11 +68,6 @@ export default function AdvancePage() {
     } catch (error) {
       console.error("[Advances] Error saving to DB:", error);
     }
-  }
-
-  function pickCustomer(id: string) {
-    const c = customers.find((x) => x.id === id || (x as any)._id === id);
-    if (c) setForm({ ...form, customerId: (c as any)._id || c.id, customerName: c.name, customerMobile: c.mobile || (c as any).phone || "" });
   }
 
   async function setStatus(id: string, status: Advance["status"]) {
@@ -112,29 +108,35 @@ export default function AdvancePage() {
                 <Input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} />
               </div>
 
-              {customers.length > 0 && (
+              <div className="col-span-2 grid grid-cols-2 gap-3">
                 <div>
-                  <Label>Existing Customer (optional)</Label>
-                  <Select value={form.customerId} onValueChange={pickCustomer}>
-                    <SelectTrigger><SelectValue placeholder="Pick customer" /></SelectTrigger>
+                  <Label className="text-xs">Search Customer</Label>
+                  <Input 
+                    placeholder="Search name or mobile..." 
+                    value={searchCust} 
+                    onChange={(e) => {
+                      setSearchCust(e.target.value);
+                      const match = customers.find(c => c.mobile === e.target.value || (c as any).phone === e.target.value || c.name.toLowerCase() === e.target.value.toLowerCase());
+                      if (match) setForm({...form, customerId: match._id || match.id, customerName: match.name, customerMobile: match.mobile || (match as any).phone || ""});
+                    }} 
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs">Customer *</Label>
+                  <Select value={form.customerId || ""} onValueChange={(val) => {
+                    const match = customers.find(c => (c._id || c.id) === val);
+                    if (match) setForm({...form, customerId: val, customerName: match.name, customerMobile: match.mobile || (match as any).phone || ""});
+                  }}>
+                    <SelectTrigger><SelectValue placeholder="Select customer" /></SelectTrigger>
                     <SelectContent>
-                      {customers.map((c) => (
+                      {customers.filter(c => c.name.toLowerCase().includes(searchCust.toLowerCase()) || (c.mobile || (c as any).phone || "").includes(searchCust)).map((c) => (
                         <SelectItem key={(c as any)._id || c.id} value={(c as any)._id || c.id}>
-                          {c.name} — {c.mobile || (c as any).phone}
+                          {c.name} · {c.mobile || (c as any).phone}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
-              )}
-
-              <div>
-                <Label>Customer Name</Label>
-                <Input value={form.customerName} onChange={(e) => setForm({ ...form, customerName: e.target.value })} />
-              </div>
-              <div>
-                <Label>Mobile</Label>
-                <Input value={form.customerMobile} onChange={(e) => setForm({ ...form, customerMobile: e.target.value })} />
               </div>
 
               <div className="grid grid-cols-2 gap-2">
@@ -188,17 +190,7 @@ export default function AdvancePage() {
         <KPI label="Locked Weight" value={`${totals.activeWeight.toFixed(3)} g`} />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <Card className="lg:col-span-1">
-          <CardHeader>
-            <CardTitle className="font-display">New Advance</CardTitle>
-          </CardHeader>
-          <CardContent className="text-sm text-muted-foreground">
-            Use the <strong>New Advance</strong> button at the top right to open the form and log a payment.
-          </CardContent>
-        </Card>
-
-        <Card className="lg:col-span-2">
+      <Card>
           <CardHeader><CardTitle className="font-display">All Advances</CardTitle></CardHeader>
           <CardContent className="p-0">
             {isLoading ? (
@@ -255,7 +247,6 @@ export default function AdvancePage() {
             )}
           </CardContent>
         </Card>
-      </div>
     </Layout>
   );
 }
@@ -270,4 +261,3 @@ function KPI({ label, value }: { label: string; value: string | number }) {
     </Card>
   );
 }
-

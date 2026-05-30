@@ -5,19 +5,23 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { useLocalState, inr, type Repair, type Karigar } from "@/lib/storage";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { inr, type Repair, type Karigar } from "@/lib/storage";
 import { formatDate } from "@/lib/utils";
 import { useApi, useApiMutation } from "@/hooks/useApi";
-import { repairsAPI } from "@/lib/api";
+import { repairsAPI, karigarsAPI, customerAPI } from "@/lib/api";
 import { Plus, Trash2, Wrench } from "lucide-react";
 
 export default function RepairsPage() {
-  const [karigars] = useLocalState<Karigar[]>("ajms.karigars", []);
   const [open, setOpen] = useState(false);
+  const [searchCust, setSearchCust] = useState("");
+  const [searchKar, setSearchKar] = useState("");
   const empty: Repair = { ticketNo: "", date: new Date().toISOString().slice(0,10), customerName: "", customerMobile: "", itemDescription: "", itemWeight: 0, problem: "", estimate: 0, advance: 0, deliveryDate: "", karigarId: "", status: "Received", note: "" };
   const [form, setForm] = useState<Repair>(empty);
 
   const { data = [], isLoading, error } = useApi<Repair[]>(["repairs"], () => repairsAPI.getAll());
+  const { data: karigars = [] } = useApi<Karigar[]>(["karigars"], () => karigarsAPI.getAll());
+  const { data: customers = [] } = useApi<any[]>(["customers"], () => customerAPI.getAll());
   const createMutation = useApiMutation((data: Repair) => repairsAPI.create(data), ["repairs"]);
   const updateMutation = useApiMutation(
     (data: { id: string; body: Repair }) => repairsAPI.update(data.id, data.body),
@@ -81,8 +85,34 @@ export default function RepairsPage() {
               <DialogTitle>New Repair Ticket</DialogTitle>
             </DialogHeader>
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Customer Name *" v={form.customerName} on={(v) => setForm({ ...form, customerName: v })} />
-              <Field label="Mobile" v={form.customerMobile} on={(v) => setForm({ ...form, customerMobile: v })} />
+              <div className="col-span-2 grid grid-cols-2 gap-3">
+                <div>
+                  <Label className="text-xs">Search Customer</Label>
+                  <Input 
+                    placeholder="Search name or mobile..." 
+                    value={searchCust} 
+                    onChange={(e) => {
+                      setSearchCust(e.target.value);
+                      const match = customers.find(c => c.mobile === e.target.value || (c as any).phone === e.target.value || c.name.toLowerCase() === e.target.value.toLowerCase());
+                      if (match) setForm({...form, customerName: match.name, customerMobile: match.mobile || (match as any).phone || ""});
+                    }} 
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs">Customer *</Label>
+                  <Select value={form.customerMobile || ""} onValueChange={(val) => {
+                    const match = customers.find(c => (c.mobile || c.phone) === val);
+                    if (match) setForm({...form, customerName: match.name, customerMobile: match.mobile || (match as any).phone || ""});
+                  }}>
+                    <SelectTrigger><SelectValue placeholder="Select customer" /></SelectTrigger>
+                    <SelectContent>
+                      {customers.filter(c => c.name.toLowerCase().includes(searchCust.toLowerCase()) || (c.mobile || (c as any).phone || "").includes(searchCust)).map((c) => (
+                        <SelectItem key={c.mobile || c.phone} value={c.mobile || c.phone}>{c.name} · {c.mobile || (c as any).phone}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
               <div className="col-span-2">
                 <Field label="Item Description" v={form.itemDescription} on={(v) => setForm({ ...form, itemDescription: v })} />
               </div>
@@ -92,20 +122,26 @@ export default function RepairsPage() {
               <Field label="Advance ₹" type="number" v={String(form.advance)} on={(v) => setForm({ ...form, advance: +v })} />
               <Field label="Date" type="date" v={form.date} on={(v) => setForm({ ...form, date: v })} />
               <Field label="Delivery Date" type="date" v={form.deliveryDate || ""} on={(v) => setForm({ ...form, deliveryDate: v })} />
-              <div>
-                <Label className="text-xs">Karigar</Label>
-                <select
-                  className="w-full h-10 border rounded-md px-3 bg-background"
-                  value={form.karigarId || ""}
-                  onChange={(e) => setForm({ ...form, karigarId: e.target.value })}
-                >
-                  <option value="">— Unassigned —</option>
-                  {karigars.map((k) => (
-                    <option key={k.id} value={k.id}>
-                      {k.name}
-                    </option>
-                  ))}
-                </select>
+              <div className="col-span-2 grid grid-cols-2 gap-3">
+                <div>
+                  <Label className="text-xs">Search Karigar</Label>
+                  <Input placeholder="Search name..." value={searchKar} onChange={e => {
+                    setSearchKar(e.target.value);
+                    const match = karigars.find(k => k.name.toLowerCase() === e.target.value.toLowerCase() || (k.mobile||"").includes(e.target.value));
+                    if (match) setForm({...form, karigarId: match._id || match.id});
+                  }} />
+                </div>
+                <div>
+                  <Label className="text-xs">Karigar</Label>
+                  <Select value={form.karigarId || ""} onValueChange={val => setForm({...form, karigarId: val})}>
+                    <SelectTrigger><SelectValue placeholder="Unassigned" /></SelectTrigger>
+                    <SelectContent>
+                      {karigars.filter(k => k.name.toLowerCase().includes(searchKar.toLowerCase()) || (k.mobile||"").includes(searchKar)).map(k => (
+                        <SelectItem key={k._id || k.id} value={k._id || k.id}>{k.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
               <div className="col-span-2">
                 <Field label="Note" v={form.note || ""} on={(v) => setForm({ ...form, note: v })} />

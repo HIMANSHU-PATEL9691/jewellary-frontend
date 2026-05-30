@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Layout } from "@/components/Layout";
 import { formatDate } from "@/lib/utils";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -120,13 +120,6 @@ export default function GoldRatesPage() {
           </Card>
         ))}
       </div>
-
-      <Card>
-        <CardHeader><CardTitle className="font-display">Update Rates</CardTitle></CardHeader>
-        <CardContent className="text-sm text-muted-foreground">
-          Use the <strong>Edit Rates</strong> button in the top right to update the current gold and silver rates.
-        </CardContent>
-      </Card>
     </Layout>
   );
 }

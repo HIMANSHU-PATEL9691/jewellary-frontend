@@ -5,18 +5,21 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { inr, type Scheme } from "@/lib/storage";
 import { useApi, useApiMutation } from "@/hooks/useApi";
-import { schemesAPI } from "@/lib/api";
+import { schemesAPI, customerAPI } from "@/lib/api";
 import { Plus, Trash2, PiggyBank } from "lucide-react";
 
 export default function SchemesPage() {
   const { data: list = [], isLoading } = useApi<Scheme[]>(["schemes"], () => schemesAPI.getAll());
+  const { data: customers = [] } = useApi<any[]>(["customers"], () => customerAPI.getAll());
   const createMutation = useApiMutation((data: Scheme) => schemesAPI.create(data), ["schemes"]);
   const updateMutation = useApiMutation((data: { id: string; body: Scheme }) => schemesAPI.update(data.id, data.body), ["schemes"]);
   const deleteMutation = useApiMutation((id: string) => schemesAPI.delete(id), ["schemes"]);
 
   const [open, setOpen] = useState(false);
+  const [searchCust, setSearchCust] = useState("");
   const empty: Scheme = { id: "", schemeNo: "", date: new Date().toISOString().slice(0,10), customerName: "", customerMobile: "", planName: "11+1 Monthly", monthlyAmount: 0, tenureMonths: 11, paidMonths: 0, totalPaid: 0, maturityDate: "", status: "Active" };
   const [form, setForm] = useState<Scheme>(empty);
 
@@ -51,8 +54,34 @@ export default function SchemesPage() {
           <DialogTrigger asChild><Button size="lg"><Plus className="w-4 h-4 mr-2"/>New Scheme</Button></DialogTrigger>
           <DialogContent className="max-h-[75vh] overflow-y-auto" aria-describedby={undefined}><DialogHeader><DialogTitle>Enroll Customer</DialogTitle></DialogHeader>
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Customer Name *" v={form.customerName} on={v => setForm({...form, customerName: v})} />
-              <Field label="Mobile" v={form.customerMobile} on={v => setForm({...form, customerMobile: v})} />
+              <div className="col-span-2 grid grid-cols-2 gap-3">
+                <div>
+                  <Label className="text-xs">Search Customer</Label>
+                  <Input 
+                    placeholder="Search name or mobile..." 
+                    value={searchCust} 
+                    onChange={(e) => {
+                      setSearchCust(e.target.value);
+                      const match = customers.find(c => c.mobile === e.target.value || (c as any).phone === e.target.value || c.name.toLowerCase() === e.target.value.toLowerCase());
+                      if (match) setForm({...form, customerName: match.name, customerMobile: match.mobile || (match as any).phone || ""});
+                    }} 
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs">Customer *</Label>
+                  <Select value={form.customerMobile || ""} onValueChange={(val) => {
+                    const match = customers.find(c => (c.mobile || c.phone) === val);
+                    if (match) setForm({...form, customerName: match.name, customerMobile: match.mobile || (match as any).phone || ""});
+                  }}>
+                    <SelectTrigger><SelectValue placeholder="Select customer" /></SelectTrigger>
+                    <SelectContent>
+                      {customers.filter(c => c.name.toLowerCase().includes(searchCust.toLowerCase()) || (c.mobile || (c as any).phone || "").includes(searchCust)).map((c) => (
+                        <SelectItem key={c.mobile || c.phone} value={c.mobile || c.phone}>{c.name} · {c.mobile || (c as any).phone}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
               <Field label="Plan Name" v={form.planName} on={v => setForm({...form, planName: v})} />
               <Field label="Monthly Amount ₹ *" type="number" v={String(form.monthlyAmount)} on={v => setForm({...form, monthlyAmount: +v})} />
               <Field label="Tenure (months)" type="number" v={String(form.tenureMonths)} on={v => setForm({...form, tenureMonths: +v})} />

@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { inr, type Purchase, type Supplier } from "@/lib/storage";
 import { formatDate } from "@/lib/utils";
 import { useApi, useApiMutation } from "@/hooks/useApi";
@@ -24,6 +25,7 @@ export default function PurchasesPage() {
   const deleteMutation = useApiMutation((id: string) => purchasesAPI.delete(id), ["purchases"]);
 
   const [open, setOpen] = useState(false);
+  const [searchSup, setSearchSup] = useState("");
   const empty: Purchase = { id: "", billNo: "", date: new Date().toISOString().slice(0,10), supplierId: "", supplierName: "", metal: "Gold", purity: "22K", weight: 0, ratePerGram: 0, makingCharge: 0, gstPct: 3, total: 0, paymentMode: "Cash", note: "" };
   const [form, setForm] = useState<Purchase>(empty);
 
@@ -53,17 +55,30 @@ export default function PurchasesPage() {
           <DialogTrigger asChild><Button size="lg"><Plus className="w-4 h-4 mr-2"/>New Purchase</Button></DialogTrigger>
           <DialogContent className="max-w-2xl max-h-[75vh] overflow-y-auto" aria-describedby={undefined}><DialogHeader><DialogTitle>Record Purchase</DialogTitle></DialogHeader>
             <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label className="text-xs">Supplier *</Label>
-                <select className="w-full h-10 border rounded-md px-3 bg-background" value={form.supplierId || ""} onChange={e => {
-                  const s = suppliers.find(x => x.id === e.target.value || (x as any)._id === e.target.value);
-                  setForm({...form, supplierId: e.target.value, supplierName: s?.name || form.supplierName});
-                }}>
-                  <option value="">— Pick or type below —</option>
-                  {suppliers.map(s => <option key={(s as any)._id || s.id} value={(s as any)._id || s.id}>{s.name}</option>)}
-                </select>
+              <div className="col-span-2 grid grid-cols-2 gap-3">
+                <div>
+                  <Label className="text-xs">Search Supplier</Label>
+                  <Input placeholder="Search name or mobile..." value={searchSup} onChange={e => {
+                    setSearchSup(e.target.value);
+                    const match = suppliers.find(s => s.name.toLowerCase() === e.target.value.toLowerCase() || (s.mobile||"").includes(e.target.value));
+                    if (match) setForm({...form, supplierId: match._id || match.id, supplierName: match.name});
+                  }} />
+                </div>
+                <div>
+                  <Label className="text-xs">Supplier *</Label>
+                  <Select value={form.supplierId || ""} onValueChange={val => {
+                    const s = suppliers.find(x => (x._id || x.id) === val);
+                    if (s) setForm({...form, supplierId: val, supplierName: s.name});
+                  }}>
+                    <SelectTrigger><SelectValue placeholder="Select supplier" /></SelectTrigger>
+                    <SelectContent>
+                      {suppliers.filter(s => s.name.toLowerCase().includes(searchSup.toLowerCase()) || (s.mobile||"").includes(searchSup)).map(s => (
+                        <SelectItem key={s._id || s.id} value={s._id || s.id}>{s.name} · {s.mobile}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
-              <Field label="Supplier Name" v={form.supplierName} on={v => setForm({...form, supplierName: v})} />
               <div><Label className="text-xs">Metal</Label>
                 <select className="w-full h-10 border rounded-md px-3 bg-background" value={form.metal} onChange={e => setForm({...form, metal: e.target.value as Purchase["metal"]})}>
                   <option>Gold</option><option>Silver</option><option>Diamond</option><option>Other</option>

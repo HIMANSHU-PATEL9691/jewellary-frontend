@@ -2,17 +2,7 @@ import { Link } from "react-router-dom";
 import { Layout } from "@/components/Layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
-  useLocalState,
   inr,
-  type Product,
-  type Customer,
-  type Invoice,
-  type Expense,
-  type Repair,
-  type JobWork,
-  type Purchase,
-  type Supplier,
-  type MetalRates,
 } from "@/lib/storage";
 import {
   Package,
@@ -24,25 +14,39 @@ import {
   Wallet,
   AlertTriangle,
   Wrench,
-  ClipboardList,
+  ShoppingBag,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { formatDate } from "@/lib/utils";
 import { useEffect, useState } from "react";
+import { useApi } from "@/hooks/useApi";
+import {
+  inventoryAPI,
+  customerAPI,
+  invoicesAPI,
+  expensesAPI,
+  repairsAPI,
+  purchasesAPI,
+  supplierAPI,
+  goldRatesAPI,
+  ordersAPI,
+} from "@/lib/api";
 
 const LOYAL_THRESHOLD = 3;
-const defaultRates: MetalRates = { updatedAt: new Date().toISOString(), gold24: 7850, gold22: 7200, gold18: 5890, silver: 98 };
+const defaultRates: any = { updatedAt: new Date().toISOString(), gold24: 7850, gold22: 7200, gold18: 5890, silver: 98 };
 
 export default function Dashboard() {
-  const [products] = useLocalState<Product[]>("ajms.products", []);
-  const [customers] = useLocalState<Customer[]>("ajms.customers", []);
-  const [invoices] = useLocalState<Invoice[]>("ajms.invoices", []);
-  const [expenses] = useLocalState<Expense[]>("ajms.expenses", []);
-  const [repairs] = useLocalState<Repair[]>("ajms.repairs", []);
-  const [jobwork] = useLocalState<JobWork[]>("ajms.jobwork", []);
-  const [purchases] = useLocalState<Purchase[]>("ajms.purchases", []);
-  const [suppliers] = useLocalState<Supplier[]>("ajms.suppliers", []);
-  const [rates] = useLocalState<MetalRates>("ajms.metalRates", defaultRates);
+  const { data: products = [] } = useApi<any[]>(["inventory"], () => inventoryAPI.getAll());
+  const { data: customers = [] } = useApi<any[]>(["customers"], () => customerAPI.getAll());
+  const { data: invoices = [] } = useApi<any[]>(["invoices"], () => invoicesAPI.getAll());
+  const { data: expenses = [] } = useApi<any[]>(["expenses"], () => expensesAPI.getAll());
+  const { data: repairs = [] } = useApi<any[]>(["repairs"], () => repairsAPI.getAll());
+  const { data: purchases = [] } = useApi<any[]>(["purchases"], () => purchasesAPI.getAll());
+  const { data: suppliers = [] } = useApi<any[]>(["suppliers"], () => supplierAPI.getAll());
+  const { data: ratesList = [] } = useApi<any[]>(["goldRates"], () => goldRatesAPI.getAll());
+  const { data: orders = [] } = useApi<any[]>(["orders"], () => ordersAPI.getAll());
+
+  const rates = ratesList[0] || defaultRates;
 
   const displayRates = {
     gold24: rates.gold24 ?? defaultRates.gold24,
@@ -70,7 +74,7 @@ export default function Dashboard() {
 
   const counts = new Map<string, number>();
   invoices.forEach((i) => { if (i.customerId) counts.set(i.customerId, (counts.get(i.customerId) || 0) + 1); });
-  const loyal = customers.filter((c) => (counts.get(c.id) || 0) >= LOYAL_THRESHOLD).length;
+  const loyal = customers.filter((c) => (counts.get(c._id || c.id) || 0) >= LOYAL_THRESHOLD).length;
   const normal = customers.length - loyal;
 
   const stockValue = products.reduce((s, p) => s + p.netWeight * p.ratePerGram * p.stock, 0);
@@ -89,7 +93,7 @@ export default function Dashboard() {
 
   const lowStock = products.filter(p => p.stock <= 2).length;
   const pendingRepairs = repairs.filter(r => r.status !== "Delivered").length;
-  const pendingJobs = jobwork.filter(j => j.status !== "Settled").length;
+  const pendingOrders = orders.filter(o => o.status !== "Delivered" && o.status !== "Cancelled").length;
 
   const stats = [
     { label: "Total Sell", value: inr(totalSell), icon: TrendingUp, sub: `${invoices.length} invoices`, to: "/sales" },
@@ -112,6 +116,7 @@ export default function Dashboard() {
     { label: "Total Invoices", value: invoices.length, icon: Receipt, sub: `${customers.length} customers`, to: "/sales" },
     { label: "Inventory Items", value: products.length, icon: Package, sub: `${goldGrams.toFixed(2)}g stock`, to: "/inventory" },
     { label: "Pending Repairs", value: pendingRepairs, icon: Wrench, sub: `${pendingRepairs} open`, to: "/repairs" },
+    { label: "Active Orders", value: pendingOrders, icon: ShoppingBag, sub: `${orders.length} total orders`, to: "/orders" },
   ];
 
   const recent = [...invoices].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 6);
@@ -199,7 +204,7 @@ export default function Dashboard() {
             ) : (
               <table className="w-full text-sm">
                 <thead className="text-left text-muted-foreground border-b"><tr><th className="py-2">Invoice</th><th>Customer</th><th>Type</th><th>Mode</th><th className="text-right">Total</th></tr></thead>
-                <tbody>{recent.map((i) => (<tr key={i.id} className="border-b last:border-0"><td className="py-2 font-medium">{i.number}</td><td>{i.customerName || "—"}</td><td>{i.type}</td><td>{i.paymentMode}</td><td className="text-right">{inr(i.total)}</td></tr>))}</tbody>
+                <tbody>{recent.map((i) => (<tr key={i._id || i.id} className="border-b last:border-0"><td className="py-2 font-medium">{i.number}</td><td>{i.customerName || "—"}</td><td>{i.type}</td><td>{i.paymentMode}</td><td className="text-right">{inr(i.total)}</td></tr>))}</tbody>
               </table>
             )}
           </CardContent>
@@ -210,7 +215,7 @@ export default function Dashboard() {
           <CardContent className="space-y-2">
             <AlertRow icon={Package} label="Low Stock Items" value={lowStock} to="/inventory" />
             <AlertRow icon={Wrench} label="Pending Repairs" value={pendingRepairs} to="/repairs" />
-            <AlertRow icon={ClipboardList} label="Pending Job Work" value={pendingJobs} to="/jobwork" />
+            <AlertRow icon={ShoppingBag} label="Active Orders" value={pendingOrders} to="/orders" />
           </CardContent>
         </Card>
       </div>

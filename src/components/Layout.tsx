@@ -11,13 +11,13 @@ import {
   Truck,
   Hammer,
   Wrench,
-  ClipboardList,
   PiggyBank,
   ShoppingBag,
   TrendingUp,
   ShoppingCart,
   BarChart3,
   Menu,
+  BookOpen,
   X,
 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
@@ -31,6 +31,7 @@ const groups: { title: string; items: NavItem[] }[] = [
   { title: "Sales", items: [
     { to: "/billing", label: "POS / Billing", icon: ShoppingCart },
     { to: "/sales", label: "Sales", icon: Receipt },
+    { to: "/orders", label: "Orders", icon: ShoppingBag },
   ]},
   { title: "Inventory", items: [
     { to: "/inventory", label: "Products", icon: Package },
@@ -43,7 +44,6 @@ const groups: { title: string; items: NavItem[] }[] = [
   ]},
   { title: "Operations", items: [
     { to: "/repairs", label: "Repairs", icon: Wrench },
-    { to: "/jobwork", label: "Job Work", icon: ClipboardList },
     { to: "/schemes", label: "Schemes", icon: PiggyBank },
   ]},
   { title: "Finance", items: [
@@ -52,6 +52,7 @@ const groups: { title: string; items: NavItem[] }[] = [
     { to: "/advances", label: "Advance", icon: HandCoins },
     { to: "/girvi", label: "Girvi (Loans)", icon: Landmark },
     { to: "/reports", label: "Reports", icon: BarChart3 },
+    { to: "/ledger", label: "Daily Ledger", icon: BookOpen },
   ]},
 ];
 

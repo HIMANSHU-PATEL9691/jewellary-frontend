@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { inr, type JobWork, type Karigar } from "@/lib/storage";
 import { formatDate } from "@/lib/utils";
 import { useApi, useApiMutation } from "@/hooks/useApi";
@@ -20,7 +21,8 @@ export default function JobWorkPage() {
   const deleteMutation = useApiMutation((id: string) => jobworkAPI.delete(id), ["jobwork"]);
 
   const [open, setOpen] = useState(false);
-  const empty: JobWork = { id: "", jobNo: "", date: new Date().toISOString().slice(0,10), karigarId: "", karigarName: "", itemDescription: "", metal: "Gold", purity: "22K", issuedWeight: 0, receivedWeight: 0, wastage: 0, makingCharge: 0, dueDate: "", status: "Issued", note: "" };
+  const [searchKar, setSearchKar] = useState("");
+  const empty: JobWork = { id: "", jobNo: "", date: new Date().toISOString().slice(0,10), karigarId: "", karigarName: "", itemDescription: "", metal: "Gold", purity: "22K", issuedWeight: 0, receivedWeight: 0, makingCharge: 0, dueDate: "", status: "Issued", note: "" };
   const [form, setForm] = useState<JobWork>(empty);
 
   const save = async () => {
@@ -55,15 +57,29 @@ export default function JobWorkPage() {
           <DialogTrigger asChild><Button size="lg"><Plus className="w-4 h-4 mr-2"/>New Job</Button></DialogTrigger>
           <DialogContent className="max-w-2xl max-h-[75vh] overflow-y-auto" aria-describedby={undefined}><DialogHeader><DialogTitle>Issue Job Work</DialogTitle></DialogHeader>
             <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label className="text-xs">Karigar *</Label>
-                <select className="w-full h-10 border rounded-md px-3 bg-background" value={form.karigarId || ""} onChange={e => {
-                  const k = karigars.find(x => x.id === e.target.value || (x as any)._id === e.target.value);
-                  setForm({...form, karigarId: e.target.value, karigarName: k?.name || ""});
-                }}>
-                  <option value="">— Select —</option>
-                  {karigars.map(k => <option key={(k as any)._id || k.id} value={(k as any)._id || k.id}>{k.name}</option>)}
-                </select>
+              <div className="col-span-2 grid grid-cols-2 gap-3">
+                <div>
+                  <Label className="text-xs">Search Karigar</Label>
+                  <Input placeholder="Search name..." value={searchKar} onChange={e => {
+                    setSearchKar(e.target.value);
+                    const match = karigars.find(k => k.name.toLowerCase() === e.target.value.toLowerCase() || (k.mobile||"").includes(e.target.value));
+                    if (match) setForm({...form, karigarId: match._id || match.id, karigarName: match.name});
+                  }} />
+                </div>
+                <div>
+                  <Label className="text-xs">Karigar *</Label>
+                  <Select value={form.karigarId || ""} onValueChange={val => {
+                    const k = karigars.find(x => (x._id || x.id) === val);
+                    if (k) setForm({...form, karigarId: val, karigarName: k.name});
+                  }}>
+                    <SelectTrigger><SelectValue placeholder="Select karigar" /></SelectTrigger>
+                    <SelectContent>
+                      {karigars.filter(k => k.name.toLowerCase().includes(searchKar.toLowerCase()) || (k.mobile||"").includes(searchKar)).map(k => (
+                        <SelectItem key={k._id || k.id} value={k._id || k.id}>{k.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
               <Field label="Item Description *" v={form.itemDescription} on={v => setForm({...form, itemDescription: v})} />
               <div><Label className="text-xs">Metal</Label>
@@ -73,7 +89,6 @@ export default function JobWorkPage() {
               <Field label="Purity" v={form.purity} on={v => setForm({...form, purity: v})} />
               <Field label="Issued Weight (g)" type="number" v={String(form.issuedWeight)} on={v => setForm({...form, issuedWeight: +v})} />
               <Field label="Received Weight (g)" type="number" v={String(form.receivedWeight)} on={v => setForm({...form, receivedWeight: +v})} />
-              <Field label="Wastage (g)" type="number" v={String(form.wastage)} on={v => setForm({...form, wastage: +v})} />
               <Field label="Making Charge ₹" type="number" v={String(form.makingCharge)} on={v => setForm({...form, makingCharge: +v})} />
               <Field label="Date" type="date" v={form.date} on={v => setForm({...form, date: v})} />
               <Field label="Due Date" type="date" v={form.dueDate || ""} on={v => setForm({...form, dueDate: v})} />

@@ -8,18 +8,31 @@ const apiCall = async (endpoint: string, options: RequestInit = {}) => {
   
   console.log(`[Frontend API Request] ${options.method || 'GET'} ${url}`, options.body ? JSON.parse(options.body as string) : '');
   
-  const response = await fetch(url, {
-    headers: {
-      'Content-Type': 'application/json',
-      ...options.headers,
-    },
-    ...options,
-  });
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      headers: {
+        'Content-Type': 'application/json',
+        ...options.headers,
+      },
+      ...options,
+    });
+  } catch (err: any) {
+    console.error(`[Frontend API Network Error] ${url}:`, err);
+    throw new Error(`Network Error: Cannot connect to the backend server. Is it running?`);
+  }
+
+  const contentType = response.headers.get("content-type");
+  const isJson = contentType && contentType.includes("application/json");
 
   if (!response.ok) {
-    const error = await response.json();
-    console.error(`[Frontend API Error] ${url}:`, error);
-    throw new Error(error.error || 'API Error');
+    const errorData = isJson ? await response.json() : await response.text();
+    console.error(`[Frontend API Error] ${url}:`, errorData);
+    throw new Error(isJson ? errorData.error : `API Error: Endpoint may not exist (${response.status})`);
+  }
+
+  if (!isJson) {
+    throw new Error(`API Error: Expected JSON but received HTML. The backend endpoint ${endpoint} likely does not exist yet.`);
   }
 
   const data = await response.json();
@@ -158,7 +171,36 @@ export const advancesAPI = {
 export const girviAPI = {
   getAll: () => apiCall('/girvi'),
   getById: (id: string) => apiCall(`/girvi/${id}`),
-  create: (data: any) => apiCall('/girvi', { method: 'POST', body: JSON.stringify(data) }),
-  update: (id: string, data: any) => apiCall(`/girvi/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  create: (data: any) => {
+    const payload = { ...data };
+    delete payload.id;
+    delete payload._id;
+    return apiCall('/girvi', { method: 'POST', body: JSON.stringify(payload) });
+  },
+  update: (id: string, data: any) => {
+    const payload = { ...data };
+    delete payload.id;
+    delete payload._id;
+    return apiCall(`/girvi/${id}`, { method: 'PUT', body: JSON.stringify(payload) });
+  },
   delete: (id: string) => apiCall(`/girvi/${id}`, { method: 'DELETE' }),
+};
+
+// Orders API
+export const ordersAPI = {
+  getAll: () => apiCall('/orders'),
+  getById: (id: string) => apiCall(`/orders/${id}`),
+  create: (data: any) => {
+    const payload = { ...data };
+    delete payload.id;
+    delete payload._id;
+    return apiCall('/orders', { method: 'POST', body: JSON.stringify(payload) });
+  },
+  update: (id: string, data: any) => {
+    const payload = { ...data };
+    delete payload.id;
+    delete payload._id;
+    return apiCall(`/orders/${id}`, { method: 'PUT', body: JSON.stringify(payload) });
+  },
+  delete: (id: string) => apiCall(`/orders/${id}`, { method: 'DELETE' }),
 };

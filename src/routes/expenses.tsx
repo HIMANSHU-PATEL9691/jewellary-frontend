@@ -142,17 +142,7 @@ export default function ExpensesPage() {
         <KPI label="Total Records" value={expenses.length} />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <Card>
-          <CardHeader>
-            <CardTitle className="font-display">Add Expense</CardTitle>
-          </CardHeader>
-          <CardContent className="text-sm text-muted-foreground">
-            Use the <strong>Add Expense</strong> button at the top right to open the expense form in a dialog.
-          </CardContent>
-        </Card>
-
-        <Card className="lg:col-span-2">
+      <Card>
           <CardHeader>
             <CardTitle className="font-display">Records</CardTitle>
           </CardHeader>
@@ -201,7 +191,6 @@ export default function ExpensesPage() {
             )}
           </CardContent>
         </Card>
-      </div>
     </Layout>
   );
 }

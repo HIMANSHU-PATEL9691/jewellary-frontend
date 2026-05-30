@@ -30,12 +30,13 @@ export type Product = {
   grossWeight: number;
   netWeight: number;
   stoneWeight: number;
-  wastagePct: number;
   makingCharge: number;
+  makingChargePct?: number;
   gstPct: number;
   ratePerGram: number;
   stock: number;
   barcode: string;
+  imageUrl?: string;
 };
 
 export type Customer = {
@@ -56,9 +57,17 @@ export type InvoiceItem = {
   netWeight: number;
   ratePerGram: number;
   makingCharge: number;
+  makingChargePct?: number;
   stoneCharge: number;
   gstPct: number;
   qty: number;
+};
+
+export type InvoicePayment = {
+  date: string;
+  amount: number;
+  mode: string;
+  note?: string;
 };
 
 export type Invoice = {
@@ -76,6 +85,9 @@ export type Invoice = {
   subtotal: number;
   gstAmount: number;
   total: number;
+  amountPaid?: number;
+  balanceDue?: number;
+  payments?: InvoicePayment[];
   createdAt: string;
 };
 
@@ -128,6 +140,13 @@ export type Girvi = {
   dueDate?: string;
   status: "Active" | "Closed" | "Auctioned";
   note?: string;
+  forwardedTo?: string;
+  forwardedShopName?: string;
+  forwardedShopGstNo?: string;
+  forwardedShopAddress?: string;
+  forwardedAmount?: number;
+  forwardedInterestPct?: number;
+  forwardedImageUrl?: string;
 };
 
 export type Supplier = {
@@ -137,13 +156,17 @@ export type Supplier = {
   company?: string;
   mobile: string;
   email?: string;
+  category?: string;
   gstNumber?: string;
   address?: string;
+  companyNo?: string;
+  note?: string;
   outstanding: number;
   createdAt: string;
 };
 
 export type Karigar = {
+  _id?: string;
   id: string;
   name: string;
   mobile: string;
@@ -184,10 +207,27 @@ export type JobWork = {
   purity: string;
   issuedWeight: number;
   receivedWeight: number;
-  wastage: number;
   makingCharge: number;
   dueDate?: string;
   status: "Issued" | "In Progress" | "Received" | "Settled";
+  note?: string;
+};
+
+export type Order = {
+  _id?: string;
+  id: string;
+  orderNo: string;
+  date: string;
+  customerName: string;
+  customerMobile: string;
+  itemDescription: string;
+  metal: "Gold" | "Silver" | "Diamond" | "Platinum" | "Other";
+  purity: string;
+  estimatedWeight: number;
+  estimatedPrice: number;
+  advancePaid: number;
+  dueDate?: string;
+  status: "Pending" | "In Progress" | "Ready" | "Delivered" | "Cancelled";
   note?: string;
 };
 

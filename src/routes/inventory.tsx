@@ -20,12 +20,14 @@ import {
 } from "@/components/ui/select";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { Textarea } from "@/components/ui/textarea";
-import { Plus, Trash2, Pencil, Search } from "lucide-react";
+import { Plus, Trash2, Pencil, Search, Image as ImageIcon, Upload } from "lucide-react";
 import { useLocalState, uid, inr, type Product } from "@/lib/storage";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { inventoryAPI } from "@/lib/api";
+import * as XLSX from 'xlsx';
+import { toast } from "sonner";
 
 const empty: Product = {
   id: "",
@@ -38,18 +40,24 @@ const empty: Product = {
   grossWeight: 0,
   netWeight: 0,
   stoneWeight: 0,
-  wastagePct: 8,
   makingCharge: 500,
+  makingChargePct: 0,
   gstPct: 3,
   ratePerGram: 7200,
   stock: 1,
   barcode: "",
-};
+  imageUrl: "",
+} as any;
 
 export default function InventoryPage() {
   const { data: products = [], isLoading } = useApi<Product[]>(["inventory"], () => inventoryAPI.getAll());
   const createMutation = useApiMutation((data: Product) => inventoryAPI.create(data), ["inventory"]);
   const updateMutation = useApiMutation((data: { id: string; body: Product }) => inventoryAPI.update(data.id, data.body), ["inventory"]);
+  const bulkCreateMutation = useApiMutation(async (data: Product[]) => {
+    for (const p of data) {
+      await inventoryAPI.create(p);
+    }
+  }, ["inventory"]);
   const deleteMutation = useApiMutation((id: string) => inventoryAPI.delete(id), ["inventory"]);
 
   const [categories, setCategories] = useLocalState<string[]>("ajms.categories", ["Gold", "Silver", "Diamond", "Platinum", "Coin"]);
@@ -62,6 +70,10 @@ export default function InventoryPage() {
   const [newCat, setNewCat] = useState("");
   const [newSub, setNewSub] = useState("");
   const [q, setQ] = useState("");
+  const [imagePreview, setImagePreview] = useState("");
+  const [importOpen, setImportOpen] = useState(false);
+  const [parsedProducts, setParsedProducts] = useState<Product[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const filtered = products.filter(
     (p) =>
@@ -73,11 +85,13 @@ export default function InventoryPage() {
   const startNew = () => {
     setEditingId(null);
     setDraft({ ...empty, id: uid(), barcode: "AJ-" + uid().toUpperCase() });
+    setImagePreview("");
     setOpen(true);
   };
   const startEdit = (p: Product) => {
     setEditingId((p as any)._id || p.id);
     setDraft(p);
+    setImagePreview((p as any).imageUrl || "");
     setOpen(true);
   };
   const save = async () => {
@@ -99,6 +113,84 @@ export default function InventoryPage() {
 
   const set = <K extends keyof Product>(k: K, v: Product[K]) =>
     setDraft((d) => ({ ...d, [k]: v }));
+
+  const handleImageChange = (file?: File) => {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      setDraft((prev) => ({ ...prev, imageUrl: result } as any));
+      setImagePreview(result);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleFileImport = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const data = new Uint8Array(e.target?.result as ArrayBuffer);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const sheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[sheetName];
+        const json: any[] = XLSX.utils.sheet_to_json(worksheet);
+
+        if (!json || json.length === 0) {
+          toast.error("Excel file is empty or formatted incorrectly.");
+          return;
+        }
+
+        // Flexible getter for various column name formats (case-insensitive)
+        const getVal = (row: any, ...keys: string[]) => {
+          const rowKeys = Object.keys(row);
+          for (const k of keys) {
+            const match = rowKeys.find(rk => rk.toLowerCase().trim() === k.toLowerCase().trim());
+            if (match && row[match] !== undefined && row[match] !== null) return row[match];
+          }
+          return undefined;
+        };
+
+        const newProducts = json.map((row): Product | null => {
+          const name = String(getVal(row, 'name', 'product name', 'item', 'product') || '').trim();
+          if (!name || name === 'undefined') return null;
+
+          return {
+            id: uid(),
+            barcode: "AJ-" + uid().toUpperCase(),
+            name: name,
+            category: String(getVal(row, 'category', 'type', 'group') || 'Gold'),
+            subcategory: String(getVal(row, 'subcategory', 'subcat') || ''),
+            purity: String(getVal(row, 'purity', 'karat', 'quality') || '22K'),
+            netWeight: parseFloat(getVal(row, 'net weight', 'net wt', 'weight')) || 0,
+            makingCharge: parseFloat(getVal(row, 'making charge', 'making', 'making (₹)')) || 0,
+            makingChargePct: parseFloat(getVal(row, 'making charge %', 'making %', 'making (%)')) || 0,
+            gstPct: parseFloat(getVal(row, 'gst %', 'gst', 'tax')) || 3,
+            ratePerGram: parseFloat(getVal(row, 'rate/gram', 'rate', 'price', 'rate per gram')) || 0,
+            stock: parseInt(String(getVal(row, 'stock', 'qty', 'quantity', 'count'))) || 1,
+            huid: String(getVal(row, 'huid', 'hallmark', 'serial') || ''),
+            grossWeight: parseFloat(getVal(row, 'gross weight', 'gross wt')) || 0,
+            stoneWeight: parseFloat(getVal(row, 'stone weight', 'stone wt')) || 0,
+            note: String(getVal(row, 'note', 'remarks', 'description') || ''),
+            imageUrl: "",
+          } as Product;
+        }).filter(Boolean) as Product[];
+
+        setParsedProducts(newProducts);
+        if (newProducts.length === 0) {
+          toast.warning("Could not find any products. Ensure your Excel file has a 'Name' column.");
+        } else {
+          setImportOpen(true);
+        }
+      } catch (error) {
+        console.error("Error parsing Excel file:", error);
+        toast.error("Failed to parse Excel file. Make sure it's a valid .xlsx or .xls file.");
+      }
+    };
+    reader.onerror = () => {
+      toast.error("Failed to read the file.");
+    };
+    reader.readAsArrayBuffer(file);
+  };
 
   const addCategory = () => {
     const c = newCat.trim();
@@ -122,6 +214,22 @@ export default function InventoryPage() {
     setAddSubOpen(false);
   };
 
+  const saveImport = async () => {
+    if (parsedProducts.length === 0) {
+      toast.warning("No products to import.");
+      return;
+    }
+    try {
+      await bulkCreateMutation.mutateAsync(parsedProducts);
+      toast.success(`${parsedProducts.length} products imported successfully.`);
+      setImportOpen(false);
+      setParsedProducts([]);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    } catch (error) {
+      toast.error("Failed to import products.");
+    }
+  };
+
   return (
     <Layout>
       <header className="flex items-end justify-between mb-6">
@@ -131,12 +239,71 @@ export default function InventoryPage() {
             {products.length} item{products.length === 1 ? "" : "s"} in stock.
           </p>
         </div>
-        <Dialog open={open} onOpenChange={setOpen}>
-          <DialogTrigger asChild>
+        <div className="flex gap-2">
+          <input 
+            ref={fileInputRef}
+            type="file" 
+            accept=".xlsx, .xls" 
+            style={{ display: 'none' }}
+            onChange={(e) => {
+              if (e.target.files?.[0]) {
+                handleFileImport(e.target.files[0]);
+              }
+              e.target.value = ''; // Allow selecting the same file again
+            }} 
+          />
+          <Button variant="outline" onClick={() => fileInputRef.current?.click()}>
+            <Upload className="w-4 h-4 mr-2" /> Import Excel
+          </Button>
+          <Dialog open={importOpen} onOpenChange={(val) => { setImportOpen(val); if (!val) setParsedProducts([]); }}>
+            <DialogContent className="max-w-4xl max-h-[80vh] flex flex-col">
+              <DialogHeader>
+                <DialogTitle>Confirm Import</DialogTitle>
+                <DialogDescription>
+                  Review the {parsedProducts.length} products found in the file.
+                  <a href="/product-template.xlsx" download className="text-primary underline ml-2 font-medium">Download Template</a>
+                </DialogDescription>
+              </DialogHeader>
+              {parsedProducts.length > 0 && (
+                <div className="flex-1 overflow-y-auto border rounded-md">
+                  <table className="w-full text-xs">
+                    <thead className="sticky top-0 bg-muted">
+                      <tr>
+                        <th className="p-2 text-left">Name</th>
+                        <th className="p-2 text-left">Category</th>
+                        <th className="p-2 text-right">Net Wt.</th>
+                        <th className="p-2 text-right">Rate/g</th>
+                        <th className="p-2 text-right">Stock</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {parsedProducts.map((p, i) => (
+                        <tr key={i} className="border-b last:border-0">
+                          <td className="p-2 font-medium">{p.name}</td>
+                          <td className="p-2">{p.category}</td>
+                          <td className="p-2 text-right">{p.netWeight}g</td>
+                          <td className="p-2 text-right">{inr(p.ratePerGram)}</td>
+                          <td className="p-2 text-right">{p.stock}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setImportOpen(false)}>Cancel</Button>
+                <Button onClick={saveImport} disabled={parsedProducts.length === 0 || bulkCreateMutation.isPending}>
+                  {bulkCreateMutation.isPending ? "Importing..." : `Import ${parsedProducts.length} Products`}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+          <Dialog open={open} onOpenChange={setOpen}>
+            <DialogTrigger asChild>
             <Button size="lg" onClick={startNew}>
               <Plus className="w-4 h-4 mr-2" /> Add Product
             </Button>
-          </DialogTrigger>
+            </DialogTrigger>
           <DialogContent className="max-w-2xl max-h-[75vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="font-display text-2xl">
@@ -146,10 +313,12 @@ export default function InventoryPage() {
                 Fill in product details, category, pricing and stock information.
               </DialogDescription>
             </DialogHeader>
-            <div className="grid grid-cols-2 gap-4">
-              <Field label="Product Name">
-                <Input value={draft.name} onChange={(e) => set("name", e.target.value)} />
-              </Field>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="md:col-span-2">
+                <Field label="Product Name">
+                  <Input value={draft.name} onChange={(e) => set("name", e.target.value)} />
+                </Field>
+              </div>
               <Field label="Category">
                 <div className="flex gap-2 items-center">
                   <Select value={draft.category} onValueChange={(v) => set("category", v as Product["category"]) }>
@@ -216,19 +385,79 @@ export default function InventoryPage() {
                   </Dialog>
                 </div>
               </Field>
-              <Field label="Note">
-                <Textarea value={draft.note || ""} onChange={(e) => set("note", e.target.value)} />
-              </Field>
               <Field label="HUID"><Input value={draft.huid} onChange={(e) => set("huid", e.target.value)} /></Field>
               <Field label="Purity"><Input value={draft.purity} onChange={(e) => set("purity", e.target.value)} /></Field>
-              <Field label="Gross Weight (g)"><NumIn v={draft.grossWeight} on={(v) => set("grossWeight", v)} /></Field>
-              <Field label="Net Weight (g)"><NumIn v={draft.netWeight} on={(v) => set("netWeight", v)} /></Field>
-              <Field label="Stone Weight (g)"><NumIn v={draft.stoneWeight} on={(v) => set("stoneWeight", v)} /></Field>
-              <Field label="Wastage %"><NumIn v={draft.wastagePct} on={(v) => set("wastagePct", v)} /></Field>
-              <Field label="Making Charge (₹)"><NumIn v={draft.makingCharge} on={(v) => set("makingCharge", v)} /></Field>
+              
+              <div className="md:col-span-2 grid grid-cols-3 gap-3 bg-muted/30 p-3 rounded-lg border border-border">
+                <Field label="Gross Wt (g)"><NumIn v={draft.grossWeight} on={(v) => set("grossWeight", v)} /></Field>
+                <Field label="Net Wt (g)">
+                  <NumIn v={draft.netWeight} on={(v) => setDraft(d => {
+                    const patch: any = { netWeight: v };
+                    if (d.makingChargePct) patch.makingCharge = (v * d.ratePerGram * d.makingChargePct) / 100;
+                    return { ...d, ...patch };
+                  })} />
+                </Field>
+                <Field label="Stone Wt (g)"><NumIn v={draft.stoneWeight} on={(v) => set("stoneWeight", v)} /></Field>
+              </div>
+
+              <div className="md:col-span-2 grid grid-cols-3 gap-3 bg-muted/30 p-3 rounded-lg border border-border">
+                <Field label="Rate / g (₹)">
+                  <NumIn v={draft.ratePerGram} on={(v) => setDraft(d => {
+                    const patch: any = { ratePerGram: v };
+                    if (d.makingChargePct) patch.makingCharge = (d.netWeight * v * d.makingChargePct) / 100;
+                    return { ...d, ...patch };
+                  })} />
+                </Field>
+                <Field label="Making (%)">
+                  <NumIn v={draft.makingChargePct || 0} on={(v) => {
+                    const amt = draft.netWeight * draft.ratePerGram;
+                    setDraft(d => ({ ...d, makingChargePct: v, makingCharge: (amt * v) / 100 }));
+                  }} />
+                </Field>
+                <Field label="Making (₹)">
+                  <NumIn v={draft.makingCharge} on={(v) => setDraft(d => ({ ...d, makingCharge: v, makingChargePct: 0 }))} />
+                </Field>
+              </div>
+
               <Field label="GST %"><NumIn v={draft.gstPct} on={(v) => set("gstPct", v)} /></Field>
-              <Field label="Rate / gram (₹)"><NumIn v={draft.ratePerGram} on={(v) => set("ratePerGram", v)} /></Field>
               <Field label="Stock Qty"><NumIn v={draft.stock} on={(v) => set("stock", v)} /></Field>
+              
+              <div className="md:col-span-2">
+                <Field label="Note">
+                  <Textarea value={draft.note || ""} onChange={(e) => set("note", e.target.value)} />
+                </Field>
+              </div>
+
+              <div className="md:col-span-2 mt-2">
+                <Label className="text-xs mb-1.5 block">Product Image</Label>
+                <div className="flex items-center gap-4">
+                  <div className="flex-1">
+                    <div className="relative border-2 border-dashed border-border rounded-lg p-4 hover:bg-muted/50 transition-colors text-center cursor-pointer">
+                      <Input 
+                        type="file" 
+                        accept="image/*" 
+                        onChange={(e) => handleImageChange(e.target.files?.[0])} 
+                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                      />
+                      <ImageIcon className="w-6 h-6 mx-auto text-muted-foreground mb-2" />
+                      <p className="text-sm font-medium text-muted-foreground">Click to pick from Gallery</p>
+                    </div>
+                  </div>
+                  {imagePreview && (
+                    <div className="w-24 h-24 shrink-0 rounded-lg border border-border overflow-hidden relative group">
+                      <img src={imagePreview} alt="Preview" className="w-full h-full object-cover" />
+                      <button 
+                        type="button" 
+                        onClick={() => { setImagePreview(""); setDraft((prev: any) => ({...prev, imageUrl: ""})); }}
+                        className="absolute inset-0 bg-black/50 text-white opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity"
+                        title="Remove Image"
+                      >
+                        <Trash2 className="w-5 h-5" />
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
@@ -236,6 +465,7 @@ export default function InventoryPage() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+        </div>
       </header>
 
       <div className="relative mb-4 max-w-md">
@@ -270,8 +500,17 @@ export default function InventoryPage() {
                 {filtered.map((p) => (
                   <tr key={(p as any)._id || p.id} className="border-b last:border-0 hover:bg-muted/40">
                     <td className="p-3">
-                      <div className="font-medium">{p.name}</div>
-                      <div className="text-xs text-muted-foreground">{p.barcode}</div>
+                      <div className="flex items-center gap-3">
+                        {(p as any).imageUrl ? (
+                          <img src={(p as any).imageUrl} alt={p.name} className="w-10 h-10 rounded object-cover border border-border shrink-0" />
+                        ) : (
+                          <div className="w-10 h-10 rounded bg-muted flex items-center justify-center border border-border shrink-0 text-[10px] text-muted-foreground">No img</div>
+                        )}
+                        <div>
+                          <div className="font-medium">{p.name}</div>
+                          <div className="text-xs text-muted-foreground">{p.barcode}</div>
+                        </div>
+                      </div>
                     </td>
                     <td><Badge variant="secondary">{p.category}</Badge></td>
                     <td>{p.subcategory || "—"}</td>
