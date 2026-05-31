@@ -10,10 +10,11 @@ import { inr, type Repair, type Karigar } from "@/lib/storage";
 import { formatDate } from "@/lib/utils";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { repairsAPI, karigarsAPI, customerAPI } from "@/lib/api";
-import { Plus, Trash2, Wrench } from "lucide-react";
+import { Plus, Trash2, Wrench, Pencil } from "lucide-react";
 
 export default function RepairsPage() {
   const [open, setOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [searchCust, setSearchCust] = useState("");
   const [searchKar, setSearchKar] = useState("");
   const empty: Repair = { ticketNo: "", date: new Date().toISOString().slice(0,10), customerName: "", customerMobile: "", itemDescription: "", itemWeight: 0, problem: "", estimate: 0, advance: 0, deliveryDate: "", karigarId: "", status: "Received", note: "" };
@@ -39,13 +40,31 @@ export default function RepairsPage() {
   const save = async () => {
     if (!form.customerName) return;
     const ticketNo = form.ticketNo || `REP-${(list.length + 1).toString().padStart(4, "0")}`;
-    const payload = { ...form, ticketNo, status: form.status || "Received" };
+    const finalKarigarId = form.karigarId === "unassigned" ? "" : form.karigarId;
+
+    // Fallback: Safely tag the assignment in the note just in case the backend silently drops the karigarId column.
+    let safeNote = form.note || "";
+    if (finalKarigarId) {
+      const kName = karigars.find((k) => (k._id || k.id) === finalKarigarId)?.name;
+      if (kName && !safeNote.includes(`[Assigned: ${kName}]`)) {
+        safeNote = safeNote.replace(/\[Assigned:.*?\]/g, "").trim() + ` [Assigned: ${kName}]`;
+      }
+    } else {
+      safeNote = safeNote.replace(/\[Assigned:.*?\]/g, "").trim();
+    }
+
+    const payload = { ...form, ticketNo, status: form.status || "Received", karigarId: finalKarigarId, note: safeNote.trim() };
 
     console.log("[Repairs] Attempting to save to DB:", payload);
     try {
-      await createMutation.mutateAsync(payload);
+      if (editingId) {
+        await updateMutation.mutateAsync({ id: editingId, body: payload });
+      } else {
+        await createMutation.mutateAsync(payload);
+      }
       console.log("[Repairs] Successfully saved to DB!");
       setForm(empty);
+      setEditingId(null);
       setOpen(false);
     } catch (error: any) {
       console.error("[Repairs] Error saving to DB:", error);
@@ -76,7 +95,7 @@ export default function RepairsPage() {
         </div>
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
-            <Button size="lg">
+            <Button size="lg" onClick={() => { setForm(empty); setEditingId(null); }}>
               <Plus className="w-4 h-4 mr-2" />New Repair
             </Button>
           </DialogTrigger>
@@ -136,6 +155,7 @@ export default function RepairsPage() {
                   <Select value={form.karigarId || ""} onValueChange={val => setForm({...form, karigarId: val})}>
                     <SelectTrigger><SelectValue placeholder="Unassigned" /></SelectTrigger>
                     <SelectContent>
+                      <SelectItem value="unassigned">Unassigned</SelectItem>
                       {karigars.filter(k => k.name.toLowerCase().includes(searchKar.toLowerCase()) || (k.mobile||"").includes(searchKar)).map(k => (
                         <SelectItem key={k._id || k.id} value={k._id || k.id}>{k.name}</SelectItem>
                       ))}
@@ -148,7 +168,7 @@ export default function RepairsPage() {
               </div>
             </div>
             <Button onClick={save} className="mt-2">
-              Create Ticket
+              {editingId ? "Save Changes" : "Create Ticket"}
             </Button>
           </DialogContent>
         </Dialog>
@@ -181,6 +201,7 @@ export default function RepairsPage() {
                   <th>Date</th>
                   <th>Customer</th>
                   <th>Item</th>
+                  <th>Karigar</th>
                   <th>Estimate</th>
                   <th>Status</th>
                   <th></th>
@@ -193,6 +214,7 @@ export default function RepairsPage() {
                     <td>{formatDate(r.date)}</td>
                     <td>{r.customerName}</td>
                     <td>{r.itemDescription}</td>
+                    <td>{karigars.find((k) => k._id === r.karigarId || k.id === r.karigarId)?.name || r.note?.match(/\[Assigned:\s*(.*?)\]/)?.[1] || "—"}</td>
                     <td>{inr(r.estimate)}</td>
                     <td>
                       <select
@@ -208,6 +230,9 @@ export default function RepairsPage() {
                       </select>
                     </td>
                     <td className="text-right">
+                      <Button size="sm" variant="ghost" onClick={() => { setForm(r); setEditingId(r.id || r._id || null); setOpen(true); }}>
+                        <Pencil className="w-4 h-4" />
+                      </Button>
                       <Button size="sm" variant="ghost" onClick={() => remove(r.id || r._id || '')}>
                         <Trash2 className="w-4 h-4" />
                       </Button>

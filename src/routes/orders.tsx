@@ -10,7 +10,7 @@ import { inr, type Order, type Karigar } from "@/lib/storage";
 import { formatDate } from "@/lib/utils";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { ordersAPI, customerAPI, karigarsAPI } from "@/lib/api";
-import { Plus, Trash2, ShoppingBag } from "lucide-react";
+import { Plus, Trash2, ShoppingBag, Pencil } from "lucide-react";
 import { toast } from "sonner";
 
 export default function OrdersPage() {
@@ -23,6 +23,7 @@ export default function OrdersPage() {
   const deleteMutation = useApiMutation((id: string) => ordersAPI.delete(id), ["orders"]);
 
   const [open, setOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [searchCust, setSearchCust] = useState("");
   const [searchKar, setSearchKar] = useState("");
   const empty: Order = {
@@ -47,11 +48,30 @@ export default function OrdersPage() {
   const save = async () => {
     if (!form.customerName || !form.itemDescription) return;
     const orderNo = form.orderNo || `ORD-${(list.length + 1).toString().padStart(4, "0")}`;
+    const finalKarigarId = form.karigarId === "unassigned" ? "" : form.karigarId;
+    
+    // Fallback: Safely tag the assignment in the note just in case the backend silently drops the karigarId column.
+    let safeNote = form.note || "";
+    if (finalKarigarId) {
+      const kName = karigars.find((k) => (k._id || k.id) === finalKarigarId)?.name;
+      if (kName && !safeNote.includes(`[Assigned: ${kName}]`)) {
+        safeNote = safeNote.replace(/\[Assigned:.*?\]/g, "").trim() + ` [Assigned: ${kName}]`;
+      }
+    } else {
+      safeNote = safeNote.replace(/\[Assigned:.*?\]/g, "").trim();
+    }
+
     try {
-      await createMutation.mutateAsync({ ...form, orderNo });
+      if (editingId) {
+        await updateMutation.mutateAsync({ id: editingId, body: { ...form, orderNo, karigarId: finalKarigarId, note: safeNote.trim() } });
+        toast.success("Order updated successfully!");
+      } else {
+        await createMutation.mutateAsync({ ...form, orderNo, karigarId: finalKarigarId, note: safeNote.trim() });
+        toast.success("Order created successfully!");
+      }
       setForm(empty);
+      setEditingId(null);
       setOpen(false);
-      toast.success("Order created successfully!");
     } catch (error) {
       console.error("[Orders] Error saving to DB:", error);
       toast.error("Failed to connect to backend server. Is it running?");
@@ -80,7 +100,7 @@ export default function OrdersPage() {
           <p className="text-muted-foreground mt-1">Manage custom jewelry orders and advances.</p>
         </div>
         <Dialog open={open} onOpenChange={setOpen}>
-          <DialogTrigger asChild><Button size="lg"><Plus className="w-4 h-4 mr-2"/>New Order</Button></DialogTrigger>
+          <DialogTrigger asChild><Button size="lg" onClick={() => { setForm(empty); setEditingId(null); }}><Plus className="w-4 h-4 mr-2"/>New Order</Button></DialogTrigger>
           <DialogContent className="max-w-2xl max-h-[75vh] overflow-y-auto" aria-describedby={undefined}>
             <DialogHeader><DialogTitle>Create Custom Order</DialogTitle></DialogHeader>
             <div className="grid grid-cols-2 gap-3">
@@ -139,6 +159,7 @@ export default function OrdersPage() {
                   <Select value={form.karigarId || ""} onValueChange={val => setForm({...form, karigarId: val})}>
                     <SelectTrigger><SelectValue placeholder="Unassigned" /></SelectTrigger>
                     <SelectContent>
+                      <SelectItem value="unassigned">Unassigned</SelectItem>
                       {karigars.filter(k => k.name.toLowerCase().includes(searchKar.toLowerCase()) || (k.mobile||"").includes(searchKar)).map(k => (
                         <SelectItem key={k._id || k.id} value={k._id || k.id}>{k.name}</SelectItem>
                       ))}
@@ -148,7 +169,7 @@ export default function OrdersPage() {
               </div>
               <div className="col-span-2"><Field label="Note" v={form.note || ""} on={v => setForm({...form, note: v})} /></div>
             </div>
-            <Button onClick={save} className="mt-2">Save Order</Button>
+            <Button onClick={save} className="mt-2">{editingId ? "Save Changes" : "Save Order"}</Button>
           </DialogContent>
         </Dialog>
       </header>
@@ -163,7 +184,7 @@ export default function OrdersPage() {
         <CardHeader><CardTitle className="font-display flex items-center gap-2"><ShoppingBag className="w-5 h-5"/>All Orders</CardTitle></CardHeader>
         <CardContent>
           {isLoading ? <p className="text-center text-muted-foreground py-12">Loading orders...</p> : list.length === 0 ? <p className="text-center text-muted-foreground py-12">No orders recorded yet.</p> :
-          <table className="w-full text-sm"><thead className="text-left text-muted-foreground border-b"><tr><th className="py-2">Order No</th><th>Customer</th><th>Item</th><th>Est. Wt</th><th>Est. Total</th><th>Advance</th><th>Due</th><th>Status</th><th></th></tr></thead>
+          <table className="w-full text-sm"><thead className="text-left text-muted-foreground border-b"><tr><th className="py-2">Order No</th><th>Customer</th><th>Item</th><th>Karigar</th><th>Est. Wt</th><th>Est. Total</th><th>Advance</th><th>Due</th><th>Status</th><th></th></tr></thead>
             <tbody>{list.map(r => (<tr key={(r as any)._id || r.id} className="border-b last:border-0 hover:bg-muted/40">
               <td className="py-2">
                 <div className="font-medium">{r.orderNo}</div>
@@ -171,6 +192,7 @@ export default function OrdersPage() {
               </td>
               <td><div>{r.customerName}</div><div className="text-xs text-muted-foreground">{r.customerMobile}</div></td>
               <td><div>{r.itemDescription}</div><div className="text-xs text-muted-foreground">{r.metal} {r.purity}</div></td>
+              <td>{karigars.find(k => k._id === r.karigarId || k.id === r.karigarId)?.name || r.note?.match(/\[Assigned:\s*(.*?)\]/)?.[1] || "—"}</td>
               <td>{r.estimatedWeight}g</td>
               <td>{inr(r.estimatedPrice)}</td>
               <td className="text-green-600 font-medium">{inr(r.advancePaid)}</td>
@@ -178,7 +200,10 @@ export default function OrdersPage() {
               <td><select className="border rounded px-2 py-1 bg-background text-xs" value={r.status} onChange={e => setStatus((r as any)._id || r.id, e.target.value as Order["status"])}>
                 {["Pending","In Progress","Ready","Delivered","Cancelled"].map(s => <option key={s}>{s}</option>)}
               </select></td>
-              <td className="text-right"><Button size="sm" variant="ghost" onClick={() => remove((r as any)._id || r.id)}><Trash2 className="w-4 h-4 text-muted-foreground hover:text-red-500"/></Button></td>
+              <td className="text-right">
+                <Button size="sm" variant="ghost" onClick={() => { setForm(r); setEditingId((r as any)._id || r.id || null); setOpen(true); }}><Pencil className="w-4 h-4 text-muted-foreground hover:text-primary"/></Button>
+                <Button size="sm" variant="ghost" onClick={() => remove((r as any)._id || r.id)}><Trash2 className="w-4 h-4 text-muted-foreground hover:text-red-500"/></Button>
+              </td>
             </tr>))}</tbody></table>}
         </CardContent>
       </Card>

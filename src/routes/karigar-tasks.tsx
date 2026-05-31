@@ -3,38 +3,34 @@ import { Layout } from "@/components/Layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useApi, useApiMutation } from "@/hooks/useApi";
-import { karigarsAPI, repairsAPI, ordersAPI, jobworkAPI } from "@/lib/api";
-import { type Karigar, type Repair, type Order, type JobWork, useLocalState } from "@/lib/storage";
+import { karigarsAPI, repairsAPI, ordersAPI } from "@/lib/api";
+import { type Karigar, type Repair, type Order, useLocalState } from "@/lib/storage";
 import { formatDate } from "@/lib/utils";
-import { Hammer, Wrench, ShoppingBag, ClipboardList } from "lucide-react";
+import { Hammer, Wrench, ShoppingBag } from "lucide-react";
 import { toast } from "sonner";
 
 export default function KarigarTasksPage() {
   const { data: karigars = [], isLoading: isLoadingK } = useApi<Karigar[]>(["karigars"], () => karigarsAPI.getAll());
   const { data: repairs = [], isLoading: isLoadingR } = useApi<Repair[]>(["repairs"], () => repairsAPI.getAll());
   const { data: orders = [], isLoading: isLoadingO } = useApi<Order[]>(["orders"], () => ordersAPI.getAll());
-  const { data: jobwork = [], isLoading: isLoadingJ } = useApi<JobWork[]>(["jobwork"], () => jobworkAPI.getAll());
 
   const updateRepairMutation = useApiMutation((data: { id: string; body: Repair }) => repairsAPI.update(data.id, data.body), ["repairs"]);
   const updateOrderMutation = useApiMutation((data: { id: string; body: Order }) => ordersAPI.update(data.id, data.body), ["orders"]);
-  const updateJobworkMutation = useApiMutation((data: { id: string; body: JobWork }) => jobworkAPI.update(data.id, data.body), ["jobwork"]);
 
   const [authUser] = useLocalState<any>("ajms.auth", null);
   const isKarigar = authUser?.role === "karigar";
 
   const [selectedKarigarId, setSelectedKarigarId] = useState<string>(isKarigar ? authUser.id : "");
 
+  const activeKarigarName = useMemo(() => karigars.find(k => (k._id || k.id) === selectedKarigarId)?.name || "", [karigars, selectedKarigarId]);
+
   const assignedRepairs = useMemo(() => {
-    return repairs.filter((r) => r.karigarId === selectedKarigarId).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-  }, [repairs, selectedKarigarId]);
+    return repairs.filter((r) => r.karigarId === selectedKarigarId || (activeKarigarName && r.note?.includes(`[Assigned: ${activeKarigarName}]`))).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  }, [repairs, selectedKarigarId, activeKarigarName]);
 
   const assignedOrders = useMemo(() => {
-    return orders.filter((o) => o.karigarId === selectedKarigarId).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-  }, [orders, selectedKarigarId]);
-
-  const assignedJobWork = useMemo(() => {
-    return jobwork.filter((j) => (j.karigarId === selectedKarigarId) || (!j.karigarId && j.karigarName === karigars.find(k => k._id === selectedKarigarId || k.id === selectedKarigarId)?.name)).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-  }, [jobwork, selectedKarigarId, karigars]);
+    return orders.filter((o) => o.karigarId === selectedKarigarId || (activeKarigarName && o.note?.includes(`[Assigned: ${activeKarigarName}]`))).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  }, [orders, selectedKarigarId, activeKarigarName]);
 
   const updateRepairStatus = async (id: string, status: Repair["status"]) => {
     const repair = repairs.find(r => r._id === id || r.id === id);
@@ -52,22 +48,14 @@ export default function KarigarTasksPage() {
     }
   };
 
-  const updateJobWorkStatus = async (id: string, status: JobWork["status"]) => {
-    const job = jobwork.find(j => j._id === id || j.id === id);
-    if (job) {
-      await updateJobworkMutation.mutateAsync({ id, body: { ...job, status } });
-      toast.success(`Job Work status updated to ${status}`);
-    }
-  };
-
-  const isLoading = isLoadingK || isLoadingR || isLoadingO || isLoadingJ;
+  const isLoading = isLoadingK || isLoadingR || isLoadingO;
 
   return (
     <Layout>
       <header className="flex flex-col sm:flex-row items-start sm:items-end justify-between gap-4 mb-6">
         <div>
           <h1 className="text-4xl">Karigar Dashboard</h1>
-          <p className="text-muted-foreground mt-1">Track assigned repairs, custom orders, and job work.</p>
+          <p className="text-muted-foreground mt-1">Track assigned repairs and custom orders.</p>
         </div>
         {isKarigar ? (
           <div className="bg-primary/10 text-primary px-4 py-2 rounded-md border border-primary/20 font-medium">
@@ -100,7 +88,7 @@ export default function KarigarTasksPage() {
         </div>
       ) : (
         <div className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Card className="border-border">
               <CardContent className="pt-6">
                 <div className="text-sm text-muted-foreground flex items-center gap-1"><Wrench className="w-4 h-4"/> Repairs Assigned</div>
@@ -111,12 +99,6 @@ export default function KarigarTasksPage() {
               <CardContent className="pt-6">
                 <div className="text-sm text-muted-foreground flex items-center gap-1"><ShoppingBag className="w-4 h-4"/> Orders Assigned</div>
                 <div className="text-2xl font-display mt-1 text-primary">{assignedOrders.filter(o => o.status !== "Delivered" && o.status !== "Cancelled").length}</div>
-              </CardContent>
-            </Card>
-            <Card className="border-border">
-              <CardContent className="pt-6">
-                <div className="text-sm text-muted-foreground flex items-center gap-1"><ClipboardList className="w-4 h-4"/> Job Work Assigned</div>
-                <div className="text-2xl font-display mt-1 text-primary">{assignedJobWork.filter(j => j.status !== "Settled").length}</div>
               </CardContent>
             </Card>
           </div>
@@ -158,27 +140,6 @@ export default function KarigarTasksPage() {
                     </td>
                   </tr>))}
                   {assignedOrders.length === 0 && <tr><td colSpan={4} className="text-center py-6 text-muted-foreground">No custom orders assigned.</td></tr>}
-                  </tbody></table>
-              </CardContent>
-            </Card>
-
-            {/* JOB WORK */}
-            <Card className="xl:col-span-2">
-              <CardHeader><CardTitle className="font-display flex items-center gap-2"><ClipboardList className="w-5 h-5"/> Job Work ({assignedJobWork.length})</CardTitle></CardHeader>
-              <CardContent className="p-0">
-                <table className="w-full text-sm"><thead className="text-left text-muted-foreground border-b bg-muted/20"><tr><th className="py-2 px-4">Job No</th><th>Item</th><th>Metal Issued</th><th>Due</th><th className="px-4 text-right">Status</th></tr></thead>
-                  <tbody>{assignedJobWork.map(j => (<tr key={j._id || j.id} className="border-b last:border-0 hover:bg-muted/40">
-                    <td className="py-2 px-4"><div className="font-medium">{j.jobNo}</div><div className="text-xs text-muted-foreground">{formatDate(j.date)}</div></td>
-                    <td><div className="font-medium">{j.itemDescription}</div><div className="text-xs text-muted-foreground">{j.metal} {j.purity}</div></td>
-                    <td><div className="font-medium text-amber-600">{j.issuedWeight}g</div></td>
-                    <td>{j.dueDate ? formatDate(j.dueDate) : "—"}</td>
-                    <td className="px-4 py-2 text-right">
-                      <select className="border rounded px-2 py-1 bg-background text-xs cursor-pointer" value={j.status} onChange={e => updateJobWorkStatus(j._id || j.id || "", e.target.value as JobWork["status"])}>
-                        {["Issued","In Progress","Received","Settled"].map(s => <option key={s} value={s}>{s}</option>)}
-                      </select>
-                    </td>
-                  </tr>))}
-                  {assignedJobWork.length === 0 && <tr><td colSpan={5} className="text-center py-6 text-muted-foreground">No job works assigned.</td></tr>}
                   </tbody></table>
               </CardContent>
             </Card>

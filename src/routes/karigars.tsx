@@ -26,6 +26,7 @@ interface Karigar {
   pendingWeight?: number;
   username?: string;
   password?: string;
+  phone?: string;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -47,10 +48,11 @@ export default function KarigarsPage() {
   const [newCat, setNewCat] = useState("");
 
   const save = async () => {
-    if (!form.name || !form.mobile || !form.companyName || !form.category || !form.address || !form.note || !form.username || !form.password) {
-      toast.error("Name, mobile, company name, category, address, note, username, and password are required");
+    if (!form.name || !form.mobile || !form.username || !form.password) {
+      toast.error("Name, mobile, username, and password are required");
       return;
     }
+
     try {
       if (editingId) {
         await updateMutation.mutateAsync({ id: editingId, body: form });
@@ -113,7 +115,7 @@ export default function KarigarsPage() {
             </DialogHeader>
             <div className="grid grid-cols-2 gap-4">
               <Field label="Karigar Name *" v={form.name} on={v => setForm({...form, name: v})} />
-              <Field label="Company Name *" v={form.companyName} on={v => setForm({...form, companyName: v})} />
+              <Field label="Company Name" v={form.companyName} on={v => setForm({...form, companyName: v})} />
               <Field label="Mobile No *" v={form.mobile} on={v => setForm({...form, mobile: v})} />
               <Field label="Mobile No 2 (optional)" v={form.mobile2 || ""} on={v => setForm({...form, mobile2: v})} />
               <Field label="Email (optional)" v={form.email || ""} on={v => setForm({...form, email: v})} />
@@ -124,7 +126,7 @@ export default function KarigarsPage() {
               </div>
 
               <div className="space-y-1.5">
-                <Label className="text-xs font-medium text-muted-foreground">Category *</Label>
+                <Label className="text-xs font-medium text-muted-foreground">Category</Label>
                 <div className="flex gap-2 items-center">
                   <Select value={form.category} onValueChange={(v) => setForm({...form, category: v})}>
                     <SelectTrigger className="flex-1"><SelectValue placeholder="Select category" /></SelectTrigger>
@@ -161,13 +163,13 @@ export default function KarigarsPage() {
               <Field label="Pending Weight (g)" type="number" v={String(form.pendingWeight)} on={v => setForm({...form, pendingWeight: +v})} />
               
               <div className="col-span-2 space-y-3 mt-1">
-                <Field label="Address *" v={form.address} on={v => setForm({...form, address: v})} />
-                <Field label="Note *" v={form.note} on={v => setForm({...form, note: v})} />
+                <Field label="Address" v={form.address} on={v => setForm({...form, address: v})} />
+                <Field label="Note" v={form.note} on={v => setForm({...form, note: v})} />
               </div>
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setOpen(false)} disabled={isLoading_UI}>Cancel</Button>
-              <Button onClick={save} disabled={isLoading_UI || !form.name || !form.mobile || !form.companyName || !form.category || !form.address || !form.note || !form.username || !form.password}>
+              <Button onClick={save} disabled={isLoading_UI || !form.name || !form.mobile || !form.username || !form.password}>
                 {isLoading_UI ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Saving...</> : "Save"}
               </Button>
             </DialogFooter>
@@ -185,7 +187,7 @@ export default function KarigarsPage() {
           {isLoading ? <p className="text-center text-muted-foreground py-12">Loading karigars...</p> : error ? <p className="text-center text-red-500 py-12">Failed to load karigars</p> : filtered.length === 0 ? <p className="text-center text-muted-foreground py-12">No karigars yet.</p> :
           <table className="w-full text-sm">
             <thead className="text-left text-muted-foreground border-b">
-              <tr><th className="p-3">Name</th><th>Mobile</th><th>Company</th><th>Category</th><th>Address</th><th className="text-right">Pending Wt</th><th></th></tr>
+              <tr><th className="p-3">Name</th><th>Mobile</th><th>Company / Login</th><th>Category</th><th>Address</th><th className="text-right">Pending Wt</th><th></th></tr>
             </thead>
             <tbody>{filtered.map(s => (
               <tr key={s._id} className="border-b last:border-0 hover:bg-muted/40">
@@ -194,7 +196,10 @@ export default function KarigarsPage() {
                   <div>{s.mobile}</div>
                   {s.mobile2 && <div className="text-xs text-muted-foreground">{s.mobile2}</div>}
                 </td>
-                <td>{s.companyName}</td>
+                <td>
+                  <div>{s.companyName || "—"}</div>
+                  {s.username && <div className="text-xs font-medium text-primary mt-0.5">User: {s.username}</div>}
+                </td>
                 <td><span className="inline-flex items-center rounded-full border border-sidebar-border bg-sidebar px-2.5 py-0.5 text-xs font-semibold">{s.category}</span></td>
                 <td className="text-muted-foreground max-w-50 truncate" title={s.address}>{s.address || "—"}</td>
                 <td className="text-right font-medium">{(s.pendingWeight || 0).toFixed(2)} g</td>
