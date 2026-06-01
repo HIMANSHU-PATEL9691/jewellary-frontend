@@ -6,8 +6,10 @@ import { useApi, useApiMutation } from "@/hooks/useApi";
 import { karigarsAPI, repairsAPI, ordersAPI } from "@/lib/api";
 import { type Karigar, type Repair, type Order, useLocalState } from "@/lib/storage";
 import { formatDate } from "@/lib/utils";
-import { Hammer, Wrench, ShoppingBag } from "lucide-react";
+import { Hammer, Wrench, ShoppingBag, Eye } from "lucide-react";
 import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 export default function KarigarTasksPage() {
   const { data: karigars = [], isLoading: isLoadingK } = useApi<Karigar[]>(["karigars"], () => karigarsAPI.getAll());
@@ -21,6 +23,8 @@ export default function KarigarTasksPage() {
   const isKarigar = authUser?.role === "karigar";
 
   const [selectedKarigarId, setSelectedKarigarId] = useState<string>(isKarigar ? authUser.id : "");
+  const [viewingRepair, setViewingRepair] = useState<Repair | null>(null);
+  const [viewingOrder, setViewingOrder] = useState<Order | null>(null);
 
   const activeKarigarName = useMemo(() => karigars.find(k => (k._id || k.id) === selectedKarigarId)?.name || "", [karigars, selectedKarigarId]);
 
@@ -31,6 +35,11 @@ export default function KarigarTasksPage() {
   const assignedOrders = useMemo(() => {
     return orders.filter((o) => o.karigarId === selectedKarigarId || (activeKarigarName && o.note?.includes(`[Assigned: ${activeKarigarName}]`))).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
   }, [orders, selectedKarigarId, activeKarigarName]);
+
+  const activeRepairs = useMemo(() => assignedRepairs.filter(r => r.status !== "Delivered"), [assignedRepairs]);
+  const activeOrders = useMemo(() => assignedOrders.filter(o => o.status !== "Delivered" && o.status !== "Cancelled"), [assignedOrders]);
+  const repairsWeight = activeRepairs.reduce((sum, r) => sum + (Number(r.itemWeight) || 0), 0);
+  const ordersWeight = activeOrders.reduce((sum, o) => sum + (Number(o.estimatedWeight) || 0), 0);
 
   const updateRepairStatus = async (id: string, status: Repair["status"]) => {
     const repair = repairs.find(r => r._id === id || r.id === id);
@@ -50,8 +59,8 @@ export default function KarigarTasksPage() {
 
   const isLoading = isLoadingK || isLoadingR || isLoadingO;
 
-  return (
-    <Layout>
+  const pageContent = (
+    <>
       <header className="flex flex-col sm:flex-row items-start sm:items-end justify-between gap-4 mb-6">
         <div>
           <h1 className="text-4xl">Karigar Dashboard</h1>
@@ -91,14 +100,20 @@ export default function KarigarTasksPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Card className="border-border">
               <CardContent className="pt-6">
-                <div className="text-sm text-muted-foreground flex items-center gap-1"><Wrench className="w-4 h-4"/> Repairs Assigned</div>
-                <div className="text-2xl font-display mt-1 text-primary">{assignedRepairs.filter(r => r.status !== "Delivered").length}</div>
+                <div className="text-sm text-muted-foreground flex items-center gap-1"><Wrench className="w-4 h-4"/> Active Repairs</div>
+                <div className="text-2xl font-display mt-1 text-primary">{activeRepairs.length} <span className="text-sm text-muted-foreground font-normal">assigned</span></div>
+                <div className="text-xs font-medium text-muted-foreground mt-2 bg-muted/40 inline-block px-2 py-1 rounded">
+                  Total Quantity / Weight: {repairsWeight.toFixed(2)} g
+                </div>
               </CardContent>
             </Card>
             <Card className="border-border">
               <CardContent className="pt-6">
-                <div className="text-sm text-muted-foreground flex items-center gap-1"><ShoppingBag className="w-4 h-4"/> Orders Assigned</div>
-                <div className="text-2xl font-display mt-1 text-primary">{assignedOrders.filter(o => o.status !== "Delivered" && o.status !== "Cancelled").length}</div>
+                <div className="text-sm text-muted-foreground flex items-center gap-1"><ShoppingBag className="w-4 h-4"/> Active Orders</div>
+                <div className="text-2xl font-display mt-1 text-primary">{activeOrders.length} <span className="text-sm text-muted-foreground font-normal">assigned</span></div>
+                <div className="text-xs font-medium text-muted-foreground mt-2 bg-muted/40 inline-block px-2 py-1 rounded">
+                  Total Est. Quantity: {ordersWeight.toFixed(2)} g
+                </div>
               </CardContent>
             </Card>
           </div>
@@ -108,18 +123,23 @@ export default function KarigarTasksPage() {
             <Card>
               <CardHeader><CardTitle className="font-display flex items-center gap-2"><Wrench className="w-5 h-5"/> Repairs ({assignedRepairs.length})</CardTitle></CardHeader>
               <CardContent className="p-0">
-                <table className="w-full text-sm"><thead className="text-left text-muted-foreground border-b bg-muted/20"><tr><th className="py-2 px-4">Ticket</th><th>Item</th><th>Due</th><th className="px-4 text-right">Status</th></tr></thead>
+                <table className="w-full text-sm"><thead className="text-left text-muted-foreground border-b bg-muted/20"><tr><th className="py-2 px-4">Ticket</th><th>Item</th><th>Due</th><th className="px-4 text-right">Status</th><th className="px-4"></th></tr></thead>
                   <tbody>{assignedRepairs.map(r => (<tr key={r._id || r.id} className="border-b last:border-0 hover:bg-muted/40">
                     <td className="py-2 px-4"><div className="font-medium">{r.ticketNo}</div><div className="text-xs text-muted-foreground">{formatDate(r.date)}</div></td>
                     <td><div className="font-medium">{r.itemDescription}</div><div className="text-xs text-rose-500">{r.problem}</div></td>
                     <td>{r.deliveryDate ? formatDate(r.deliveryDate) : "—"}</td>
                     <td className="px-4 py-2 text-right">
-                      <select className="border rounded px-2 py-1 bg-background text-xs cursor-pointer" value={r.status} onChange={e => updateRepairStatus(r._id || r.id || "", e.target.value as Repair["status"])}>
+                      <select className={`border rounded px-2 py-1 text-xs cursor-pointer ${r.status === 'Ready' ? 'bg-green-50 text-green-700 border-green-200 font-medium' : 'bg-background'}`} value={r.status} onChange={e => updateRepairStatus(r._id || r.id || "", e.target.value as Repair["status"])}>
                         {['Received', 'In Progress', 'Ready', 'Delivered'].map((s) => <option key={s} value={s}>{s}</option>)}
                       </select>
                     </td>
+                    <td className="px-4 text-right">
+                      <Button size="sm" variant="ghost" onClick={() => setViewingRepair(r)}>
+                        <Eye className="w-4 h-4" />
+                      </Button>
+                    </td>
                   </tr>))}
-                  {assignedRepairs.length === 0 && <tr><td colSpan={4} className="text-center py-6 text-muted-foreground">No repairs assigned.</td></tr>}
+                  {assignedRepairs.length === 0 && <tr><td colSpan={5} className="text-center py-6 text-muted-foreground">No repairs assigned.</td></tr>}
                   </tbody></table>
               </CardContent>
             </Card>
@@ -128,24 +148,124 @@ export default function KarigarTasksPage() {
             <Card>
               <CardHeader><CardTitle className="font-display flex items-center gap-2"><ShoppingBag className="w-5 h-5"/> Custom Orders ({assignedOrders.length})</CardTitle></CardHeader>
               <CardContent className="p-0">
-                <table className="w-full text-sm"><thead className="text-left text-muted-foreground border-b bg-muted/20"><tr><th className="py-2 px-4">Order</th><th>Item</th><th>Due</th><th className="px-4 text-right">Status</th></tr></thead>
+                <table className="w-full text-sm"><thead className="text-left text-muted-foreground border-b bg-muted/20"><tr><th className="py-2 px-4">Order</th><th>Item</th><th>Due</th><th className="px-4 text-right">Status</th><th className="px-4"></th></tr></thead>
                   <tbody>{assignedOrders.map(o => (<tr key={o._id || o.id} className="border-b last:border-0 hover:bg-muted/40">
                     <td className="py-2 px-4"><div className="font-medium">{o.orderNo}</div><div className="text-xs text-muted-foreground">{formatDate(o.date)}</div></td>
                     <td><div className="font-medium">{o.itemDescription}</div><div className="text-xs text-muted-foreground">{o.metal} {o.purity} • {o.estimatedWeight}g</div></td>
                     <td>{o.dueDate ? formatDate(o.dueDate) : "—"}</td>
                     <td className="px-4 py-2 text-right">
-                      <select className="border rounded px-2 py-1 bg-background text-xs cursor-pointer" value={o.status} onChange={e => updateOrderStatus(o._id || o.id || "", e.target.value as Order["status"])}>
+                      <select className={`border rounded px-2 py-1 text-xs cursor-pointer ${o.status === 'Ready' ? 'bg-green-50 text-green-700 border-green-200 font-medium' : 'bg-background'}`} value={o.status} onChange={e => updateOrderStatus(o._id || o.id || "", e.target.value as Order["status"])}>
                         {["Pending","In Progress","Ready","Delivered","Cancelled"].map(s => <option key={s} value={s}>{s}</option>)}
                       </select>
                     </td>
+                    <td className="px-4 text-right">
+                      <Button size="sm" variant="ghost" onClick={() => setViewingOrder(o)}>
+                        <Eye className="w-4 h-4" />
+                      </Button>
+                    </td>
                   </tr>))}
-                  {assignedOrders.length === 0 && <tr><td colSpan={4} className="text-center py-6 text-muted-foreground">No custom orders assigned.</td></tr>}
+                  {assignedOrders.length === 0 && <tr><td colSpan={5} className="text-center py-6 text-muted-foreground">No custom orders assigned.</td></tr>}
                   </tbody></table>
               </CardContent>
             </Card>
           </div>
         </div>
       )}
-    </Layout>
+
+      <Dialog open={!!viewingRepair} onOpenChange={(v) => !v && setViewingRepair(null)}>
+        <DialogContent className="max-w-md">
+          {viewingRepair && (
+            <>
+              <DialogHeader>
+                <DialogTitle>Repair Details - {viewingRepair.ticketNo}</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div>
+                  <div className="text-xs text-muted-foreground">Item Description</div>
+                  <div className="font-medium text-lg">{viewingRepair.itemDescription}</div>
+                </div>
+                <div>
+                  <div className="text-xs text-muted-foreground">Problem / Work to do</div>
+                  <div className="font-medium text-rose-500">{viewingRepair.problem}</div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <div className="text-xs text-muted-foreground">Item Weight</div>
+                    <div className="font-medium">{viewingRepair.itemWeight} g</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-muted-foreground">Delivery Date</div>
+                    <div className="font-medium">{viewingRepair.deliveryDate ? formatDate(viewingRepair.deliveryDate) : "—"}</div>
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs text-muted-foreground">Note</div>
+                  <div className="font-medium">{viewingRepair.note || "—"}</div>
+                </div>
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!viewingOrder} onOpenChange={(v) => !v && setViewingOrder(null)}>
+        <DialogContent className="max-w-md">
+          {viewingOrder && (
+            <>
+              <DialogHeader>
+                <DialogTitle>Order Details - {viewingOrder.orderNo}</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div>
+                  <div className="text-xs text-muted-foreground">Item Description</div>
+                  <div className="font-medium text-lg">{viewingOrder.itemDescription}</div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <div className="text-xs text-muted-foreground">Metal & Purity</div>
+                    <div className="font-medium">{viewingOrder.metal} - {viewingOrder.purity}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-muted-foreground">Estimated Weight</div>
+                    <div className="font-medium">{viewingOrder.estimatedWeight} g</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-muted-foreground">Due Date</div>
+                    <div className="font-medium">{viewingOrder.dueDate ? formatDate(viewingOrder.dueDate) : "—"}</div>
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs text-muted-foreground">Note</div>
+                  <div className="font-medium">{viewingOrder.note || "—"}</div>
+                </div>
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+    </>
   );
+
+  if (isKarigar) {
+    return (
+      <div className="min-h-screen bg-muted/10 flex flex-col">
+        <div className="bg-card border-b px-6 py-4 flex items-center justify-between shadow-sm mb-6">
+          <div className="font-display font-bold text-xl text-primary flex items-center gap-2">
+            <Hammer className="w-5 h-5" /> Cloudiefy Karigar
+          </div>
+          <Button variant="outline" size="sm" onClick={() => {
+            localStorage.removeItem("ajms.auth");
+            window.location.href = "/";
+          }}>
+            Logout
+          </Button>
+        </div>
+        <div className="px-4 sm:px-6 w-full max-w-7xl mx-auto pb-12 flex-1">
+          {pageContent}
+        </div>
+      </div>
+    );
+  }
+
+  return <Layout>{pageContent}</Layout>;
 }

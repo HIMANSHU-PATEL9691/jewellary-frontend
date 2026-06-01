@@ -13,11 +13,11 @@ import {
 } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useState } from "react";
-import { Plus, Trash2, Pencil, Search, Loader2, Eye, Receipt, Wallet, ShoppingBag, UserCheck } from "lucide-react";
+import { Plus, Trash2, Pencil, Search, Loader2, Eye, Receipt, Wallet, ShoppingBag, UserCheck, Wrench } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 import { useApi, useApiMutation } from "@/hooks/useApi";
-import { customerAPI, invoicesAPI, ordersAPI, girviAPI } from "@/lib/api";
-import { inr, type Invoice, type Order, type Girvi } from "@/lib/storage";
+import { customerAPI, invoicesAPI, ordersAPI, girviAPI, repairsAPI } from "@/lib/api";
+import { inr, type Invoice, type Order, type Girvi, type Repair } from "@/lib/storage";
 import { toast } from "sonner";
 
 interface Customer {
@@ -78,6 +78,7 @@ export default function CustomersPage() {
   const { data: invoices = [] } = useApi<Invoice[]>(["invoices"], () => invoicesAPI.getAll());
   const { data: orders = [] } = useApi<Order[]>(["orders"], () => ordersAPI.getAll());
   const { data: girvis = [] } = useApi<Girvi[]>(["girvis"], () => girviAPI.getAll());
+  const { data: repairs = [] } = useApi<Repair[]>(["repairs"], () => repairsAPI.getAll());
 
   const createInvoiceMutation = useApiMutation(
     (data: any) => invoicesAPI.create(data),
@@ -106,6 +107,17 @@ export default function CustomersPage() {
   const updateInvoiceMutation = useApiMutation(
     (data: { id: string; body: Partial<Invoice> }) => invoicesAPI.update(data.id, data.body),
     ["invoices"]
+  );
+
+  // Update Order mutation
+  const updateOrderMutation = useApiMutation(
+    (data: { id: string; body: Partial<Order> }) => ordersAPI.update(data.id, data.body),
+    ["orders"]
+  );
+  // Update Repair mutation
+  const updateRepairMutation = useApiMutation(
+    (data: { id: string; body: Partial<Repair> }) => repairsAPI.update(data.id, data.body),
+    ["repairs"]
   );
 
   const filtered = customers.filter(
@@ -172,13 +184,13 @@ export default function CustomersPage() {
   const custInvoices = invoices.filter(i => i.customerId === profileId || i.customerMobile === selectedCustomer?.phone);
   const custOrders = orders.filter(o => o.customerMobile === selectedCustomer?.phone);
   const custGirvis = girvis.filter(g => g.customerMobile === selectedCustomer?.phone || g.customerMobile2 === selectedCustomer?.phone);
+  const custRepairs = repairs.filter(r => r.customerMobile === selectedCustomer?.phone);
 
   const totalSales = custInvoices.filter(i => !i.number?.startsWith("MAN-")).reduce((s, i) => s + i.total, 0);
   const totalPaid = custInvoices.reduce((s, i) => s + (i.amountPaid !== undefined ? i.amountPaid : i.total), 0);
   const totalDue = custInvoices.reduce((s, i) => s + (i.balanceDue || 0), 0);
 
-  const [payModalOpen, setPayModalOpen] = useState(false);
-  const [payInvoice, setPayInvoice] = useState<Invoice | null>(null);
+  const [payModal, setPayModal] = useState<{ type: 'invoice'|'order'|'repair', item: any, due: number } | null>(null);
   const [payAmount, setPayAmount] = useState<number | "">("");
   const [payMode, setPayMode] = useState("Cash");
   const [payNote, setPayNote] = useState("");
@@ -249,34 +261,45 @@ export default function CustomersPage() {
     }
   };
 
-  const openPayModal = (inv: Invoice) => {
-    setPayInvoice(inv);
-    setPayAmount(inv.balanceDue || 0);
+  const openPayModal = (type: 'invoice'|'order'|'repair', item: any, due: number) => {
+    setPayModal({ type, item, due });
+    setPayAmount(due);
     setPayMode("Cash");
     setPayNote("");
-    setPayModalOpen(true);
   };
 
   const submitPayment = async () => {
-    if (!payInvoice || !payAmount || payAmount <= 0) return;
+    if (!payModal || !payAmount || payAmount <= 0) return;
     const amt = Number(payAmount);
-    const newPaid = (payInvoice.amountPaid || 0) + amt;
-    const newDue = Math.max(0, (payInvoice.balanceDue || 0) - amt);
-    const newPayment = {
-      date: new Date().toISOString(),
-      amount: amt,
-      mode: payMode,
-      note: payNote
-    };
-    const updatedPayments = [...(payInvoice.payments || []), newPayment];
 
     try {
-      await updateInvoiceMutation.mutateAsync({
-        id: payInvoice._id || payInvoice.id,
-        body: { ...payInvoice, amountPaid: newPaid, balanceDue: newDue, payments: updatedPayments } as Partial<Invoice>
-      });
+      if (payModal.type === 'invoice') {
+        const inv = payModal.item as Invoice;
+        const newPaid = (inv.amountPaid || 0) + amt;
+        const newDue = Math.max(0, (inv.balanceDue || 0) - amt);
+        const newPayment = { date: new Date().toISOString(), amount: amt, mode: payMode, note: payNote };
+        const updatedPayments = [...(inv.payments || []), newPayment];
+        await updateInvoiceMutation.mutateAsync({
+          id: inv._id || inv.id,
+          body: { ...inv, amountPaid: newPaid, balanceDue: newDue, payments: updatedPayments } as Partial<Invoice>
+        });
+      } else if (payModal.type === 'order') {
+        const ord = payModal.item as Order;
+        const newPaid = (ord.advancePaid || 0) + amt;
+        await updateOrderMutation.mutateAsync({
+          id: ord._id || ord.id,
+          body: { ...ord, advancePaid: newPaid } as Partial<Order>
+        });
+      } else if (payModal.type === 'repair') {
+        const rep = payModal.item as Repair;
+        const newPaid = (rep.advance || 0) + amt;
+        await updateRepairMutation.mutateAsync({
+          id: rep._id || rep.id || "",
+          body: { ...rep, advance: newPaid } as Partial<Repair>
+        });
+      }
       toast.success("Payment recorded successfully!");
-      setPayModalOpen(false);
+      setPayModal(null);
     } catch (e) {
       toast.error("Failed to record payment");
     }
@@ -611,7 +634,10 @@ export default function CustomersPage() {
                               <td className="text-right px-4 text-rose-600 font-medium">{inr(inv.balanceDue || 0)}</td>
                               <td className="text-right px-4">
                                 {(inv.balanceDue || 0) > 0 && (
-                                  <Button size="sm" variant="outline" onClick={() => openPayModal(inv)}>Pay Due</Button>
+                                  <Button size="sm" variant="outline" onClick={() => openPayModal('invoice', inv, inv.balanceDue || 0)}>Pay Due</Button>
+                                )}
+                                {(inv.balanceDue || 0) <= 0 && (
+                                  <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded text-[10px] font-semibold uppercase inline-block">Paid</span>
                                 )}
                               </td>
                             </tr>
@@ -622,7 +648,6 @@ export default function CustomersPage() {
                   </CardContent>
                 </Card>
               </div>
-
               {/* Payment History */}
               <div className="mt-4">
                 <h3 className="font-display text-lg mb-3 flex items-center gap-2"><Wallet className="w-5 h-5"/> Payment History</h3>
@@ -666,60 +691,141 @@ export default function CustomersPage() {
                 </Card>
               </div>
 
-              {/* Active Orders / Girvi */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-2">
-                <div>
-                  <h3 className="font-display text-lg mb-3 flex items-center gap-2"><ShoppingBag className="w-5 h-5"/> Orders</h3>
-                  <Card className="shadow-none border-border">
-                    <CardContent className="p-0">
-                      {custOrders.length === 0 ? (
-                        <p className="text-sm text-muted-foreground py-6 text-center">No orders.</p>
-                      ) : (
-                        <table className="w-full text-sm">
-                          <thead className="text-left text-muted-foreground border-b bg-muted/20">
-                            <tr>
-                              <th className="py-2 px-4">Order No</th>
-                              <th>Item</th>
-                              <th className="text-right px-4">Status</th>
+              {/* Active Orders */}
+              <div className="mt-4">
+                <h3 className="font-display text-lg mb-3 flex items-center gap-2"><ShoppingBag className="w-5 h-5"/> Custom Orders</h3>
+                <Card className="shadow-none border-border">
+                  <CardContent className="p-0">
+                    {custOrders.length === 0 ? (
+                      <p className="text-sm text-muted-foreground py-6 text-center">No orders.</p>
+                    ) : (
+                      <table className="w-full text-sm">
+                        <thead className="text-left text-muted-foreground border-b bg-muted/20">
+                          <tr>
+                            <th className="py-2 px-4">Order No</th>
+                            <th>Date</th>
+                            <th>Item Details</th>
+                            <th className="text-right">Est. Total</th>
+                            <th className="text-right">Paid</th>
+                            <th className="text-right">Due</th>
+                            <th className="text-center px-4">Status</th>
+                            <th className="text-right px-4">Action</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {custOrders.map((o) => {
+                            const due = (o.estimatedPrice || 0) - (o.advancePaid || 0);
+                            return (
+                            <tr key={o.id} className="border-b last:border-0 hover:bg-muted/40">
+                              <td className="py-2 px-4 font-medium">{o.orderNo}</td>
+                              <td>{formatDate(o.date)}</td>
+                              <td>
+                                <div className="font-medium">{o.itemDescription}</div>
+                                <div className="text-xs text-muted-foreground">{o.metal} {o.purity} • {o.estimatedWeight}g</div>
+                              </td>
+                              <td className="text-right">{inr(o.estimatedPrice)}</td>
+                              <td className="text-right text-green-600">{inr(o.advancePaid)}</td>
+                              <td className="text-right text-rose-600 font-medium">{due > 0 ? inr(due) : "—"}</td>
+                              <td className="text-center px-4">
+                                <span className="inline-block px-2 py-1 bg-muted rounded-full text-xs">{o.status}</span>
+                              </td>
+                              <td className="text-right px-4">
+                                {due > 0 && o.status !== "Delivered" && o.status !== "Cancelled" && (
+                                  <Button size="sm" variant="outline" onClick={() => openPayModal('order', o, due)}>Pay Due</Button>
+                                )}
+                              </td>
                             </tr>
-                          </thead>
-                          <tbody>
-                            {custOrders.map((o) => (
-                              <tr key={o.id} className="border-b last:border-0 hover:bg-muted/40">
-                                <td className="py-2 px-4 font-medium">{o.orderNo}</td>
-                                <td>{o.itemDescription}</td>
-                                <td className="text-right px-4">
-                                  <span className="inline-block px-2 py-1 bg-muted rounded-full text-xs">{o.status}</span>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      )}
-                    </CardContent>
-                  </Card>
-                </div>
-                <div>
-                  <h3 className="font-display text-lg mb-3 flex items-center gap-2"><Wallet className="w-5 h-5"/> Girvi Loans</h3>
-                  <Card className="shadow-none border-border">
+                          )})}
+                        </tbody>
+                      </table>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Repairs */}
+              <div className="mt-4">
+                <h3 className="font-display text-lg mb-3 flex items-center gap-2"><Wrench className="w-5 h-5"/> Repairs</h3>
+                <Card className="shadow-none border-border">
+                  <CardContent className="p-0">
+                    {custRepairs.length === 0 ? (
+                      <p className="text-sm text-muted-foreground py-6 text-center">No repairs.</p>
+                    ) : (
+                      <table className="w-full text-sm">
+                        <thead className="text-left text-muted-foreground border-b bg-muted/20">
+                          <tr>
+                            <th className="py-2 px-4">Ticket No</th>
+                            <th>Date</th>
+                            <th>Item Details</th>
+                            <th>Problem</th>
+                            <th className="text-right">Estimate</th>
+                            <th className="text-right">Paid</th>
+                            <th className="text-right">Due</th>
+                            <th className="text-center px-4">Status</th>
+                            <th className="text-right px-4">Action</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {custRepairs.map((r) => {
+                            const due = (r.estimate || 0) - (r.advance || 0);
+                            return (
+                            <tr key={r.id || r._id} className="border-b last:border-0 hover:bg-muted/40">
+                              <td className="py-2 px-4 font-medium">{r.ticketNo}</td>
+                              <td>{formatDate(r.date)}</td>
+                              <td>
+                                <div className="font-medium">{r.itemDescription}</div>
+                                <div className="text-xs text-muted-foreground">{r.itemWeight}g</div>
+                              </td>
+                              <td className="text-rose-500 max-w-37.5 truncate" title={r.problem}>{r.problem}</td>
+                              <td className="text-right">{inr(r.estimate)}</td>
+                              <td className="text-right text-green-600">{inr(r.advance)}</td>
+                              <td className="text-right text-rose-600 font-medium">{due > 0 ? inr(due) : "—"}</td>
+                              <td className="text-center px-4">
+                                <span className="inline-block px-2 py-1 bg-muted rounded-full text-xs">{r.status}</span>
+                              </td>
+                              <td className="text-right px-4">
+                                {due > 0 && r.status !== "Delivered" && (
+                                  <Button size="sm" variant="outline" onClick={() => openPayModal('repair', r, due)}>Pay Due</Button>
+                                )}
+                              </td>
+                            </tr>
+                          )})}
+                        </tbody>
+                      </table>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Girvi Loans */}
+              <div className="mt-4">
+                <h3 className="font-display text-lg mb-3 flex items-center gap-2"><Wallet className="w-5 h-5"/> Girvi Loans</h3>
+                <Card className="shadow-none border-border">
                     <CardContent className="p-0">
                       {custGirvis.length === 0 ? (
-                        <p className="text-sm text-muted-foreground py-6 text-center">No girvi.</p>
+                        <p className="text-sm text-muted-foreground py-6 text-center">No girvi loans.</p>
                       ) : (
                         <table className="w-full text-sm">
                           <thead className="text-left text-muted-foreground border-b bg-muted/20">
                             <tr>
                               <th className="py-2 px-4">Loan No</th>
+                              <th>Date</th>
+                              <th>Item Description</th>
                               <th className="text-right">Amount</th>
-                              <th className="text-right px-4">Status</th>
+                              <th className="text-center px-4">Status</th>
                             </tr>
                           </thead>
                           <tbody>
                             {custGirvis.map((g) => (
                               <tr key={g.id} className="border-b last:border-0 hover:bg-muted/40">
                                 <td className="py-2 px-4 font-medium">{g.loanNo}</td>
+                                <td>{formatDate(g.date)}</td>
+                                <td>
+                                  <div className="font-medium">{g.itemType} {g.purity}</div>
+                                  <div className="text-xs text-muted-foreground">{g.itemDescription}</div>
+                                </td>
                                 <td className="text-right">{inr(g.loanAmount)}</td>
-                                <td className="text-right px-4">
+                                <td className="text-center px-4">
                                   <span className="inline-block px-2 py-1 bg-muted rounded-full text-xs">{g.status}</span>
                                 </td>
                               </tr>
@@ -729,7 +835,6 @@ export default function CustomersPage() {
                       )}
                     </CardContent>
                   </Card>
-                </div>
               </div>
             </>
           )}
@@ -737,35 +842,43 @@ export default function CustomersPage() {
       </Dialog>
 
       {/* Record Payment Dialog */}
-      <Dialog open={payModalOpen} onOpenChange={setPayModalOpen}>
+      <Dialog open={!!payModal} onOpenChange={(v) => !v && setPayModal(null)}>
         <DialogContent className="max-w-md" aria-describedby={undefined}>
-          <DialogHeader>
-            <DialogTitle>Record Payment</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="text-sm text-muted-foreground">Paying for Invoice <strong className="text-foreground">{payInvoice?.number}</strong>. Current Due: <strong className="text-rose-600">{inr(payInvoice?.balanceDue || 0)}</strong></div>
-            <F label="Payment Amount ₹ *">
-              <Input type="number" value={payAmount} onChange={e => setPayAmount(e.target.value === "" ? "" : Number(e.target.value))} />
-            </F>
-            <F label="Payment Mode">
-              <Select value={payMode} onValueChange={setPayMode}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Cash">Cash</SelectItem>
-                  <SelectItem value="UPI">UPI</SelectItem>
-                  <SelectItem value="Card">Card</SelectItem>
-                  <SelectItem value="Bank">Bank</SelectItem>
-                </SelectContent>
-              </Select>
-            </F>
-            <F label="Note (Optional)">
-              <Input value={payNote} onChange={e => setPayNote(e.target.value)} placeholder="Transaction ID, remarks..." />
-            </F>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setPayModalOpen(false)}>Cancel</Button>
-            <Button onClick={submitPayment} disabled={updateInvoiceMutation.isPending || !payAmount}>Save Payment</Button>
-          </DialogFooter>
+          {payModal && (
+            <>
+              <DialogHeader>
+                <DialogTitle>Record Payment - {payModal?.type.toUpperCase()}</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4 py-2">
+                <div className="text-sm text-muted-foreground">
+                  Paying for {payModal?.type === 'invoice' ? 'Invoice' : payModal?.type === 'order' ? 'Order' : 'Repair'}
+                  <strong className="text-foreground mx-1">{payModal?.type === 'invoice' ? payModal?.item?.number : payModal?.type === 'order' ? payModal?.item?.orderNo : payModal?.item?.ticketNo}</strong>.
+                  Current Due: <strong className="text-rose-600">{inr(payModal?.due || 0)}</strong>
+                </div>
+                <F label="Payment Amount ₹ *">
+                  <Input type="number" value={payAmount} onChange={e => setPayAmount(e.target.value === "" ? "" : Number(e.target.value))} />
+                </F>
+                <F label="Payment Mode">
+                  <Select value={payMode} onValueChange={setPayMode}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Cash">Cash</SelectItem>
+                      <SelectItem value="UPI">UPI</SelectItem>
+                      <SelectItem value="Card">Card</SelectItem>
+                      <SelectItem value="Bank">Bank</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </F>
+                <F label="Note (Optional)">
+                  <Input value={payNote} onChange={e => setPayNote(e.target.value)} placeholder="Transaction ID, remarks..." />
+                </F>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setPayModal(null)}>Cancel</Button>
+                <Button onClick={submitPayment} disabled={updateInvoiceMutation.isPending || updateOrderMutation.isPending || updateRepairMutation.isPending || !payAmount}>Save Payment</Button>
+              </DialogFooter>
+            </>
+          )}
         </DialogContent>
       </Dialog>
 

@@ -1,4 +1,4 @@
-import { NavLink, useLocation } from "react-router-dom";
+import { NavLink, useLocation, Link } from "react-router-dom";
 import {
   LayoutDashboard,
   Package,
@@ -20,18 +20,27 @@ import {
   ClipboardList,
   BookOpen,
   AlertCircle,
+  BellRing,
   Store,
   X,
   LogOut,
 } from "lucide-react";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode, useMemo } from "react";
 import { cn } from "@/lib/utils";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { useApi } from "@/hooks/useApi";
+import { inventoryAPI, invoicesAPI, repairsAPI, ordersAPI } from "@/lib/api";
+import { type Order, type Repair, type Invoice, type Product } from "@/lib/storage";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 
 type NavItem = { to: string; label: string; icon: typeof LayoutDashboard };
 
 const adminGroups: { title: string; items: NavItem[] }[] = [
-  { title: "Overview", items: [{ to: "/", label: "Dashboard", icon: LayoutDashboard }] },
+  { title: "Overview", items: [
+    { to: "/", label: "Dashboard", icon: LayoutDashboard },
+    { to: "/notifications", label: "Notifications", icon: BellRing }
+  ] },
   { title: "Sales", items: [
     { to: "/billing", label: "POS / Billing", icon: ShoppingCart },
     { to: "/sales", label: "Sales", icon: Receipt },
@@ -151,13 +160,36 @@ export function Layout({ children }: { children: ReactNode }) {
   const { pathname } = useLocation();
   const [open, setOpen] = useState(false);
 
-  // Close drawer on route change
+  const { data: products = [] } = useApi<Product[]>(["inventory"], () => inventoryAPI.getAll());
+  const { data: invoices = [] } = useApi<Invoice[]>(["invoices"], () => invoicesAPI.getAll());
+  const { data: repairs = [] } = useApi<Repair[]>(["repairs"], () => repairsAPI.getAll());
+  const { data: orders = [] } = useApi<Order[]>(["orders"], () => ordersAPI.getAll());
+
+  const totalNotifications = useMemo(() => {
+    const todayIso = new Date().toISOString().slice(0, 10);
+    const readyOrders = orders.filter(o => o.status === "Ready").length;
+    const readyRepairs = repairs.filter(r => r.status === "Ready").length;
+    const dueOrders = orders.filter(o => o.dueDate && o.dueDate <= todayIso && !["Delivered", "Cancelled"].includes(o.status)).length;
+    const dueRepairs = repairs.filter(r => r.deliveryDate && r.deliveryDate <= todayIso && r.status !== "Delivered").length;
+    const unpaidInvoices = invoices.filter(i => (i.balanceDue || 0) > 0).length;
+    const lowStock = products.filter(p => p.stock <= 2).length;
+    return readyOrders + readyRepairs + dueOrders + dueRepairs + unpaidInvoices + lowStock;
+  }, [orders, repairs, invoices, products]);
+
+  // Close drawer on route change and scroll to top
   useEffect(() => {
     setOpen(false);
+    
+    // Scroll main content to top on navigation
+    const mainViewport = document.querySelector('main [data-radix-scroll-area-viewport]');
+    if (mainViewport) {
+      mainViewport.scrollTop = 0;
+    }
+    window.scrollTo(0, 0);
   }, [pathname]);
 
   return (
-    <div className="h-screen flex overflow-hidden bg-background">
+    <div className="h-dvh flex overflow-hidden bg-background">
       {/* Desktop sidebar */}
       <aside className="hidden lg:flex w-64 shrink-0 border-r border-sidebar-border bg-sidebar text-sidebar-foreground flex-col h-full">
         <SidebarBody />
@@ -182,29 +214,35 @@ export function Layout({ children }: { children: ReactNode }) {
         </div>
       )}
 
-      <main className="flex-1 min-w-0 flex flex-col h-full overflow-hidden">
-        {/* Mobile top bar */}
-        <div className="lg:hidden shrink-0 sticky top-0 z-30 flex items-center gap-3 px-4 h-14 border-b border-sidebar-border bg-sidebar/95 backdrop-blur">
-          <button
-            onClick={() => {
-              setOpen(true);
-            }}
-            className="p-2 -ml-2 rounded hover:bg-sidebar-accent"
-            aria-label="Open menu"
-          >
-            <Menu className="w-5 h-5" />
-          </button>
+      <div className="flex-1 min-w-0 flex flex-col h-full">
+        {/* Top Navbar */}
+        <header className="shrink-0 sticky top-0 z-30 flex items-center justify-between px-4 h-16 border-b border-border bg-background/95 backdrop-blur-sm">
           <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-md bg-primary text-primary-foreground grid place-items-center">
-              <Gem className="w-4 h-4" />
-            </div>
-            <div className="font-display text-base leading-none">cloudiefy</div>
+            <Button variant="ghost" size="icon" className="lg:hidden -ml-2" onClick={() => setOpen(true)}>
+              <Menu className="w-5 h-5" />
+              <span className="sr-only">Open Menu</span>
+            </Button>
           </div>
-        </div>
-        <ScrollArea className="flex-1">
-          <div className="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8">{children}</div>
-        </ScrollArea>
-      </main>
+
+          <div className="flex items-center gap-2">
+            <Link to="/notifications">
+              <Button variant="ghost" size="icon" className="relative rounded-full">
+                <BellRing className="w-5 h-5" />
+                {totalNotifications > 0 && (
+                  <Badge variant="destructive" className="absolute -top-1 -right-2 h-5 w-5 p-0 flex items-center justify-center text-[10px] rounded-full">
+                    {totalNotifications > 9 ? '9+' : totalNotifications}
+                  </Badge>
+                )}
+              </Button>
+            </Link>
+          </div>
+        </header>
+        <main className="flex-1 overflow-hidden">
+          <ScrollArea className="h-full">
+            <div className="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8">{children}</div>
+          </ScrollArea>
+        </main>
+      </div>
     </div>
   );
 }

@@ -15,6 +15,9 @@ import {
   AlertTriangle,
   Wrench,
   ShoppingBag,
+  CheckCircle,
+  Clock,
+  BellRing,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { formatDate } from "@/lib/utils";
@@ -94,6 +97,13 @@ export default function Dashboard() {
   const lowStock = products.filter(p => p.stock <= 2).length;
   const pendingRepairs = repairs.filter(r => r.status !== "Delivered").length;
   const pendingOrders = orders.filter(o => o.status !== "Delivered" && o.status !== "Cancelled").length;
+  
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const readyOrders = orders.filter(o => o.status === "Ready").length;
+  const readyRepairs = repairs.filter(r => r.status === "Ready").length;
+  const dueOrders = orders.filter(o => o.dueDate && o.dueDate <= todayIso && !["Delivered", "Cancelled"].includes(o.status)).length;
+  const dueRepairs = repairs.filter(r => r.deliveryDate && r.deliveryDate <= todayIso && r.status !== "Delivered").length;
+  const unpaidInvoices = invoices.filter(i => (i.balanceDue || 0) > 0).length;
 
   const stats = [
     { label: "Total Sell", value: inr(totalSell), icon: TrendingUp, sub: `${invoices.length} invoices`, to: "/sales" },
@@ -211,10 +221,21 @@ export default function Dashboard() {
         </Card>
 
         <Card>
-          <CardHeader><CardTitle className="font-display flex items-center gap-2"><AlertTriangle className="w-5 h-5 text-amber-600"/>Alerts</CardTitle></CardHeader>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="font-display flex items-center gap-2">
+              <BellRing className="w-5 h-5 text-amber-600"/>Reminders & Alerts
+            </CardTitle>
+            <Link to="/notifications"><Button variant="ghost" size="sm" className="h-8 text-xs border border-border/50">View All</Button></Link>
+          </CardHeader>
           <CardContent className="space-y-2">
+            {/* Dynamic Reminder Notifications */}
+            {readyOrders > 0 && <AlertRow icon={CheckCircle} label="Orders Ready for Delivery" value={readyOrders} to="/orders" className="text-green-700 bg-green-50 border-green-200 font-medium" />}
+            {readyRepairs > 0 && <AlertRow icon={CheckCircle} label="Repairs Ready for Delivery" value={readyRepairs} to="/repairs" className="text-green-700 bg-green-50 border-green-200 font-medium" />}
+            {dueOrders > 0 && <AlertRow icon={Clock} label="Due Today / Overdue Orders" value={dueOrders} to="/orders" className="text-rose-700 bg-rose-50 border-rose-200 font-medium" />}
+            {dueRepairs > 0 && <AlertRow icon={Clock} label="Due Today / Overdue Repairs" value={dueRepairs} to="/repairs" className="text-rose-700 bg-rose-50 border-rose-200 font-medium" />}
+            {unpaidInvoices > 0 && <AlertRow icon={Wallet} label="Unpaid Customer Dues" value={unpaidInvoices} to="/dues" className="text-amber-700 bg-amber-50 border-amber-200 font-medium" />}
+            
             <AlertRow icon={Package} label="Low Stock Items" value={lowStock} to="/inventory" />
-            <AlertRow icon={Wrench} label="Pending Repairs" value={pendingRepairs} to="/repairs" />
             <AlertRow icon={ShoppingBag} label="Active Orders" value={pendingOrders} to="/orders" />
           </CardContent>
         </Card>
@@ -232,10 +253,10 @@ function RateBox({ label, value }: { label: string; value: number }) {
   );
 }
 
-function AlertRow({ icon: Icon, label, value, to }: { icon: typeof Package; label: string; value: number; to: string }) {
+function AlertRow({ icon: Icon, label, value, to, className }: { icon: typeof Package; label: string; value: number; to: string; className?: string }) {
   return (
-    <Link to={to} className="flex items-center justify-between rounded-md border p-3 hover:bg-accent transition-colors">
-      <div className="flex items-center gap-2"><Icon className="w-4 h-4 text-muted-foreground"/><span className="text-sm">{label}</span></div>
+    <Link to={to} className={`flex items-center justify-between rounded-md border p-3 transition-colors ${className || 'hover:bg-accent border-border'}`}>
+      <div className="flex items-center gap-2"><Icon className={`w-4 h-4 ${className ? 'opacity-80' : 'text-muted-foreground'}`}/><span className="text-sm">{label}</span></div>
       <span className="font-display text-lg">{value}</span>
     </Link>
   );

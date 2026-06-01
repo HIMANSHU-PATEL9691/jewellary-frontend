@@ -10,7 +10,7 @@ import { inr, type Order, type Karigar } from "@/lib/storage";
 import { formatDate } from "@/lib/utils";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { ordersAPI, customerAPI, karigarsAPI } from "@/lib/api";
-import { Plus, Trash2, ShoppingBag, Pencil } from "lucide-react";
+import { Plus, Trash2, ShoppingBag, Pencil, Printer } from "lucide-react";
 import { toast } from "sonner";
 
 export default function OrdersPage() {
@@ -26,6 +26,7 @@ export default function OrdersPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [searchCust, setSearchCust] = useState("");
   const [searchKar, setSearchKar] = useState("");
+  const [viewingReceipt, setViewingReceipt] = useState<Order | null>(null);
   const empty: Order = {
     id: "",
     orderNo: "",
@@ -41,7 +42,9 @@ export default function OrdersPage() {
     karigarId: "",
     dueDate: "",
     status: "Pending",
-    note: ""
+    note: "",
+    customerSignature: "",
+    authorizedSignatory: "",
   };
   const [form, setForm] = useState<Order>(empty);
 
@@ -168,6 +171,35 @@ export default function OrdersPage() {
                 </div>
               </div>
               <div className="col-span-2"><Field label="Note" v={form.note || ""} on={v => setForm({...form, note: v})} /></div>
+              <div className="col-span-2 bg-muted/40 p-4 rounded-lg border border-border mt-2">
+                <Label className="text-muted-foreground font-normal block mb-3">Signatures (Optional)</Label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <Label className="text-xs">Customer Signature</Label>
+                    <Input type="file" accept="image/*" className="bg-background mt-1" onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        const reader = new FileReader();
+                        reader.onload = () => setForm({ ...form, customerSignature: reader.result as string });
+                        reader.readAsDataURL(file);
+                      }
+                    }} />
+                    {form.customerSignature && <img src={form.customerSignature} alt="Customer Signature" className="mt-2 h-16 object-contain" />}
+                  </div>
+                  <div>
+                    <Label className="text-xs">Authorized Signatory</Label>
+                    <Input type="file" accept="image/*" className="bg-background mt-1" onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        const reader = new FileReader();
+                        reader.onload = () => setForm({ ...form, authorizedSignatory: reader.result as string });
+                        reader.readAsDataURL(file);
+                      }
+                    }} />
+                    {form.authorizedSignatory && <img src={form.authorizedSignatory} alt="Authorized Signatory" className="mt-2 h-16 object-contain" />}
+                  </div>
+                </div>
+              </div>
             </div>
             <Button onClick={save} className="mt-2">{editingId ? "Save Changes" : "Save Order"}</Button>
           </DialogContent>
@@ -197,16 +229,21 @@ export default function OrdersPage() {
               <td>{inr(r.estimatedPrice)}</td>
               <td className="text-green-600 font-medium">{inr(r.advancePaid)}</td>
               <td>{r.dueDate ? formatDate(r.dueDate) : "—"}</td>
-              <td><select className="border rounded px-2 py-1 bg-background text-xs" value={r.status} onChange={e => setStatus((r as any)._id || r.id, e.target.value as Order["status"])}>
+              <td><select className={`border rounded px-2 py-1 text-xs ${r.status === 'Ready' ? 'bg-green-50 text-green-700 border-green-200 font-medium' : 'bg-background'}`} value={r.status} onChange={e => setStatus((r as any)._id || r.id, e.target.value as Order["status"])}>
                 {["Pending","In Progress","Ready","Delivered","Cancelled"].map(s => <option key={s}>{s}</option>)}
               </select></td>
               <td className="text-right">
+                <Button size="sm" variant="ghost" onClick={() => setViewingReceipt(r)}>
+                  <Printer className="w-4 h-4 text-muted-foreground hover:text-primary" />
+                </Button>
                 <Button size="sm" variant="ghost" onClick={() => { setForm(r); setEditingId((r as any)._id || r.id || null); setOpen(true); }}><Pencil className="w-4 h-4 text-muted-foreground hover:text-primary"/></Button>
                 <Button size="sm" variant="ghost" onClick={() => remove((r as any)._id || r.id)}><Trash2 className="w-4 h-4 text-muted-foreground hover:text-red-500"/></Button>
               </td>
             </tr>))}</tbody></table>}
         </CardContent>
       </Card>
+
+      {viewingReceipt && <OrderInvoiceModal order={viewingReceipt} onClose={() => setViewingReceipt(null)} />}
     </Layout>
   );
 }
@@ -216,4 +253,126 @@ function Field({ label, v, on, type = "text" }: { label: string; v: string; on: 
 }
 function Stat({ label, value }: { label: string; value: string | number }) {
   return <Card><CardContent className="pt-6"><div className="text-sm text-muted-foreground">{label}</div><div className="text-2xl font-display mt-1">{value}</div></CardContent></Card>;
+}
+
+function OrderInvoiceModal({ order, onClose }: { order: Order; onClose: () => void }) {
+  const balanceDue = (order.estimatedPrice || 0) - (order.advancePaid || 0);
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/50 flex justify-center items-start p-2 sm:p-4 print:bg-white print:p-0 overflow-y-auto">
+      <div className="bg-white w-full max-w-4xl rounded-lg shadow-xl print:shadow-none print:max-w-none text-slate-900 my-auto relative">
+        <div className="p-6 sm:p-10 print:p-0 border-2 border-transparent print:border-none m-2 print:m-0 bg-white">
+          
+          {/* Shop Header */}
+          <div className="text-center border-b-2 border-slate-300 pb-5 mb-6">
+            <h2 className="text-4xl font-display font-bold uppercase tracking-widest text-slate-900">Cloudiefy Jewellers</h2>
+            <p className="text-sm mt-2 text-slate-700">123 Main Bazaar, City Center, State - 123456</p>
+            <p className="text-sm text-slate-700">Mobile: +91 98765 43210 | Email: contact@cloudiefy.com</p>
+          </div>
+
+          {/* Invoice Meta & Customer Details */}
+          <div className="flex justify-between items-start mb-6 text-sm">
+            <div>
+              <div className="font-bold text-xs text-slate-500 uppercase tracking-wider mb-1">Customer Details:</div>
+              <div className="font-bold text-lg">{order.customerName}</div>
+              <div className="text-slate-700">{order.customerMobile}</div>
+            </div>
+            <div className="text-right">
+              <div className="text-2xl font-display font-bold mb-2 text-slate-900">CUSTOM ORDER RECEIPT</div>
+              <table className="ml-auto text-left text-slate-700">
+                <tbody>
+                  <tr><td className="pr-4 py-0.5 text-right font-medium text-slate-500">Order No:</td><td className="font-semibold text-slate-900">{order.orderNo}</td></tr>
+                  <tr><td className="pr-4 py-0.5 text-right font-medium text-slate-500">Date Ordered:</td><td className="font-semibold text-slate-900">{formatDate(order.date)}</td></tr>
+                  {order.dueDate && <tr><td className="pr-4 py-0.5 text-right font-medium text-slate-500">Expected Delivery:</td><td className="font-semibold text-slate-900">{formatDate(order.dueDate)}</td></tr>}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Items Table */}
+          <table className="w-full text-sm mb-6 border-collapse border border-slate-300">
+            <thead className="bg-slate-100">
+              <tr>
+                <th className="border border-slate-300 py-2 px-3 text-center w-12 text-slate-600">#</th>
+                <th className="border border-slate-300 py-2 px-3 text-left text-slate-600">Item Description</th>
+                <th className="border border-slate-300 py-2 px-3 text-left text-slate-600">Metal & Purity</th>
+                <th className="border border-slate-300 py-2 px-3 text-right text-slate-600">Est. Weight (g)</th>
+                <th className="border border-slate-300 py-2 px-3 text-right text-slate-600">Est. Price</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr className="border-b border-slate-300 last:border-0">
+                <td className="border border-slate-300 py-2 px-3 text-center text-slate-600">1</td>
+                <td className="border border-slate-300 py-2 px-3 font-semibold">{order.itemDescription}</td>
+                <td className="border border-slate-300 py-2 px-3 text-slate-600">{order.metal} - {order.purity}</td>
+                <td className="border border-slate-300 py-2 px-3 text-right">{order.estimatedWeight} g</td>
+                <td className="border border-slate-300 py-2 px-3 text-right font-bold">{inr(order.estimatedPrice)}</td>
+              </tr>
+            </tbody>
+          </table>
+
+          {/* Calculations & Totals */}
+          <div className="flex flex-col sm:flex-row justify-between items-start text-sm gap-6">
+            <div className="w-full sm:w-1/2 sm:pr-8 order-2 sm:order-1">
+               {/* Terms and conditions */}
+               <div className="text-xs text-slate-600 p-4 bg-slate-50 rounded-md border border-slate-200">
+                 <p className="font-bold mb-1 text-slate-800 uppercase tracking-wider">Terms & Conditions:</p>
+                 <ol className="list-decimal pl-4 space-y-1">
+                   <li>Final price and weight may vary slightly upon completion.</li>
+                   <li>Advance is non-refundable upon order cancellation.</li>
+                   <li>Subject to local jurisdiction.</li>
+                 </ol>
+               </div>
+            </div>
+            <div className="w-full sm:w-1/2 max-w-sm order-1 sm:order-2">
+              <table className="w-full">
+                <tbody>
+                  <tr className="border-t-2 border-slate-300 text-lg">
+                    <td className="py-2 font-bold text-slate-900">Est. Total Price</td>
+                    <td className="py-2 text-right font-bold text-slate-900">{inr(order.estimatedPrice)}</td>
+                  </tr>
+                  <tr className="border-t border-slate-200">
+                    <td className="py-1.5 text-slate-600">Advance Paid</td>
+                    <td className="py-1.5 text-right font-semibold text-green-700">{inr(order.advancePaid)}</td>
+                  </tr>
+                  <tr>
+                    <td className="py-1.5 font-bold">Balance Due</td>
+                    <td className="py-1.5 text-right font-bold text-rose-700">{inr(balanceDue)}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Signatures */}
+          <div className="mt-16 flex justify-between items-end text-xs font-bold text-slate-500 uppercase tracking-wider">
+            <div className="text-center">
+              {order.customerSignature ? (
+                <img src={order.customerSignature} alt="Customer Signature" className="h-16 mx-auto mb-2 object-contain" />
+              ) : (
+                <div className="w-48 border-t-2 border-slate-300 mb-2 mx-auto"></div>
+              )}
+              Customer Signature
+            </div>
+            <div className="text-center">
+              {order.authorizedSignatory ? (
+                <img src={order.authorizedSignatory} alt="Authorized Signatory" className="h-16 mx-auto mb-2 object-contain" />
+              ) : (
+                <div className="w-48 border-t-2 border-slate-300 mb-2 mx-auto"></div>
+              )}
+              Authorized Signatory
+            </div>
+          </div>
+        </div>
+        
+        {/* Action Buttons */}
+        <div className="sticky bottom-0 bg-slate-100 p-4 border-t border-slate-200 rounded-b-lg flex justify-end gap-3 print:hidden">
+          <Button variant="outline" onClick={onClose}>Close</Button>
+          <Button onClick={() => window.print()}>
+            <Printer className="w-4 h-4 mr-2" /> Print Receipt
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
 }

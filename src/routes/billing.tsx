@@ -37,6 +37,7 @@ export default function BillingPage() {
   
   const createMutation = useApiMutation((data: any) => invoicesAPI.create(data), ["invoices"]);
   const deleteMutation = useApiMutation((id: string) => invoicesAPI.delete(id), ["invoices"]);
+  const updateProductMutation = useApiMutation((data: { id: string; body: any }) => inventoryAPI.update(data.id, data.body), ["inventory"]);
 
   const [viewing, setViewing] = useState<Invoice | null>(null);
   const [open, setOpen] = useState(false);
@@ -46,16 +47,30 @@ export default function BillingPage() {
   const [searchCust, setSearchCust] = useState("");
   const [searchProd, setSearchProd] = useState("");
   const [items, setItems] = useState<InvoiceItem[]>([]);
-  const [discount, setDiscount] = useState(0);
-  const [oldGoldAmount, setOldGoldAmount] = useState(0);
+  const [discount, setDiscount] = useState<number | "">("");
+  const [oldGoldAmount, setOldGoldAmount] = useState<number | "">("");
   const [paymentMode, setPaymentMode] = useState<Invoice["paymentMode"]>("Cash");
   const [amountPaid, setAmountPaid] = useState<number | "">("");
+  const [customerSignature, setCustomerSignature] = useState<string>("");
+  const [authorizedSignatory, setAuthorizedSignatory] = useState<string>("");
 
   const isGst = type === "GST";
 
   const addProduct = (pid: string) => {
     const p = products.find((x) => (x.id || x._id) === pid);
     if (!p) return;
+
+    if (p.stock <= 0) {
+      toast.error(`Cannot add "${p.name}". It is currently out of stock.`);
+      return;
+    }
+
+    // If the product has a making charge percentage, calculate the making charge amount.
+    // Otherwise, use the fixed making charge from the product.
+    const makingCharge = (p.makingChargePct && p.makingChargePct > 0)
+      ? (p.netWeight * p.ratePerGram * p.makingChargePct) / 100
+      : p.makingCharge;
+
     setItems((prev) => [
       ...prev,
       {
@@ -64,10 +79,28 @@ export default function BillingPage() {
         purity: p.purity,
         netWeight: p.netWeight,
         ratePerGram: p.ratePerGram,
-        makingCharge: p.makingCharge,
+        makingCharge: makingCharge,
         makingChargePct: p.makingChargePct || 0,
         stoneCharge: 0,
         gstPct: p.gstPct,
+        qty: 1,
+      },
+    ]);
+  };
+
+  const addCustomItem = () => {
+    setItems((prev) => [
+      ...prev,
+      {
+        productId: "manual-" + Date.now(),
+        name: "",
+        purity: "22K",
+        netWeight: 0,
+        ratePerGram: 0,
+        makingCharge: 0,
+        makingChargePct: 0,
+        stoneCharge: 0,
+        gstPct: type === "GST" ? 3 : 0,
         qty: 1,
       },
     ]);
@@ -89,7 +122,7 @@ export default function BillingPage() {
       gst += c.gst;
     });
 
-    const afterAdj = subtotal - discount - oldGoldAmount;
+    const afterAdj = subtotal - (Number(discount) || 0) - (Number(oldGoldAmount) || 0);
     const preRound = Math.round((afterAdj + gst) * 100) / 100;
     const gTotal = Math.round(preRound);
     const roundOff = Math.round((gTotal - preRound) * 100) / 100;
@@ -101,10 +134,12 @@ export default function BillingPage() {
 
   const reset = () => {
     setItems([]);
-    setDiscount(0);
-    setOldGoldAmount(0);
+    setDiscount("");
+    setOldGoldAmount("");
     setCustomerId("");
     setAmountPaid("");
+    setCustomerSignature("");
+    setAuthorizedSignatory("");
   };
 
   const save = async () => {
@@ -138,9 +173,10 @@ export default function BillingPage() {
       customerId: cust?._id || cust?.id,
       customerName: cust?.name,
       customerMobile: cust?.mobile || cust?.phone || "",
+      customerAddress: cust?.address || "",
       items,
-      discount: discount || 0,
-      oldGoldAmount: oldGoldAmount || 0,
+      discount: Number(discount) || 0,
+      oldGoldAmount: Number(oldGoldAmount) || 0,
       paymentMode,
       subtotal: totals.subtotal,
       gstAmount: totals.gst,
@@ -148,16 +184,45 @@ export default function BillingPage() {
       amountPaid: safeActualPaid,
       balanceDue,
       payments: initialPayment,
+      customerSignature,
+      authorizedSignatory,
     };
 
     try {
       const saved = await createMutation.mutateAsync(inv);
+      
+      // Deduct sold quantities from inventory stock
+      for (const item of items) {
+        const p = products.find((x) => (x.id || x._id) === item.productId);
+        if (p) {
+          const newStock = Math.max(0, (p.stock || 0) - (item.qty || 1));
+          await updateProductMutation.mutateAsync({ id: p._id || p.id, body: { ...p, stock: newStock } });
+        }
+      }
+      
       setViewing(saved);
       reset();
       setOpen(false);
       toast.success("Invoice generated successfully");
     } catch (e) {
       toast.error("Failed to generate invoice");
+    }
+  };
+
+  const removeInvoice = async (invoice: Invoice) => {
+    if (window.confirm(`Are you sure you want to delete Invoice ${invoice.number}? This will also add the sold items back to your inventory.`)) {
+      try {
+        // Add stock back to inventory
+        for (const item of invoice.items) {
+          const p = products.find((x) => (x.id || x._id) === item.productId);
+          if (p) {
+            const newStock = (p.stock || 0) + (item.qty || 1);
+            await updateProductMutation.mutateAsync({ id: p._id || p.id, body: { ...p, stock: newStock } });
+          }
+        }
+        await deleteMutation.mutateAsync(invoice._id || invoice.id || "");
+        toast.success("Invoice deleted and stock restored.");
+      } catch (e) { toast.error("Failed to delete invoice."); }
     }
   };
 
@@ -292,7 +357,7 @@ export default function BillingPage() {
                   <span className="w-5 h-5 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs">2</span>
                   Items
                 </h3>
-                <div className="flex flex-col sm:flex-row gap-3 w-full">
+                <div className="flex flex-col sm:flex-row gap-3 w-full items-start sm:items-center">
                     <Input
                       placeholder="Type name/barcode & press Enter..."
                       value={searchProd}
@@ -354,20 +419,24 @@ export default function BillingPage() {
                                   .includes(searchProd.toLowerCase())
                             )
                             .map((p) => (
-                              <SelectItem key={p._id || p.id} value={p._id || p.id}>
-                                {p.name} · {p.barcode || p.huid || p.purity} · {p.stock} in stock
+                              <SelectItem key={p._id || p.id} value={p._id || p.id} disabled={p.stock <= 0}>
+                                {p.name} · {p.barcode || p.huid || p.purity} · {p.stock > 0 ? `${p.stock} in stock` : "Out of stock"}
                               </SelectItem>
                             ))}
                         </SelectContent>
                       </Select>
                     </div>
+                    <Button type="button" variant="secondary" onClick={addCustomItem} className="shrink-0">
+                      <Plus className="w-4 h-4 mr-2" /> Add Custom Item
+                    </Button>
                 </div>
                   {items.length === 0 ? (
                     <p className="text-sm text-muted-foreground py-12 text-center">
                       Add products from the dropdown to start billing.
                     </p>
                   ) : (
-                    <table className="w-full text-sm">
+                    <div className="overflow-x-auto w-full border border-border rounded-md">
+                      <table className="w-full text-sm min-w-200">
                       <thead className="text-left text-muted-foreground border-b bg-muted/20">
                         <tr>
                           <th className="p-3 font-medium">Product</th>
@@ -387,9 +456,9 @@ export default function BillingPage() {
                           const amount = it.netWeight * it.ratePerGram;
                           return (
                             <tr key={i} className="border-b last:border-0 hover:bg-muted/10 transition-colors">
-                              <td className="p-3">
-                                <div className="font-medium text-primary">{it.name}</div>
-                                <div className="text-xs text-muted-foreground">{it.purity}</div>
+                              <td className="p-3 min-w-40 space-y-2">
+                                <Input value={it.name} onChange={(e) => updateItem(i, { name: e.target.value })} className="h-8 text-sm font-medium" placeholder="Item Name" />
+                                <Input value={it.purity} onChange={(e) => updateItem(i, { purity: e.target.value })} className="h-7 text-xs" placeholder="Purity (e.g. 22K)" />
                               </td>
                               <td className="py-2">
                                 <NumI v={it.qty} on={(v) => updateItem(i, { qty: v })} className="w-16 h-8 bg-background" />
@@ -450,6 +519,7 @@ export default function BillingPage() {
                         })}
                       </tbody>
                     </table>
+                    </div>
                   )}
               </div>
 
@@ -473,12 +543,12 @@ export default function BillingPage() {
                     
                     <div className="flex items-center justify-between gap-4">
                       <Label className="text-muted-foreground font-normal">Discount (₹)</Label>
-                      <Input type="number" className="w-32 h-8 text-right bg-background" value={discount || ""} onChange={(e) => setDiscount(parseFloat(e.target.value) || 0)} placeholder="0" />
+                      <Input type="number" className="w-32 h-8 text-right bg-background" value={discount} onChange={(e) => setDiscount(e.target.value === "" ? "" : Number(e.target.value))} placeholder="0" />
                     </div>
                     
                     <div className="flex items-center justify-between gap-4">
                       <Label className="text-muted-foreground font-normal">Old Gold (₹)</Label>
-                      <Input type="number" className="w-32 h-8 text-right bg-background" value={oldGoldAmount || ""} onChange={(e) => setOldGoldAmount(parseFloat(e.target.value) || 0)} placeholder="0" />
+                      <Input type="number" className="w-32 h-8 text-right bg-background" value={oldGoldAmount} onChange={(e) => setOldGoldAmount(e.target.value === "" ? "" : Number(e.target.value))} placeholder="0" />
                     </div>
 
                     {isGst && (
@@ -521,6 +591,36 @@ export default function BillingPage() {
                         valueClassName={(totals.gTotal - (amountPaid === "" ? totals.gTotal : (amountPaid as number))) > 0 ? "text-rose-600" : "text-green-600"}
                       />
                     </div>
+                    
+                    <div className="bg-muted/40 p-4 rounded-lg border border-border mt-4">
+                      <Label className="text-muted-foreground font-normal block mb-3">Signatures (Optional)</Label>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                          <Label className="text-xs">Customer Signature</Label>
+                          <Input type="file" accept="image/*" className="bg-background mt-1" onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              const reader = new FileReader();
+                              reader.onload = () => setCustomerSignature(reader.result as string);
+                              reader.readAsDataURL(file);
+                            }
+                          }} />
+                          {customerSignature && <img src={customerSignature} alt="Customer Signature" className="mt-2 h-16 object-contain" />}
+                        </div>
+                        <div>
+                          <Label className="text-xs">Authorized Signatory</Label>
+                          <Input type="file" accept="image/*" className="bg-background mt-1" onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              const reader = new FileReader();
+                              reader.onload = () => setAuthorizedSignatory(reader.result as string);
+                              reader.readAsDataURL(file);
+                            }
+                          }} />
+                          {authorizedSignatory && <img src={authorizedSignatory} alt="Authorized Signatory" className="mt-2 h-16 object-contain" />}
+                        </div>
+                      </div>
+                    </div>
 
                     <Button type="submit" className="w-full mt-2" size="lg" disabled={items.length === 0 || !customerId}>
                       <Plus className="w-4 h-4 mr-2" /> Generate Invoice
@@ -558,6 +658,7 @@ export default function BillingPage() {
                   <th className="font-medium">Type</th>
                   <th className="font-medium">Mode</th>
                   <th className="text-right font-medium">Total</th>
+                  <th className="text-center font-medium">Status</th>
                       <th></th>
                     </tr>
                   </thead>
@@ -570,10 +671,17 @@ export default function BillingPage() {
                         <td>{i.type}</td>
                         <td>{i.paymentMode}</td>
                     <td className="text-right font-medium text-green-600">{inr(i.total)}</td>
+                    <td className="text-center">
+                      {(i.balanceDue || 0) <= 0 ? (
+                        <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded text-[10px] font-semibold uppercase">Paid</span>
+                      ) : (
+                        <span className="bg-rose-100 text-rose-700 px-2 py-0.5 rounded text-[10px] font-semibold uppercase">Due</span>
+                      )}
+                    </td>
                         <td>
                       <div className="flex justify-end gap-2 pr-3">
                         <Button size="sm" variant="outline" onClick={() => setViewing(i)}>View</Button>
-                            <Button size="icon" variant="ghost" onClick={() => deleteMutation.mutateAsync(i._id || i.id)}>
+                            <Button size="icon" variant="ghost" onClick={() => removeInvoice(i)}>
                               <Trash2 className="w-4 h-4 text-red-500" />
                             </Button>
                           </div>
@@ -649,105 +757,160 @@ function KPI({ label, value }: { label: string; value: string | number }) {
   );
 }
 
-function InvoiceModal({ inv, onClose }: { inv: Invoice; onClose: () => void }) {
+function InvoiceModal({ inv, onClose }: { inv: any; onClose: () => void }) {
   return (
-    <div className="fixed inset-0 z-50 bg-black/50 grid place-items-center p-4 print:bg-white print:p-0">
-      <div className="bg-card w-full max-w-2xl rounded-lg shadow-xl p-8 print:shadow-none print:max-w-none">
-        <div className="flex justify-between items-start mb-6">
-          <div>
-            <h2 className="text-3xl font-display">Cloudiefy-Jewellery Software</h2>
-            <p className="text-xs text-muted-foreground">Tax Invoice</p>
+    <div className="fixed inset-0 z-50 bg-black/50 flex justify-center items-start p-2 sm:p-4 print:bg-white print:p-0 overflow-y-auto">
+      <div className="bg-white w-full max-w-4xl rounded-lg shadow-xl print:shadow-none print:max-w-none text-slate-900 my-auto relative">
+        <div className="p-6 sm:p-10 print:p-0 border-2 border-transparent print:border-none m-2 print:m-0 bg-white">
+          
+          {/* Shop Header */}
+          <div className="text-center border-b-2 border-slate-300 pb-5 mb-6">
+            <h2 className="text-4xl font-display font-bold uppercase tracking-widest text-slate-900">Cloudiefy Jewellers</h2>
+            <p className="text-sm mt-2 text-slate-700">123 Main Bazaar, City Center, State - 123456</p>
+            <p className="text-sm text-slate-700">Mobile: +91 98765 43210 | Email: contact@cloudiefy.com</p>
+            {inv.type === "GST" && <p className="text-sm font-semibold mt-1">GSTIN: 22AAAAA0000A1Z5</p>}
           </div>
-          <div className="text-right text-sm">
-            <div className="font-mono font-semibold">{inv.number}</div>
-            <div className="text-muted-foreground">
-              {formatDate(inv.createdAt)}
+
+          {/* Invoice Meta & Customer Details */}
+          <div className="flex justify-between items-start mb-6 text-sm">
+            <div>
+              <div className="font-bold text-xs text-slate-500 uppercase tracking-wider mb-1">Billed To:</div>
+              <div className="font-bold text-lg">{inv.customerName}</div>
+              <div className="text-slate-700">{inv.customerMobile}</div>
+              <div className="max-w-62.5 mt-1 text-slate-700">{inv.customerAddress || "Address not provided"}</div>
             </div>
-            <div className="mt-1 text-xs uppercase tracking-wide">{inv.type}</div>
+            <div className="text-right">
+              <div className="text-2xl font-display font-bold mb-2 text-slate-900">{inv.type === "GST" ? "TAX INVOICE" : "INVOICE"}</div>
+              <table className="ml-auto text-left text-slate-700">
+                <tbody>
+                  <tr><td className="pr-4 py-0.5 text-right font-medium text-slate-500">Invoice No:</td><td className="font-semibold text-slate-900">{inv.number}</td></tr>
+                  <tr><td className="pr-4 py-0.5 text-right font-medium text-slate-500">Date:</td><td className="font-semibold text-slate-900">{formatDate(inv.createdAt)}</td></tr>
+                  <tr><td className="pr-4 py-0.5 text-right font-medium text-slate-500">Payment Mode:</td><td className="font-semibold text-slate-900">{inv.paymentMode}</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Items Table */}
+          <table className="w-full text-sm mb-6 border-collapse border border-slate-300">
+            <thead className="bg-slate-100">
+              <tr>
+                <th className="border border-slate-300 py-2 px-3 text-center w-12 text-slate-600">#</th>
+                <th className="border border-slate-300 py-2 px-3 text-left text-slate-600">Description of Goods</th>
+                <th className="border border-slate-300 py-2 px-3 text-right text-slate-600">Qty</th>
+                <th className="border border-slate-300 py-2 px-3 text-right text-slate-600">Net Wt</th>
+                <th className="border border-slate-300 py-2 px-3 text-right text-slate-600">Rate/g</th>
+                <th className="border border-slate-300 py-2 px-3 text-right text-slate-600">Amount</th>
+                <th className="border border-slate-300 py-2 px-3 text-right text-slate-600">Making Chg</th>
+                <th className="border border-slate-300 py-2 px-3 text-right text-slate-600">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {inv.items.map((it: any, i: number) => {
+                const c = calcItem(it, inv.type === "GST");
+                const amount = it.netWeight * it.ratePerGram;
+                return (
+                  <tr key={i} className="border-b border-slate-300 last:border-0">
+                    <td className="border border-slate-300 py-2 px-3 text-center text-slate-600">{i + 1}</td>
+                    <td className="border border-slate-300 py-2 px-3">
+                      <div className="font-semibold">{it.name}</div>
+                      <div className="text-xs text-slate-500">Purity: {it.purity}</div>
+                    </td>
+                    <td className="border border-slate-300 py-2 px-3 text-right">{it.qty}</td>
+                    <td className="border border-slate-300 py-2 px-3 text-right">{it.netWeight} g</td>
+                    <td className="border border-slate-300 py-2 px-3 text-right">{inr(it.ratePerGram)}</td>
+                    <td className="border border-slate-300 py-2 px-3 text-right">{inr(amount)}</td>
+                    <td className="border border-slate-300 py-2 px-3 text-right">{inr(it.makingCharge)}</td>
+                    <td className="border border-slate-300 py-2 px-3 text-right font-bold">{inr(c.line)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+
+          {/* Calculations & Totals */}
+          <div className="flex flex-col sm:flex-row justify-between items-start text-sm gap-6">
+            <div className="w-full sm:w-1/2 sm:pr-8 order-2 sm:order-1">
+               {/* Terms and conditions */}
+               <div className="text-xs text-slate-600 p-4 bg-slate-50 rounded-md border border-slate-200">
+                 <p className="font-bold mb-1 text-slate-800 uppercase tracking-wider">Terms & Conditions:</p>
+                 <ol className="list-decimal pl-4 space-y-1">
+                   <li>Goods once sold cannot be returned or exchanged for cash.</li>
+                   <li>Ensure you collect your hallmark certificate (if applicable).</li>
+                   <li>Subject to local jurisdiction.</li>
+                 </ol>
+               </div>
+               
+              {((inv.balanceDue || 0) <= 0) && (
+                <div className="mt-4 p-2 bg-green-50 border border-green-200 text-green-800 text-center font-bold rounded tracking-widest text-lg">
+                  PAYMENT DONE
+                </div>
+              )}
+            </div>
+            <div className="w-full sm:w-1/2 max-w-sm order-1 sm:order-2">
+              <table className="w-full">
+                <tbody>
+                  <tr><td className="py-1 text-slate-600">Subtotal</td><td className="py-1 text-right font-semibold">{inr(inv.subtotal)}</td></tr>
+                  {inv.discount > 0 && <tr><td className="py-1 text-slate-600">Discount</td><td className="py-1 text-right font-semibold text-green-600">- {inr(inv.discount)}</td></tr>}
+                  {inv.oldGoldAmount > 0 && <tr><td className="py-1 text-slate-600">Old Gold Exchange</td><td className="py-1 text-right font-semibold text-green-600">- {inr(inv.oldGoldAmount)}</td></tr>}
+                  {inv.type === "GST" && (
+                    <>
+                      <tr><td className="py-1 text-slate-600">CGST</td><td className="py-1 text-right font-semibold">{inr(inv.gstAmount / 2)}</td></tr>
+                      <tr><td className="py-1 text-slate-600">SGST</td><td className="py-1 text-right font-semibold">{inr(inv.gstAmount / 2)}</td></tr>
+                    </>
+                  )}
+                  {(() => {
+                    const preRound = Math.round((inv.subtotal - inv.discount - inv.oldGoldAmount + (inv.type === "GST" ? inv.gstAmount : 0)) * 100) / 100;
+                    const roundOff = Math.round((inv.total - preRound) * 100) / 100;
+                    return roundOff !== 0 ? <tr><td className="py-1 text-slate-600">Round Off</td><td className="py-1 text-right font-semibold">{inr(roundOff)}</td></tr> : null;
+                  })()}
+                  <tr className="border-t-2 border-slate-300 text-lg">
+                    <td className="py-2 font-bold text-slate-900">Grand Total</td>
+                    <td className="py-2 text-right font-bold text-slate-900">{inr(inv.total)}</td>
+                  </tr>
+                  {inv.amountPaid !== undefined && (
+                    <>
+                      <tr className="border-t border-slate-200">
+                        <td className="py-1.5 text-slate-600">Amount Paid</td>
+                        <td className="py-1.5 text-right font-semibold text-green-700">{inr(inv.amountPaid)}</td>
+                      </tr>
+                      <tr>
+                        <td className="py-1.5 font-bold">Balance Due</td>
+                        <td className="py-1.5 text-right font-bold text-rose-700">{inr(inv.balanceDue || 0)}</td>
+                      </tr>
+                    </>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Signatures */}
+          <div className="mt-16 flex justify-between items-end text-xs font-bold text-slate-500 uppercase tracking-wider">
+            <div className="text-center">
+              {inv.customerSignature ? (
+                <img src={inv.customerSignature} alt="Customer Signature" className="h-16 mx-auto mb-2 object-contain" />
+              ) : (
+                <div className="w-48 border-t-2 border-slate-300 mb-2 mx-auto"></div>
+              )}
+              Customer Signature
+            </div>
+            <div className="text-center">
+              {inv.authorizedSignatory ? (
+                <img src={inv.authorizedSignatory} alt="Authorized Signatory" className="h-16 mx-auto mb-2 object-contain" />
+              ) : (
+                <div className="w-48 border-t-2 border-slate-300 mb-2 mx-auto"></div>
+              )}
+              Authorized Signatory
+            </div>
           </div>
         </div>
-
-        <div className="grid grid-cols-2 gap-4 mb-6 text-sm">
-          <div>
-            <div className="text-xs text-muted-foreground">Bill To</div>
-            <div className="font-medium">{inv.customerName}</div>
-            <div className="text-muted-foreground">{inv.customerMobile}</div>
-          </div>
-          <div className="text-right">
-            <div className="text-xs text-muted-foreground">Payment</div>
-            <div className="font-medium">{inv.paymentMode}</div>
-          </div>
-        </div>
-
-        <table className="w-full text-sm mb-4">
-          <thead className="text-left text-muted-foreground border-b">
-            <tr>
-              <th className="py-2">Product</th>
-              <th>Quantity</th>
-              <th>Weight</th>
-              <th>Rate</th>
-              <th>Amount</th>
-              <th>Making Charges</th>
-              <th className="text-right">Total</th>
-            </tr>
-          </thead>
-          <tbody>
-            {inv.items.map((it, i) => {
-              const c = calcItem(it, inv.type === "GST");
-              const amount = it.netWeight * it.ratePerGram;
-              return (
-                <tr key={i} className="border-b">
-                  <td className="py-2">
-                    {it.name}
-                    <span className="text-xs text-muted-foreground"> · {it.purity}</span>
-                  </td>
-                  <td>{it.qty}</td>
-                  <td>{it.netWeight}g</td>
-                  <td>{inr(it.ratePerGram)}</td>
-                  <td>{inr(amount)}</td>
-                  <td>{inr(it.makingCharge)}</td>
-                  <td className="text-right">{inr(c.line)}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-
-        <div className="ml-auto w-64 space-y-1 text-sm">
-          <Row label="Subtotal" v={inr(inv.subtotal)} />
-          {inv.discount > 0 && <Row label="Discount" v={"- " + inr(inv.discount)} />}
-          {inv.oldGoldAmount > 0 && <Row label="Old Gold" v={"- " + inr(inv.oldGoldAmount)} />}
-          {inv.type === "GST" && (
-            <>
-              <Row label="CGST" v={inr(inv.gstAmount / 2)} />
-              <Row label="SGST" v={inr(inv.gstAmount / 2)} />
-            </>
-          )}
-          {(() => {
-            const preRound = Math.round((inv.subtotal - inv.discount - inv.oldGoldAmount + (inv.type === "GST" ? inv.gstAmount : 0)) * 100) / 100;
-            const roundOff = Math.round((inv.total - preRound) * 100) / 100;
-            return roundOff !== 0 ? <Row label="Round Off" v={inr(roundOff)} /> : null;
-          })()}
-          <div className="border-t pt-2 flex justify-between font-display text-lg">
-            <span>G.Total</span>
-            <span>{inr(inv.total)}</span>
-          </div>
-          {inv.amountPaid !== undefined && inv.amountPaid < inv.total && (
-            <>
-              <Row label="Amount Paid" v={inr(inv.amountPaid)} />
-              <Row label="Balance Due" v={inr(inv.balanceDue || 0)} />
-            </>
-          )}
-        </div>
-
-        <div className="mt-8 text-xs text-muted-foreground border-t pt-3">
-          Thank you for shopping with Cloudiefy-Jewellery Software. Goods once sold cannot be returned.
-        </div>
-
-        <div className="flex justify-end gap-2 mt-6 print:hidden">
+        
+        {/* Action Buttons */}
+        <div className="sticky bottom-0 bg-slate-100 p-4 border-t border-slate-200 rounded-b-lg flex justify-end gap-3 print:hidden">
           <Button variant="outline" onClick={onClose}>Close</Button>
           <Button onClick={() => window.print()}>
-            <Printer className="w-4 h-4 mr-2" /> Print
+            <Printer className="w-4 h-4 mr-2" /> Print Bill
           </Button>
         </div>
       </div>

@@ -8,11 +8,14 @@ import { inr, type Invoice } from "@/lib/storage";
 import { formatDate } from "@/lib/utils";
 import { Receipt, Trash2 } from "lucide-react";
 import { useApi, useApiMutation } from "@/hooks/useApi";
-import { invoicesAPI } from "@/lib/api";
+import { invoicesAPI, inventoryAPI } from "@/lib/api";
+import { toast } from "sonner";
 
 export default function SalesPage() {
   const { data: invoices = [] } = useApi<Invoice[]>(["invoices"], () => invoicesAPI.getAll());
+  const { data: products = [] } = useApi<any[]>(["inventory"], () => inventoryAPI.getAll());
   const deleteMutation = useApiMutation((id: string) => invoicesAPI.delete(id), ["invoices"]);
+  const updateProductMutation = useApiMutation((data: { id: string; body: any }) => inventoryAPI.update(data.id, data.body), ["inventory"]);
 
   const [q, setQ] = useState("");
   const [type, setType] = useState<"All" | "GST" | "NON-GST">("All");
@@ -22,6 +25,23 @@ export default function SalesPage() {
     (i.number + i.customerName + i.customerMobile).toLowerCase().includes(q.toLowerCase())
   );
   const total = filtered.reduce((s, i) => s + i.total, 0);
+
+  const removeInvoice = async (invoice: Invoice) => {
+    if (window.confirm(`Are you sure you want to delete Invoice ${invoice.number}? This will also add the sold items back to your inventory.`)) {
+      try {
+        // Add stock back to inventory
+        for (const item of invoice.items) {
+          const p = products.find((x) => (x.id || x._id) === item.productId);
+          if (p) {
+            const newStock = (p.stock || 0) + (item.qty || 1);
+            await updateProductMutation.mutateAsync({ id: p._id || p.id, body: { ...p, stock: newStock } });
+          }
+        }
+        await deleteMutation.mutateAsync(invoice._id || invoice.id || "");
+        toast.success("Invoice deleted and stock restored.");
+      } catch (e) { toast.error("Failed to delete invoice."); }
+    }
+  };
 
   return (
     <Layout>
@@ -47,15 +67,22 @@ export default function SalesPage() {
         </CardHeader>
         <CardContent>
           {filtered.length === 0 ? <p className="text-center text-muted-foreground py-12">No invoices match.</p> :
-          <table className="w-full text-sm"><thead className="text-left text-muted-foreground border-b"><tr><th className="py-2">Invoice</th><th>Date</th><th>Customer</th><th>Type</th><th>Mode</th><th>Items</th><th className="text-right">Total</th><th></th></tr></thead>
+          <table className="w-full text-sm"><thead className="text-left text-muted-foreground border-b"><tr><th className="py-2">Invoice</th><th>Date</th><th>Customer</th><th>Type</th><th>Mode</th><th>Items</th><th className="text-right">Total</th><th className="text-center px-4">Status</th><th></th></tr></thead>
             <tbody>{[...filtered].sort((a,b) => b.createdAt.localeCompare(a.createdAt)).map(i => (<tr key={i._id || i.id} className="border-b last:border-0">
               <td className="py-2 font-medium">{i.number}</td>
               <td>{formatDate(i.createdAt)}</td>
               <td>{i.customerName}<div className="text-xs text-muted-foreground">{i.customerMobile}</div></td>
               <td>{i.type}</td><td>{i.paymentMode}</td><td>{i.items.length}</td>
               <td className="text-right">{inr(i.total)}</td>
+              <td className="text-center px-4">
+                {(i.balanceDue || 0) <= 0 ? (
+                  <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded text-[10px] font-semibold uppercase">Paid</span>
+                ) : (
+                  <span className="bg-rose-100 text-rose-700 px-2 py-0.5 rounded text-[10px] font-semibold uppercase">Due</span>
+                )}
+              </td>
               <td className="text-right">
-                <Button size="sm" variant="ghost" onClick={() => deleteMutation.mutateAsync(i._id || i.id)}>
+                <Button size="sm" variant="ghost" onClick={() => removeInvoice(i)}>
                   <Trash2 className="w-4 h-4 text-red-500" />
                 </Button>
               </td>

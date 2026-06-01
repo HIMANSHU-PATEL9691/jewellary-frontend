@@ -14,43 +14,46 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { Badge } from "@/components/ui/badge";
 import { inr, type Girvi, useLocalState } from "@/lib/storage";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { girviAPI, customerAPI } from "@/lib/api";
 import { useMemo, useState } from "react";
-import { Plus, Trash2, Printer, Pencil } from "lucide-react";
+import { Plus, Trash2, Printer, Pencil, Search, Image as ImageIcon, Wallet, Scale, Landmark, TrendingUp } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 import { toast } from "sonner";
 
-function calculateInterest(girvi: Girvi) {
-  if (!girvi.date) return 0;
-  
-  const start = new Date(girvi.date);
+function getElapsedDays(dateStr: string) {
+  if (!dateStr) return 0;
+  const start = new Date(dateStr);
   start.setHours(0, 0, 0, 0);
   const now = new Date();
   now.setHours(0, 0, 0, 0);
-  
   const diffTime = now.getTime() > start.getTime() ? now.getTime() - start.getTime() : 0;
-  const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
+  return Math.round(diffTime / (1000 * 60 * 60 * 24));
+}
+
+function getElapsedTimeString(dateStr: string) {
+  const diffDays = getElapsedDays(dateStr);
+  const months = Math.floor(diffDays / 30);
+  const days = diffDays % 30;
   
-  // Exact fractional months (e.g., 45 days = 1.5 months). Minimum 1 month charge.
-  const months = Math.max(1, diffDays / 30); 
-  return Math.round((girvi.loanAmount * (girvi.interestPct / 100)) * months);
+  if (months > 0 && days > 0) return `${months} mo, ${days} days`;
+  if (months > 0) return `${months} mo`;
+  return `${diffDays} days`;
+}
+
+function calculateInterest(girvi: Girvi) {
+  const diffDays = getElapsedDays(girvi.date);
+  const interestPerDay = (girvi.loanAmount * (girvi.interestPct / 100)) / 30;
+  return Math.round(interestPerDay * diffDays);
 }
 
 function calculateForwardedInterest(girvi: Girvi) {
-  if (!girvi.date || !girvi.forwardedAmount || !girvi.forwardedInterestPct) return 0;
-  
-  const start = new Date(girvi.date);
-  start.setHours(0, 0, 0, 0);
-  const now = new Date();
-  now.setHours(0, 0, 0, 0);
-  
-  const diffTime = now.getTime() > start.getTime() ? now.getTime() - start.getTime() : 0;
-  const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
-  
-  const months = Math.max(1, diffDays / 30); 
-  return Math.round((girvi.forwardedAmount * (girvi.forwardedInterestPct / 100)) * months);
+  if (!girvi.forwardedAmount || !girvi.forwardedInterestPct) return 0;
+  const diffDays = getElapsedDays(girvi.date);
+  const interestPerDay = (girvi.forwardedAmount * (girvi.forwardedInterestPct / 100)) / 30;
+  return Math.round(interestPerDay * diffDays);
 }
 
 export default function GirviPage() {
@@ -62,6 +65,7 @@ export default function GirviPage() {
   const deleteMutation = useApiMutation((id: string) => girviAPI.delete(id), ["girvis"]);
 
   const [filter, setFilter] = useState<"All" | Girvi["status"]>("All");
+  const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
   const [viewing, setViewing] = useState<Girvi | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -96,6 +100,8 @@ export default function GirviPage() {
     forwardedAmount: 0,
     forwardedInterestPct: 0,
     forwardedImageUrl: "",
+    customerSignature: "",
+    authorizedSignatory: "",
   });
   const [categories, setCategories] = useState(["Gold Jewellery", "Silver Jewellery", "Pendants", "Rings"]);
   const [addCategoryOpen, setAddCategoryOpen] = useState(false);
@@ -117,9 +123,17 @@ export default function GirviPage() {
   }, [girvis]);
 
   const filtered = useMemo(() => {
-    const list = filter === "All" ? girvis : girvis.filter((g) => g.status === filter);
+    let list = filter === "All" ? girvis : girvis.filter((g) => g.status === filter);
+    if (q.trim()) {
+      const lowerQ = q.toLowerCase().trim();
+      list = list.filter((g) => 
+        g.customerName.toLowerCase().includes(lowerQ) || 
+        g.loanNo.toLowerCase().includes(lowerQ) || 
+        g.customerMobile.includes(lowerQ)
+      );
+    }
     return [...list].sort((a, b) => b.date.localeCompare(a.date));
-  }, [girvis, filter]);
+  }, [girvis, filter, q]);
 
   async function add(createInvoice = false) {
     if (!form.customerName || !form.loanAmount) return;
@@ -168,6 +182,8 @@ export default function GirviPage() {
         forwardedAmount: 0,
         forwardedInterestPct: 0,
         forwardedImageUrl: "",
+        customerSignature: "",
+        authorizedSignatory: "",
       });
       setImagePreview("");
       setForwardedImagePreview("");
@@ -256,6 +272,8 @@ export default function GirviPage() {
       forwardedAmount: 0,
       forwardedInterestPct: 0,
       forwardedImageUrl: "",
+      customerSignature: "",
+      authorizedSignatory: "",
     });
     setImagePreview("");
     setForwardedImagePreview("");
@@ -498,6 +516,37 @@ export default function GirviPage() {
                   {forwardedImagePreview && <img src={forwardedImagePreview} alt="Forwarded Item" className="mt-2 h-28 w-full rounded-md object-cover" />}
                 </div>
               </div>
+
+              <div className="border-t pt-4 mt-2 mb-2">
+                <Label className="text-muted-foreground font-medium block mb-3">Signatures (Optional)</Label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <Label className="text-xs">Customer Signature</Label>
+                    <Input type="file" accept="image/*" className="bg-background mt-1" onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        const reader = new FileReader();
+                        reader.onload = () => setForm({ ...form, customerSignature: reader.result as string });
+                        reader.readAsDataURL(file);
+                      }
+                    }} />
+                    {form.customerSignature && <img src={form.customerSignature} alt="Customer Signature" className="mt-2 h-16 object-contain" />}
+                  </div>
+                  <div>
+                    <Label className="text-xs">Authorized Signatory</Label>
+                    <Input type="file" accept="image/*" className="bg-background mt-1" onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        const reader = new FileReader();
+                        reader.onload = () => setForm({ ...form, authorizedSignatory: reader.result as string });
+                        reader.readAsDataURL(file);
+                      }
+                    }} />
+                    {form.authorizedSignatory && <img src={form.authorizedSignatory} alt="Authorized Signatory" className="mt-2 h-16 object-contain" />}
+                  </div>
+                </div>
+              </div>
+
               <div className="grid grid-cols-1 gap-2 md:grid-cols-2 pt-2">
                 <Button className="w-full" onClick={() => add(false)}>Save Girvi</Button>
                 <Button className="w-full" onClick={() => add(true)}>Save & Print Bill</Button>
@@ -508,10 +557,10 @@ export default function GirviPage() {
       </header>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <KPI label="Active Loans" value={totals.activeCount} />
-        <KPI label="Principal Out" value={inr(totals.principal)} />
-        <KPI label="Pledged Weight" value={`${totals.pledgedWeight.toFixed(3)} g`} />
-        <KPI label="Collateral Value" value={inr(totals.collateralValue)} />
+        <KPI label="Active Loans" value={totals.activeCount} icon={Landmark} colorClass="text-primary" />
+        <KPI label="Principal Out" value={inr(totals.principal)} icon={Wallet} colorClass="text-amber-600" />
+        <KPI label="Pledged Weight" value={`${totals.pledgedWeight.toFixed(3)} g`} icon={Scale} colorClass="text-blue-600" />
+        <KPI label="Collateral Value" value={inr(totals.collateralValue)} icon={TrendingUp} colorClass="text-emerald-600" />
         {totals.forwardedPrincipal > 0 && (
           <>
             <KPI label="Forwarded Principal" value={inr(totals.forwardedPrincipal)} />
@@ -521,83 +570,104 @@ export default function GirviPage() {
         )}
       </div>
 
-      <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle className="font-display">Loan Records</CardTitle>
-              <Select value={filter} onValueChange={(v) => setFilter(v as typeof filter)}>
-                <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="All">All</SelectItem>
-                  <SelectItem value="Active">Active</SelectItem>
-                  <SelectItem value="Closed">Closed</SelectItem>
-                  <SelectItem value="Auctioned">Auctioned</SelectItem>
-                </SelectContent>
-              </Select>
+      <Card className="shadow-sm border-border overflow-hidden flex flex-col">
+          <CardHeader className="bg-muted/20 border-b border-border pb-3 pt-4">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <CardTitle className="text-base font-semibold font-display">Loan Records</CardTitle>
+              <div className="flex items-center gap-2 w-full sm:w-auto">
+                <div className="relative flex-1 sm:w-64">
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <Input 
+                    placeholder="Search customer or loan no..." 
+                    value={q} 
+                    onChange={e => setQ(e.target.value)} 
+                    className="pl-9 h-8 bg-background text-xs border-border shadow-sm"
+                  />
+                </div>
+                <Select value={filter} onValueChange={(v) => setFilter(v as typeof filter)}>
+                  <SelectTrigger className="w-32 h-8 bg-background text-xs font-medium border-border shadow-sm"><SelectValue placeholder="Status" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="All">All Status</SelectItem>
+                    <SelectItem value="Active">Active</SelectItem>
+                    <SelectItem value="Closed">Closed</SelectItem>
+                    <SelectItem value="Auctioned">Auctioned</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           </CardHeader>
-          <CardContent>
-            {isLoading ? <p className="text-sm text-muted-foreground py-8 text-center">Loading records...</p> : filtered.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-8 text-center">No girvi records.</p>
+          <CardContent className="p-0">
+            {isLoading ? <p className="text-sm text-muted-foreground py-12 text-center">Loading records...</p> : filtered.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
+                <Search className="w-10 h-10 mb-3 opacity-20" />
+                <p>No girvi records found.</p>
+              </div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="text-left text-muted-foreground border-b bg-muted/20">
+                <table className="w-full text-sm text-left border-collapse">
+                  <thead className="bg-muted/40 text-muted-foreground text-[11px] uppercase tracking-wider border-b border-border">
                     <tr>
-                      <th className="py-3 px-4 font-medium">Loan No</th>
-                      <th className="py-3 font-medium">Date</th>
-                      <th className="py-3 font-medium">Customer</th>
-                      <th className="py-3 font-medium">Item Details</th>
-                      <th className="py-3 font-medium text-right">Net Wt.</th>
-                      <th className="py-3 font-medium text-right">Principal</th>
-                      <th className="py-3 font-medium text-right">Interest</th>
-                      <th className="py-3 font-medium px-2">Status</th>
-                      <th className="py-3 px-4"></th>
+                      <th className="py-3 px-4 font-semibold">Loan No</th>
+                      <th className="py-3 px-4 font-semibold">Date & Time</th>
+                      <th className="py-3 px-4 font-semibold">Customer</th>
+                      <th className="py-3 px-4 font-semibold">Item Details</th>
+                      <th className="py-3 px-4 font-semibold text-right">Net Wt.</th>
+                      <th className="py-3 px-4 font-semibold text-right">Principal</th>
+                      <th className="py-3 px-4 font-semibold text-right">Interest</th>
+                      <th className="py-3 px-4 font-semibold text-center">Status</th>
+                      <th className="py-3 px-4 font-semibold text-right">Action</th>
                     </tr>
                   </thead>
                   <tbody>
                     {filtered.map((g) => {
                       const interestAmt = calculateInterest(g);
                       const statusColors = {
-                        Active: "bg-amber-50 text-amber-700 border-amber-200",
-                        Closed: "bg-green-50 text-green-700 border-green-200",
-                        Auctioned: "bg-rose-50 text-rose-700 border-rose-200",
+                        Active: "bg-amber-100 text-amber-800 border-amber-200",
+                        Closed: "bg-green-100 text-green-800 border-green-200",
+                        Auctioned: "bg-rose-100 text-rose-800 border-rose-200",
                       };
                       
                       return (
-                        <tr key={(g as any)._id || g.id} className="border-b last:border-0 align-top hover:bg-muted/40 transition-colors">
-                          <td className="py-3 px-4 font-medium text-primary whitespace-nowrap">{g.loanNo}</td>
-                          <td className="py-3 whitespace-nowrap">
-                            <div>{formatDate(g.date)}</div>
-                            {g.dueDate && <div className="text-[10px] text-rose-500 mt-0.5">Due: {formatDate(g.dueDate)}</div>}
+                        <tr key={(g as any)._id || g.id} className="border-b border-border/50 last:border-0 align-top hover:bg-muted/20 transition-colors">
+                          <td className="py-3 px-4 font-medium text-foreground whitespace-nowrap">{g.loanNo}</td>
+                          <td className="py-3 px-4 whitespace-nowrap">
+                            <div className="text-sm">{formatDate(g.date)}</div>
+                            <div className="text-[11px] text-muted-foreground font-medium mt-0.5">{getElapsedTimeString(g.date)} elapsed</div>
+                            {g.dueDate && <div className="text-[11px] text-rose-500 font-medium mt-0.5">Due: {formatDate(g.dueDate)}</div>}
                           </td>
-                          <td className="py-3">
-                            <div className="font-medium whitespace-nowrap">{g.customerName}</div>
+                          <td className="py-3 px-4">
+                            <div className="font-medium text-foreground whitespace-nowrap">{g.customerName}</div>
                             <div className="text-xs text-muted-foreground whitespace-nowrap">{g.customerMobile}</div>
                           </td>
-                          <td className="py-3">
+                          <td className="py-3 px-4">
                             <div className="flex items-center gap-3">
                               {g.imageUrl ? (
-                                <img src={g.imageUrl} alt="Item" className="w-8 h-8 rounded object-cover border border-border shrink-0" />
+                                <img src={g.imageUrl} alt="Item" className="w-10 h-10 rounded-md object-cover border border-border shadow-sm shrink-0" />
                               ) : (
-                                <div className="w-8 h-8 rounded bg-muted flex items-center justify-center border border-border shrink-0 text-[10px] text-muted-foreground">No img</div>
+                                <div className="w-10 h-10 rounded-md bg-muted/50 flex items-center justify-center border border-border shadow-sm shrink-0">
+                                  <ImageIcon className="w-4 h-4 text-muted-foreground/50" />
+                                </div>
                               )}
                               <div>
-                                <div className="font-medium whitespace-nowrap">{g.itemType} {g.purity}</div>
-                                <div className="text-xs text-muted-foreground line-clamp-1 max-w-37.5" title={g.itemDescription}>{g.itemDescription}</div>
-                              {(g.forwardedShopName || g.forwardedTo) && <div className="mt-1 text-[10px] font-semibold text-purple-700 border border-purple-200 bg-purple-50 inline-block px-1.5 py-0.5 rounded truncate max-w-35" title={g.forwardedShopName || g.forwardedTo}>Fwd: {g.forwardedShopName || g.forwardedTo}</div>}
+                                <div className="font-medium text-foreground whitespace-nowrap flex items-center gap-2">
+                                  {g.itemType} {g.purity}
+                                  {g.itemType === "Gold" && <Badge variant="outline" className="text-[10px] h-4 px-1 py-0 bg-amber-50 text-amber-600 border-amber-200 shadow-none">Gold</Badge>}
+                                  {g.itemType === "Silver" && <Badge variant="outline" className="text-[10px] h-4 px-1 py-0 bg-slate-50 text-slate-600 border-slate-200 shadow-none">Silver</Badge>}
+                                </div>
+                                <div className="text-xs text-muted-foreground line-clamp-1 max-w-40 mt-0.5" title={g.itemDescription}>{g.itemDescription}</div>
+                              {(g.forwardedShopName || g.forwardedTo) && <div className="mt-1 text-[10px] font-semibold text-purple-700 border border-purple-200 bg-purple-50 inline-block px-1.5 py-0.5 rounded truncate max-w-40" title={g.forwardedShopName || g.forwardedTo}>Fwd: {g.forwardedShopName || g.forwardedTo}</div>}
                               </div>
                             </div>
                           </td>
-                          <td className="py-3 text-right font-medium whitespace-nowrap">{g.netWeight.toFixed(3)} g</td>
-                          <td className="py-3 text-right font-medium whitespace-nowrap">{inr(g.loanAmount)}</td>
-                          <td className="py-3 text-right whitespace-nowrap">
-                            <div className="font-medium text-amber-600">{inr(interestAmt)}</div>
-                            <div className="text-[10px] text-muted-foreground">@ {g.interestPct}%/mo</div>
+                          <td className="py-3 px-4 text-right font-medium text-foreground whitespace-nowrap">{g.netWeight.toFixed(3)} g</td>
+                          <td className="py-3 px-4 text-right font-semibold text-foreground whitespace-nowrap">{inr(g.loanAmount)}</td>
+                          <td className="py-3 px-4 text-right whitespace-nowrap">
+                            <div className="font-semibold text-amber-600">{inr(interestAmt)}</div>
+                            <div className="text-[11px] text-muted-foreground font-medium mt-0.5">@ {g.interestPct}%/mo</div>
                           </td>
-                          <td className="py-3 px-2">
+                          <td className="py-3 px-4 text-center">
                             <Select value={g.status} onValueChange={(v) => setStatus((g as any)._id || g.id, v as Girvi["status"])}>
-                              <SelectTrigger className={`h-8 w-28 text-xs font-medium ${statusColors[g.status] || ""}`}>
+                              <SelectTrigger className={`mx-auto h-7 w-24 text-[10px] font-bold uppercase tracking-wider shadow-none border-transparent ${statusColors[g.status] || ""}`}>
                                 <SelectValue />
                               </SelectTrigger>
                               <SelectContent>
@@ -609,11 +679,11 @@ export default function GirviPage() {
                           </td>
                           <td className="py-3 px-4 text-right">
                             <div className="flex justify-end gap-1">
-                              <Button size="sm" variant="ghost" onClick={() => setViewing(g as Girvi)}>View</Button>
-                              <Button variant="ghost" size="icon" onClick={() => startEdit(g as Girvi)}>
+                              <Button size="sm" variant="outline" className="h-8 bg-background" onClick={() => setViewing(g as Girvi)}>View</Button>
+                              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => startEdit(g as Girvi)}>
                                 <Pencil className="w-4 h-4 text-muted-foreground hover:text-primary" />
                               </Button>
-                              <Button variant="ghost" size="icon" onClick={() => remove((g as any)._id || g.id)}>
+                              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => remove((g as any)._id || g.id)}>
                                 <Trash2 className="w-4 h-4 text-rose-500 hover:text-rose-600" />
                               </Button>
                             </div>
@@ -632,12 +702,21 @@ export default function GirviPage() {
   );
 }
 
-function KPI({ label, value }: { label: string; value: string | number }) {
+function KPI({ label, value, icon: Icon, colorClass }: { label: string; value: string | number; icon?: any; colorClass?: string }) {
+  const bgClass = colorClass ? colorClass.replace('text-', 'bg-').replace(/-\d00$/, '-100') : 'bg-muted';
+  
   return (
-    <Card>
-      <CardContent className="pt-6">
-        <div className="text-sm text-muted-foreground">{label}</div>
-        <div className="text-2xl font-display mt-1">{value}</div>
+    <Card className="shadow-sm border-border hover:shadow-md transition-shadow duration-200">
+      <CardContent className="p-6 flex items-center justify-between gap-4">
+        <div>
+          <div className="text-sm font-medium text-muted-foreground">{label}</div>
+          <div className={`text-2xl font-display font-bold mt-1 ${colorClass || "text-foreground"}`}>{value}</div>
+        </div>
+        {Icon && (
+          <div className={`w-12 h-12 rounded-full flex items-center justify-center ${bgClass} bg-opacity-50 shrink-0`}>
+            <Icon className={`w-6 h-6 ${colorClass || "text-muted-foreground"}`} />
+          </div>
+        )}
       </CardContent>
     </Card>
   );
@@ -730,6 +809,10 @@ function GirviModal({ girvi, onClose }: { girvi: Girvi; onClose: () => void }) {
                 <span className="font-bold">{girvi.interestPct}% / month</span>
               </div>
               <div className="flex justify-between mb-2">
+                <span className="text-slate-500">Time Elapsed</span>
+                <span className="font-bold">{getElapsedTimeString(girvi.date)}</span>
+              </div>
+              <div className="flex justify-between mb-2">
                 <span className="text-slate-500">Loan Tenure</span>
                 <span className="font-bold">{girvi.tenureMonths} months</span>
               </div>
@@ -819,11 +902,19 @@ function GirviModal({ girvi, onClose }: { girvi: Girvi; onClose: () => void }) {
           {/* Signatures */}
           <div className="mt-12 flex justify-between items-end text-xs font-bold text-slate-700 uppercase tracking-wider">
             <div className="text-center">
-              <div className="w-56 border-t-2 border-slate-400 mb-2"></div>
+              {girvi.customerSignature ? (
+                <img src={girvi.customerSignature} alt="Customer Signature" className="h-16 mx-auto mb-2 object-contain" />
+              ) : (
+                <div className="w-56 border-t-2 border-slate-400 mb-2"></div>
+              )}
               Customer Signature
             </div>
             <div className="text-center">
-              <div className="w-56 border-t-2 border-slate-400 mb-2"></div>
+              {girvi.authorizedSignatory ? (
+                <img src={girvi.authorizedSignatory} alt="Authorized Signatory" className="h-16 mx-auto mb-2 object-contain" />
+              ) : (
+                <div className="w-56 border-t-2 border-slate-400 mb-2"></div>
+              )}
               Authorized Signatory
             </div>
           </div>

@@ -88,6 +88,8 @@ export type Invoice = {
   amountPaid?: number;
   balanceDue?: number;
   payments?: InvoicePayment[];
+  customerSignature?: string;
+  authorizedSignatory?: string;
   createdAt: string;
 };
 
@@ -147,6 +149,8 @@ export type Girvi = {
   forwardedAmount?: number;
   forwardedInterestPct?: number;
   forwardedImageUrl?: string;
+  customerSignature?: string;
+  authorizedSignatory?: string;
 };
 
 export type Supplier = {
@@ -196,6 +200,8 @@ export type Repair = {
   status: "Received" | "In Progress" | "Ready" | "Delivered";
   note?: string;
   createdAt?: string;
+  customerSignature?: string;
+  authorizedSignatory?: string;
 };
 
 export type JobWork = {
@@ -233,6 +239,8 @@ export type Order = {
   dueDate?: string;
   status: "Pending" | "In Progress" | "Ready" | "Delivered" | "Cancelled";
   note?: string;
+  customerSignature?: string;
+  authorizedSignatory?: string;
 };
 
 export type Scheme = {

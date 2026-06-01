@@ -20,6 +20,7 @@ import LedgerPage from "./routes/ledger";
 import DuesPage from "./routes/dues";
 import ForwardedShopsPage from "./routes/forwarded-shops";
 import KarigarTasksPage from "./routes/karigar-tasks";
+import NotificationsPage from "./routes/notifications";
 import LoginPage from "./routes/login";
 import { useLocalState } from "./lib/storage";
 
@@ -66,6 +67,7 @@ export default function App() {
         <Route path="/dues" element={<DuesPage />} />
         <Route path="/forwarded-shops" element={<ForwardedShopsPage />} />
         <Route path="/karigar-tasks" element={<KarigarTasksPage />} />
+        <Route path="/notifications" element={<NotificationsPage />} />
         <Route path="*" element={<div className="flex min-h-screen items-center justify-center text-2xl font-bold text-muted-foreground">404 - Page Not Found</div>} />
       </Routes>
     </BrowserRouter>

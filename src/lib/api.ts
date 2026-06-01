@@ -1,3 +1,5 @@
+import { toast } from "sonner";
+
 // API Configuration
 // Forcing port 3006 to ignore any old VITE_API_URL settings from your frontend .env file
 const API_BASE_URL = 'http://localhost:3006/api';
@@ -28,7 +30,9 @@ const apiCall = async (endpoint: string, options: RequestInit = {}) => {
   if (!response.ok) {
     const errorData = isJson ? await response.json() : await response.text();
     console.error(`[Frontend API Error] ${url}:`, errorData);
-    throw new Error(isJson ? errorData.error : `API Error: Endpoint may not exist (${response.status})`);
+    const errorMessage = isJson ? (errorData.error || errorData.message || JSON.stringify(errorData)) : `API Error: Endpoint may not exist (${response.status})`;
+    toast.error(errorMessage);
+    throw new Error(errorMessage);
   }
 
   if (!isJson) {
@@ -136,7 +140,7 @@ export const invoicesAPI = {
   create: (data: any) => apiCall('/invoices', { method: 'POST', body: JSON.stringify(data) }),
   update: (id: string, data: any) =>
     apiCall(`/invoices/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
-  delete: (id: string) => apiCall(`/invoices/${id}`),
+  delete: (id: string) => apiCall(`/invoices/${id}`, { method: 'DELETE' }),
 };
 // Gold Rates API
 export const goldRatesAPI = {
