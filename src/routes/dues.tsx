@@ -8,6 +8,7 @@ import { formatDate } from "@/lib/utils";
 import { useApi } from "@/hooks/useApi";
 import { invoicesAPI } from "@/lib/api";
 import { Search, AlertCircle, MessageCircle } from "lucide-react";
+import { DatePicker } from "@/components/ui/date-picker";
 
 export default function DuesPage() {
   const { data: invoices = [], isLoading } = useApi<Invoice[]>(["invoices"], () => invoicesAPI.getAll());
@@ -75,10 +76,9 @@ export default function DuesPage() {
           <Input className="pl-9 bg-background" placeholder="Search by customer name, mobile or invoice no" value={q} onChange={(e) => setQ(e.target.value)} />
         </div>
         <div className="flex items-center gap-2">
-          <Input 
-            type="date" 
+          <DatePicker 
             value={dateFilter} 
-            onChange={(e) => setDateFilter(e.target.value)} 
+            onChange={setDateFilter} 
             className="w-40 bg-background"
           />
           {dateFilter && (

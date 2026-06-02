@@ -22,6 +22,9 @@ import { useMemo, useState } from "react";
 import { Plus, Trash2, Printer, Pencil, Search, Image as ImageIcon, Wallet, Scale, Landmark, TrendingUp } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 import { toast } from "sonner";
+import { DatePicker } from "@/components/ui/date-picker";
+import { PaymentQr } from "@/components/PaymentQr";
+import { InvoiceTerms, ShopHeader } from "@/components/InvoiceBranding";
 
 function getElapsedDays(dateStr: string) {
   if (!dateStr) return 0;
@@ -228,6 +231,14 @@ export default function GirviPage() {
 
   async function setStatus(id: string, status: Girvi["status"]) {
     const g = girvis.find((x) => x.id === id || (x as any)._id === id);
+
+    if ((status === "Closed" || status === "Auctioned") && g) {
+      if (Number(g.forwardedAmount) > 0) {
+        window.alert("Take item from Forwarded Shops first before closing or auctioning this loan.");
+        return;
+      }
+    }
+
     if (status === "Closed" && g) {
       const interest = calculateInterest(g);
       const total = g.loanAmount + interest;
@@ -294,7 +305,7 @@ export default function GirviPage() {
 
   return (
     <Layout>
-      <header className="flex items-end justify-between mb-6">
+      <header className="flex flex-col sm:flex-row items-start sm:items-end justify-between gap-4 mb-6">
         <div>
           <h1 className="text-4xl">Girvi — Gold &amp; Silver Loans</h1>
           <p className="text-muted-foreground mt-1">
@@ -303,7 +314,7 @@ export default function GirviPage() {
         </div>
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
-            <Button size="lg" onClick={startNew}>
+            <Button size="lg" className="w-full sm:w-auto" onClick={startNew}>
               <Plus className="w-4 h-4 mr-2" /> New Girvi
             </Button>
           </DialogTrigger>
@@ -312,15 +323,9 @@ export default function GirviPage() {
               <DialogTitle>{editingId ? "Edit Girvi Loan" : "New Girvi Loan"}</DialogTitle>
             </DialogHeader>
             <div className="space-y-3">
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <Label>Arrival Date</Label>
-                  <Input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} />
-                </div>
-                <div>
-                  <Label>Loan No.</Label>
-                  <Input value={form.loanNo} onChange={(e) => setForm({ ...form, loanNo: e.target.value })} />
-                </div>
+              <div>
+                <Label>Arrival Date</Label>
+                <DatePicker value={form.date} onChange={(v) => setForm({ ...form, date: v })} className="w-full" />
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <div>
@@ -446,20 +451,9 @@ export default function GirviPage() {
                   <Input type="number" value={form.tenureMonths || ""} onChange={(e) => setForm({ ...form, tenureMonths: +e.target.value })} />
                 </div>
                 <div>
-                  <Label>Bill / Invoice Type</Label>
-                  <Select value={form.documentType || "Invoice"} onValueChange={(v) => setForm({ ...form, documentType: v as Girvi["documentType"] })}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Invoice">Invoice</SelectItem>
-                      <SelectItem value="Bill">Bill</SelectItem>
-                      <SelectItem value="Receipt">Receipt</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <Label>Bill / Invoice No.</Label>
+                  <Input value={form.documentNumber || ""} onChange={(e) => setForm({ ...form, documentNumber: e.target.value })} placeholder="INV-12345" />
                 </div>
-              </div>
-              <div>
-                <Label>Bill / Invoice No.</Label>
-                <Input value={form.documentNumber || ""} onChange={(e) => setForm({ ...form, documentNumber: e.target.value })} placeholder="INV-12345" />
               </div>
               <div>
                 <Label>Item Image</Label>
@@ -492,7 +486,7 @@ export default function GirviPage() {
                     </div>
                   </div>
                   <div>
-                    <Label>Shop GST No.</Label>
+                    <Label>Shop GST No. (Optional)</Label>
                     <Input value={form.forwardedShopGstNo || ""} onChange={(e) => setForm({ ...form, forwardedShopGstNo: e.target.value })} placeholder="GSTIN" />
                   </div>
                 </div>
@@ -556,7 +550,7 @@ export default function GirviPage() {
         </Dialog>
       </header>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <KPI label="Active Loans" value={totals.activeCount} icon={Landmark} colorClass="text-primary" />
         <KPI label="Principal Out" value={inr(totals.principal)} icon={Wallet} colorClass="text-amber-600" />
         <KPI label="Pledged Weight" value={`${totals.pledgedWeight.toFixed(3)} g`} icon={Scale} colorClass="text-blue-600" />
@@ -732,11 +726,7 @@ function GirviModal({ girvi, onClose }: { girvi: Girvi; onClose: () => void }) {
     <div className="fixed inset-0 z-50 bg-black/50 flex justify-center items-start p-2 sm:p-4 print:bg-white print:p-0 overflow-y-auto">
       <div className="bg-white w-full max-w-3xl rounded-lg shadow-xl print:shadow-none print:max-w-none text-slate-900 my-auto relative">
         <div className="p-5 border-2 border-slate-800 m-2 print:m-0 rounded-sm bg-white">
-          {/* Header */}
-          <div className="text-center border-b-2 border-slate-800 pb-3 mb-4">
-            <h2 className="text-2xl font-display font-bold uppercase tracking-wider">Cloudiefy Jewellery</h2>
-            <p className="text-xs text-slate-600 font-medium tracking-widest mt-1">GIRVI / PAWN TICKET</p>
-          </div>
+          <ShopHeader documentLabel="Girvi / Pawn Ticket" compact />
           
           {/* Meta Info */}
           <div className="flex justify-between items-end mb-4 text-xs">
@@ -898,6 +888,14 @@ function GirviModal({ girvi, onClose }: { girvi: Girvi; onClose: () => void }) {
               </div>
             </div>
           )}
+
+          <div className="mt-4">
+            <InvoiceTerms compact />
+          </div>
+
+          <div className="mt-6 flex justify-center border-t border-slate-200 pt-4">
+            <PaymentQr amount={girvi.status === "Closed" ? 0 : total} compact />
+          </div>
 
           {/* Signatures */}
           <div className="mt-12 flex justify-between items-end text-xs font-bold text-slate-700 uppercase tracking-wider">

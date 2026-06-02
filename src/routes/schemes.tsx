@@ -10,6 +10,7 @@ import { inr, type Scheme } from "@/lib/storage";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { schemesAPI, customerAPI } from "@/lib/api";
 import { Plus, Trash2, PiggyBank } from "lucide-react";
+import { DatePicker } from "@/components/ui/date-picker";
 
 export default function SchemesPage() {
   const { data: list = [], isLoading } = useApi<Scheme[]>(["schemes"], () => schemesAPI.getAll());
@@ -48,10 +49,10 @@ export default function SchemesPage() {
 
   return (
     <Layout>
-      <header className="flex items-end justify-between mb-6">
-        <div><h1 className="text-4xl">Schemes</h1><p className="text-muted-foreground mt-1">Customer savings plans (11+1, monthly etc).</p></div>
+      <header className="flex flex-col sm:flex-row items-start sm:items-end justify-between gap-4 mb-6">
+        <div><h1 className="text-4xl">Schemes</h1><p className="text-muted-foreground mt-1">Customer savings plans.</p></div>
         <Dialog open={open} onOpenChange={setOpen}>
-          <DialogTrigger asChild><Button size="lg"><Plus className="w-4 h-4 mr-2"/>New Scheme</Button></DialogTrigger>
+          <DialogTrigger asChild><Button size="lg" className="w-full sm:w-auto"><Plus className="w-4 h-4 mr-2"/>New Scheme</Button></DialogTrigger>
           <DialogContent className="max-h-[75vh] overflow-y-auto" aria-describedby={undefined}><DialogHeader><DialogTitle>Enroll Customer</DialogTitle></DialogHeader>
             <div className="grid grid-cols-2 gap-3">
               <div className="col-span-2 grid grid-cols-2 gap-3">
@@ -94,7 +95,7 @@ export default function SchemesPage() {
         </Dialog>
       </header>
 
-      <div className="grid grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
         <Stat label="Total Schemes" value={list.length} />
         <Stat label="Active" value={active} />
         <Stat label="Total Collected" value={inr(collected)} />
@@ -104,6 +105,7 @@ export default function SchemesPage() {
         <CardHeader><CardTitle className="font-display flex items-center gap-2"><PiggyBank className="w-5 h-5"/>Members</CardTitle></CardHeader>
         <CardContent>
           {isLoading ? <p className="text-center text-muted-foreground py-12">Loading schemes...</p> : list.length === 0 ? <p className="text-center text-muted-foreground py-12">No schemes yet.</p> :
+          <div className="overflow-x-auto">
           <table className="w-full text-sm"><thead className="text-left text-muted-foreground border-b"><tr><th className="py-2">No</th><th>Customer</th><th>Plan</th><th>Monthly</th><th>Progress</th><th>Paid</th><th>Status</th><th></th></tr></thead>
             <tbody>{list.map(s => (<tr key={(s as any)._id || s.id} className="border-b last:border-0">
               <td className="py-2 font-medium">{s.schemeNo}</td><td>{s.customerName}<div className="text-xs text-muted-foreground">{s.customerMobile}</div></td>
@@ -114,7 +116,8 @@ export default function SchemesPage() {
                 {s.status === "Active" && <Button size="sm" variant="outline" onClick={() => payInstallment((s as any)._id || s.id)}>+ Pay</Button>}
                 <Button size="sm" variant="ghost" onClick={() => remove((s as any)._id || s.id)}><Trash2 className="w-4 h-4"/></Button>
               </td>
-            </tr>))}</tbody></table>}
+            </tr>))}</tbody></table>
+            </div>}
         </CardContent>
       </Card>
     </Layout>
@@ -122,7 +125,10 @@ export default function SchemesPage() {
 }
 
 function Field({ label, v, on, type = "text" }: { label: string; v: string; on: (v: string) => void; type?: string }) {
-  return <div><Label className="text-xs">{label}</Label><Input type={type} value={v} onChange={e => on(e.target.value)} /></div>;
+  if (type === "date") {
+    return <div className="space-y-1.5"><Label className="text-xs">{label}</Label><DatePicker value={v} onChange={on} className="w-full h-9" /></div>;
+  }
+  return <div className="space-y-1.5"><Label className="text-xs">{label}</Label><Input type={type} value={v} onChange={e => on(e.target.value)} /></div>;
 }
 function Stat({ label, value }: { label: string; value: string | number }) {
   return <Card><CardContent className="pt-6"><div className="text-sm text-muted-foreground">{label}</div><div className="text-2xl font-display mt-1">{value}</div></CardContent></Card>;

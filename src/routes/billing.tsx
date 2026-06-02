@@ -18,7 +18,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { useEffect, useMemo, useState } from "react";
-import { Plus, Trash2, Printer, Receipt } from "lucide-react";
+import { Plus, Trash2, Printer, Receipt, Pencil } from "lucide-react";
 import {
   inr,
   calcItem,
@@ -29,6 +29,8 @@ import { formatDate } from "@/lib/utils";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { invoicesAPI, inventoryAPI, customerAPI } from "@/lib/api";
 import { toast } from "sonner";
+import { PaymentQr } from "@/components/PaymentQr";
+import { InvoiceTerms, ShopHeader } from "@/components/InvoiceBranding";
 
 export default function BillingPage() {
   const { data: invoices = [] } = useApi<any[]>(["invoices"], () => invoicesAPI.getAll());
@@ -38,9 +40,11 @@ export default function BillingPage() {
   const createMutation = useApiMutation((data: any) => invoicesAPI.create(data), ["invoices"]);
   const deleteMutation = useApiMutation((id: string) => invoicesAPI.delete(id), ["invoices"]);
   const updateProductMutation = useApiMutation((data: { id: string; body: any }) => inventoryAPI.update(data.id, data.body), ["inventory"]);
+  const updateMutation = useApiMutation((data: { id: string; body: any }) => invoicesAPI.update(data.id, data.body), ["invoices"]);
 
   const [viewing, setViewing] = useState<Invoice | null>(null);
   const [open, setOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   const [type, setType] = useState<"GST" | "NON-GST">("GST");
   const [customerId, setCustomerId] = useState<string>("");
@@ -49,8 +53,9 @@ export default function BillingPage() {
   const [items, setItems] = useState<InvoiceItem[]>([]);
   const [discount, setDiscount] = useState<number | "">("");
   const [oldGoldAmount, setOldGoldAmount] = useState<number | "">("");
-  const [paymentMode, setPaymentMode] = useState<Invoice["paymentMode"]>("Cash");
-  const [amountPaid, setAmountPaid] = useState<number | "">("");
+  const [cashAmount, setCashAmount] = useState<number | "">("");
+  const [onlineAmount, setOnlineAmount] = useState<number | "">("");
+  const [onlineMode, setOnlineMode] = useState<string>("UPI");
   const [customerSignature, setCustomerSignature] = useState<string>("");
   const [authorizedSignatory, setAuthorizedSignatory] = useState<string>("");
 
@@ -65,11 +70,14 @@ export default function BillingPage() {
       return;
     }
 
-    // If the product has a making charge percentage, calculate the making charge amount.
-    // Otherwise, use the fixed making charge from the product.
-    const makingCharge = (p.makingChargePct && p.makingChargePct > 0)
-      ? (p.netWeight * p.ratePerGram * p.makingChargePct) / 100
-      : p.makingCharge;
+    let makingCharge = p.makingCharge || 0;
+    let makingChargePct = p.makingChargePct || 0;
+
+    if (makingChargePct > 0) {
+      makingCharge = (p.netWeight * p.ratePerGram * makingChargePct) / 100;
+    } else if (makingCharge > 0 && p.netWeight > 0 && p.ratePerGram > 0) {
+      makingChargePct = Number(((makingCharge / (p.netWeight * p.ratePerGram)) * 100).toFixed(2));
+    }
 
     setItems((prev) => [
       ...prev,
@@ -80,7 +88,7 @@ export default function BillingPage() {
         netWeight: p.netWeight,
         ratePerGram: p.ratePerGram,
         makingCharge: makingCharge,
-        makingChargePct: p.makingChargePct || 0,
+        makingChargePct: makingChargePct,
         stoneCharge: 0,
         gstPct: p.gstPct,
         qty: 1,
@@ -133,13 +141,54 @@ export default function BillingPage() {
   }, [items, discount, oldGoldAmount, isGst]);
 
   const reset = () => {
+    setEditingId(null);
     setItems([]);
     setDiscount("");
     setOldGoldAmount("");
     setCustomerId("");
-    setAmountPaid("");
+    setCashAmount("");
+    setOnlineAmount("");
+    setOnlineMode("UPI");
     setCustomerSignature("");
     setAuthorizedSignatory("");
+  };
+
+  const editInvoice = (inv: any) => {
+    setEditingId(inv._id || inv.id);
+    setType(inv.type);
+    setCustomerId(inv.customerId);
+    setSearchCust(inv.customerName || "");
+    setItems(inv.items || []);
+    setDiscount(inv.discount || "");
+    setOldGoldAmount(inv.oldGoldAmount || "");
+    
+    let cAmt = 0;
+    let oAmt = 0;
+    let oMode = "UPI";
+
+    if (inv.payments && inv.payments.length > 0) {
+      inv.payments.forEach((p: any) => {
+        if (p.mode === "Cash") cAmt += p.amount;
+        else { oAmt += p.amount; oMode = p.mode; }
+      });
+    } else {
+      const paid = inv.amountPaid !== undefined ? inv.amountPaid : inv.total;
+      if (inv.paymentMode === "Cash") { cAmt = paid; }
+      else { oAmt = paid; oMode = inv.paymentMode || "UPI"; }
+    }
+    
+    if (cAmt === 0 && oAmt === 0) {
+      setCashAmount(0);
+      setOnlineAmount("");
+    } else {
+      setCashAmount(cAmt > 0 ? cAmt : "");
+      setOnlineAmount(oAmt > 0 ? oAmt : "");
+    }
+    setOnlineMode(oMode);
+    
+    setCustomerSignature(inv.customerSignature || "");
+    setAuthorizedSignatory(inv.authorizedSignatory || "");
+    setOpen(true);
   };
 
   const save = async () => {
@@ -154,58 +203,95 @@ export default function BillingPage() {
       return;
     }
 
-    const actualPaid = amountPaid === "" ? totals.gTotal : Number(amountPaid);
-    const safeActualPaid = Number.isFinite(actualPaid) ? actualPaid : totals.gTotal;
+    const existingInv = editingId ? invoices.find(i => (i._id || i.id) === editingId) : null;
+
+    const isCashEmpty = cashAmount === "";
+    const isOnlineEmpty = onlineAmount === "";
+    const cAmt = Number(cashAmount) || 0;
+    const oAmt = Number(onlineAmount) || 0;
+ 
+    let safeActualPaid = 0;
+    let finalPaymentMode = "Cash";
+    const initialPayment: any[] = [];
+ 
+    if (isCashEmpty && isOnlineEmpty) {
+      if (editingId) {
+        safeActualPaid = 0;
+        finalPaymentMode = "Cash";
+      } else {
+        safeActualPaid = totals.gTotal;
+        finalPaymentMode = "Cash";
+        if (safeActualPaid > 0) {
+          initialPayment.push({ date: new Date().toISOString(), amount: safeActualPaid, mode: "Cash", note: "Initial Payment" });
+        }
+      }
+    } else {
+      safeActualPaid = cAmt + oAmt;
+      finalPaymentMode = oAmt > cAmt ? onlineMode : "Cash";
+ 
+      if (cAmt > 0) initialPayment.push({ date: new Date().toISOString(), amount: cAmt, mode: "Cash", note: "Initial Cash Payment" });
+      if (oAmt > 0) initialPayment.push({ date: new Date().toISOString(), amount: oAmt, mode: onlineMode, note: `Initial ${onlineMode} Payment` });
+    }
     const balanceDue = totals.gTotal - safeActualPaid;
 
-    const initialPayment = safeActualPaid > 0 ? [
-      {
-        date: new Date().toISOString(),
-        amount: safeActualPaid,
-        mode: paymentMode,
-        note: "Initial Payment",
-      },
-    ] : [];
+    // Clean _id from subdocuments to avoid Mongoose immutable _id CastErrors on update
+    const cleanItems = items.map((it: any) => {
+      const { _id, id, ...rest } = it;
+      return rest;
+    });
+
+    let cleanPayments = initialPayment;
+    if (existingInv && Array.isArray(existingInv.payments) && existingInv.payments.length > 0) {
+      // Re-sync historical date but overwrite amounts based on current edit form to guarantee accuracy
+      const oldFirstDate = existingInv.payments[0].date || existingInv.createdAt;
+      initialPayment.forEach(p => p.date = oldFirstDate);
+      cleanPayments = initialPayment;
+    }
 
     const inv: any = {
-      number: "INV-" + (invoices.length + 1).toString().padStart(4, "0"),
+      number: existingInv ? existingInv.number : "INV-" + (invoices.length + 1).toString().padStart(4, "0"),
       type,
       customerId: cust?._id || cust?.id,
       customerName: cust?.name,
       customerMobile: cust?.mobile || cust?.phone || "",
       customerAddress: cust?.address || "",
-      items,
+      items: cleanItems,
       discount: Number(discount) || 0,
       oldGoldAmount: Number(oldGoldAmount) || 0,
-      paymentMode,
+      paymentMode: finalPaymentMode,
       subtotal: totals.subtotal,
       gstAmount: totals.gst,
       total: totals.gTotal,
       amountPaid: safeActualPaid,
       balanceDue,
-      payments: initialPayment,
+      payments: cleanPayments,
       customerSignature,
       authorizedSignatory,
     };
 
     try {
-      const saved = await createMutation.mutateAsync(inv);
-      
-      // Deduct sold quantities from inventory stock
-      for (const item of items) {
-        const p = products.find((x) => (x.id || x._id) === item.productId);
-        if (p) {
-          const newStock = Math.max(0, (p.stock || 0) - (item.qty || 1));
-          await updateProductMutation.mutateAsync({ id: p._id || p.id, body: { ...p, stock: newStock } });
+      if (editingId) {
+        await updateMutation.mutateAsync({ id: editingId, body: inv });
+        toast.success("Invoice updated successfully");
+      } else {
+        const saved = await createMutation.mutateAsync(inv);
+        
+        // Deduct sold quantities from inventory stock
+        for (const item of items) {
+          const p = products.find((x) => (x.id || x._id) === item.productId);
+          if (p) {
+            const newStock = Math.max(0, (p.stock || 0) - (item.qty || 1));
+            await updateProductMutation.mutateAsync({ id: p._id || p.id, body: { ...p, stock: newStock } });
+          }
         }
+        
+        setViewing(saved);
+        toast.success("Invoice generated successfully");
       }
-      
-      setViewing(saved);
       reset();
       setOpen(false);
-      toast.success("Invoice generated successfully");
     } catch (e) {
-      toast.error("Failed to generate invoice");
+      toast.error("Failed to save invoice");
     }
   };
 
@@ -232,20 +318,20 @@ export default function BillingPage() {
 
   return (
     <Layout>
-      <header className="flex items-end justify-between mb-6">
+      <header className="flex flex-col sm:flex-row items-start sm:items-end justify-between gap-4 mb-6">
         <div>
           <h1 className="text-4xl">Billing & Invoices</h1>
           <p className="text-muted-foreground mt-1">Manage sales invoices and point-of-sale.</p>
         </div>
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
-            <Button size="lg">
+            <Button size="lg" className="w-full sm:w-auto" onClick={() => reset()}>
               <Plus className="w-4 h-4 mr-2" /> New Invoice
             </Button>
           </DialogTrigger>
           <DialogContent className="max-w-[95vw] lg:max-w-5xl max-h-[90vh] overflow-y-auto" aria-describedby={undefined}>
             <DialogHeader>
-              <DialogTitle className="text-2xl font-display">Create Invoice</DialogTitle>
+              <DialogTitle className="text-2xl font-display">{editingId ? "Edit Invoice" : "Create Invoice"}</DialogTitle>
             </DialogHeader>
             <form className="space-y-6 mt-4" onSubmit={(e) => { e.preventDefault(); save(); }}>
               
@@ -445,7 +531,6 @@ export default function BillingPage() {
                           <th className="py-3 font-medium w-28">Rate (₹/g)</th>
                           <th className="py-3 font-medium w-28">Amount</th>
                           <th className="py-3 font-medium w-20">Making (%)</th>
-                          <th className="py-3 font-medium w-28">Making (₹)</th>
                           <th className="py-3 font-medium text-right pr-3 w-32">Total (₹)</th>
                           <th className="w-12" />
                         </tr>
@@ -488,7 +573,7 @@ export default function BillingPage() {
                               <td className="py-2 font-medium">{inr(amount)}</td>
                             <td className="py-2">
                               <NumI
-                                v={it.makingChargePct || 0}
+                                v={it.makingChargePct || (it.makingCharge > 0 && it.netWeight > 0 && it.ratePerGram > 0 ? Number(((it.makingCharge / (it.netWeight * it.ratePerGram)) * 100).toFixed(2)) : 0)}
                                 on={(v) => {
                                   const amt = it.netWeight * it.ratePerGram;
                                   updateItem(i, { makingChargePct: v, makingCharge: (amt * v) / 100 });
@@ -496,13 +581,6 @@ export default function BillingPage() {
                                 className="w-16 h-8 bg-background"
                               />
                             </td>
-                              <td className="py-2">
-                                <NumI
-                                  v={it.makingCharge}
-                                on={(v) => updateItem(i, { makingCharge: v, makingChargePct: 0 })}
-                                  className="w-20 h-8 bg-background"
-                                />
-                              </td>
                               <td className="py-2 text-right pr-3 font-medium">{inr(c.line)}</td>
                               <td className="py-2 text-right">
                                 <Button
@@ -567,29 +645,38 @@ export default function BillingPage() {
 
                     <div className="bg-muted/40 p-4 rounded-lg border border-border space-y-4 mt-4">
                       <div className="flex items-center justify-between gap-4">
-                        <Label className="text-muted-foreground font-normal">Amount Paid</Label>
-                        <Input type="number" className="w-32 h-8 text-right bg-background" value={amountPaid} onChange={(e) => setAmountPaid(e.target.value === "" ? "" : parseFloat(e.target.value) || 0)} placeholder={`${totals.gTotal}`} />
+                        <Label className="text-muted-foreground font-normal">Cash Amount</Label>
+                        <Input type="number" className="w-32 h-8 text-right bg-background" value={cashAmount} onChange={(e) => setCashAmount(e.target.value === "" ? "" : parseFloat(e.target.value) || 0)} placeholder={editingId ? "0" : `${totals.gTotal}`} />
                       </div>
                       
                       <div className="flex items-center justify-between gap-4">
-                        <Label className="text-muted-foreground font-normal">Payment Mode</Label>
-                        <Select value={paymentMode} onValueChange={(v) => setPaymentMode(v as Invoice["paymentMode"])}>
-                          <SelectTrigger className="w-32 h-8 bg-background">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {(["Cash", "UPI", "Card", "EMI"] as const).map((m) => (
-                              <SelectItem key={m} value={m}>{m}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                        <div className="flex items-center gap-2">
+                          <Label className="text-muted-foreground font-normal">Online Amount</Label>
+                          <Select value={onlineMode} onValueChange={setOnlineMode}>
+                            <SelectTrigger className="w-24 h-8 bg-background text-xs">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {(["UPI", "Card", "Bank", "EMI"] as const).map((m) => (
+                                <SelectItem key={m} value={m}>{m}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <Input type="number" className="w-32 h-8 text-right bg-background" value={onlineAmount} onChange={(e) => setOnlineAmount(e.target.value === "" ? "" : parseFloat(e.target.value) || 0)} placeholder="0" />
                       </div>
 
-                      <Row 
-                        label="Balance Due" 
-                        v={inr(totals.gTotal - (amountPaid === "" ? totals.gTotal : (amountPaid as number)))} 
-                        valueClassName={(totals.gTotal - (amountPaid === "" ? totals.gTotal : (amountPaid as number))) > 0 ? "text-rose-600" : "text-green-600"}
-                      />
+                      {(() => {
+                        const currentPaid = (cashAmount === "" && onlineAmount === "") ? totals.gTotal : (Number(cashAmount) || 0) + (Number(onlineAmount) || 0);
+                        const currentDue = totals.gTotal - currentPaid;
+                        return (
+                          <Row 
+                            label="Balance Due" 
+                            v={inr(currentDue)} 
+                            valueClassName={currentDue > 0 ? "text-rose-600" : "text-green-600"}
+                          />
+                        );
+                      })()}
                     </div>
                     
                     <div className="bg-muted/40 p-4 rounded-lg border border-border mt-4">
@@ -623,7 +710,7 @@ export default function BillingPage() {
                     </div>
 
                     <Button type="submit" className="w-full mt-2" size="lg" disabled={items.length === 0 || !customerId}>
-                      <Plus className="w-4 h-4 mr-2" /> Generate Invoice
+                      <Plus className="w-4 h-4 mr-2" /> {editingId ? "Save Changes" : "Generate Invoice"}
                     </Button>
               </div>
             </div>
@@ -649,6 +736,7 @@ export default function BillingPage() {
               {invoices.length === 0 ? (
                 <p className="text-sm text-muted-foreground py-12 text-center">No invoices yet.</p>
               ) : (
+                <div className="overflow-x-auto">
                 <table className="w-full text-sm">
               <thead className="text-left text-muted-foreground border-b bg-muted/20">
                     <tr>
@@ -658,6 +746,7 @@ export default function BillingPage() {
                   <th className="font-medium">Type</th>
                   <th className="font-medium">Mode</th>
                   <th className="text-right font-medium">Total</th>
+                  <th className="text-right font-medium">Due</th>
                   <th className="text-center font-medium">Status</th>
                       <th></th>
                     </tr>
@@ -671,6 +760,7 @@ export default function BillingPage() {
                         <td>{i.type}</td>
                         <td>{i.paymentMode}</td>
                     <td className="text-right font-medium text-green-600">{inr(i.total)}</td>
+                    <td className="text-right font-medium text-rose-600">{inr(i.balanceDue || 0)}</td>
                     <td className="text-center">
                       {(i.balanceDue || 0) <= 0 ? (
                         <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded text-[10px] font-semibold uppercase">Paid</span>
@@ -681,6 +771,9 @@ export default function BillingPage() {
                         <td>
                       <div className="flex justify-end gap-2 pr-3">
                         <Button size="sm" variant="outline" onClick={() => setViewing(i)}>View</Button>
+                            <Button size="icon" variant="ghost" onClick={() => editInvoice(i)}>
+                              <Pencil className="w-4 h-4 text-muted-foreground hover:text-primary" />
+                            </Button>
                             <Button size="icon" variant="ghost" onClick={() => removeInvoice(i)}>
                               <Trash2 className="w-4 h-4 text-red-500" />
                             </Button>
@@ -690,6 +783,7 @@ export default function BillingPage() {
                     ))}
                   </tbody>
                 </table>
+                </div>
               )}
             </CardContent>
           </Card>
@@ -763,13 +857,7 @@ function InvoiceModal({ inv, onClose }: { inv: any; onClose: () => void }) {
       <div className="bg-white w-full max-w-4xl rounded-lg shadow-xl print:shadow-none print:max-w-none text-slate-900 my-auto relative">
         <div className="p-6 sm:p-10 print:p-0 border-2 border-transparent print:border-none m-2 print:m-0 bg-white">
           
-          {/* Shop Header */}
-          <div className="text-center border-b-2 border-slate-300 pb-5 mb-6">
-            <h2 className="text-4xl font-display font-bold uppercase tracking-widest text-slate-900">Cloudiefy Jewellers</h2>
-            <p className="text-sm mt-2 text-slate-700">123 Main Bazaar, City Center, State - 123456</p>
-            <p className="text-sm text-slate-700">Mobile: +91 98765 43210 | Email: contact@cloudiefy.com</p>
-            {inv.type === "GST" && <p className="text-sm font-semibold mt-1">GSTIN: 22AAAAA0000A1Z5</p>}
-          </div>
+          <ShopHeader documentLabel={inv.type === "GST" ? "Tax Invoice" : "Invoice"} />
 
           {/* Invoice Meta & Customer Details */}
           <div className="flex justify-between items-start mb-6 text-sm">
@@ -785,7 +873,6 @@ function InvoiceModal({ inv, onClose }: { inv: any; onClose: () => void }) {
                 <tbody>
                   <tr><td className="pr-4 py-0.5 text-right font-medium text-slate-500">Invoice No:</td><td className="font-semibold text-slate-900">{inv.number}</td></tr>
                   <tr><td className="pr-4 py-0.5 text-right font-medium text-slate-500">Date:</td><td className="font-semibold text-slate-900">{formatDate(inv.createdAt)}</td></tr>
-                  <tr><td className="pr-4 py-0.5 text-right font-medium text-slate-500">Payment Mode:</td><td className="font-semibold text-slate-900">{inv.paymentMode}</td></tr>
                 </tbody>
               </table>
             </div>
@@ -801,7 +888,7 @@ function InvoiceModal({ inv, onClose }: { inv: any; onClose: () => void }) {
                 <th className="border border-slate-300 py-2 px-3 text-right text-slate-600">Net Wt</th>
                 <th className="border border-slate-300 py-2 px-3 text-right text-slate-600">Rate/g</th>
                 <th className="border border-slate-300 py-2 px-3 text-right text-slate-600">Amount</th>
-                <th className="border border-slate-300 py-2 px-3 text-right text-slate-600">Making Chg</th>
+                <th className="border border-slate-300 py-2 px-3 text-right text-slate-600">Making (%)</th>
                 <th className="border border-slate-300 py-2 px-3 text-right text-slate-600">Total</th>
               </tr>
             </thead>
@@ -820,7 +907,12 @@ function InvoiceModal({ inv, onClose }: { inv: any; onClose: () => void }) {
                     <td className="border border-slate-300 py-2 px-3 text-right">{it.netWeight} g</td>
                     <td className="border border-slate-300 py-2 px-3 text-right">{inr(it.ratePerGram)}</td>
                     <td className="border border-slate-300 py-2 px-3 text-right">{inr(amount)}</td>
-                    <td className="border border-slate-300 py-2 px-3 text-right">{inr(it.makingCharge)}</td>
+                    <td className="border border-slate-300 py-2 px-3 text-right">
+                      {(() => {
+                        const pct = it.makingChargePct || (it.makingCharge > 0 && it.netWeight > 0 && it.ratePerGram > 0 ? (it.makingCharge / (it.netWeight * it.ratePerGram)) * 100 : 0);
+                        return pct > 0 ? `${Number.isInteger(pct) ? pct : pct.toFixed(2)}%` : '0%';
+                      })()}
+                    </td>
                     <td className="border border-slate-300 py-2 px-3 text-right font-bold">{inr(c.line)}</td>
                   </tr>
                 );
@@ -831,15 +923,7 @@ function InvoiceModal({ inv, onClose }: { inv: any; onClose: () => void }) {
           {/* Calculations & Totals */}
           <div className="flex flex-col sm:flex-row justify-between items-start text-sm gap-6">
             <div className="w-full sm:w-1/2 sm:pr-8 order-2 sm:order-1">
-               {/* Terms and conditions */}
-               <div className="text-xs text-slate-600 p-4 bg-slate-50 rounded-md border border-slate-200">
-                 <p className="font-bold mb-1 text-slate-800 uppercase tracking-wider">Terms & Conditions:</p>
-                 <ol className="list-decimal pl-4 space-y-1">
-                   <li>Goods once sold cannot be returned or exchanged for cash.</li>
-                   <li>Ensure you collect your hallmark certificate (if applicable).</li>
-                   <li>Subject to local jurisdiction.</li>
-                 </ol>
-               </div>
+               <InvoiceTerms />
                
               {((inv.balanceDue || 0) <= 0) && (
                 <div className="mt-4 p-2 bg-green-50 border border-green-200 text-green-800 text-center font-bold rounded tracking-widest text-lg">
@@ -870,10 +954,40 @@ function InvoiceModal({ inv, onClose }: { inv: any; onClose: () => void }) {
                   </tr>
                   {inv.amountPaid !== undefined && (
                     <>
-                      <tr className="border-t border-slate-200">
-                        <td className="py-1.5 text-slate-600">Amount Paid</td>
-                        <td className="py-1.5 text-right font-semibold text-green-700">{inr(inv.amountPaid)}</td>
-                      </tr>
+                      {(() => {
+                        if (inv.payments && inv.payments.length > 0) {
+                          const cashPaid = inv.payments.filter((p: any) => p.mode === "Cash").reduce((s: number, p: any) => s + p.amount, 0);
+                          const onlinePaid = inv.payments.filter((p: any) => p.mode !== "Cash").reduce((s: number, p: any) => s + p.amount, 0);
+                          return (
+                            <>
+                              {cashPaid > 0 && (
+                                <tr className="border-t border-slate-200">
+                                  <td className="py-1 text-slate-600">Paid (Cash)</td>
+                                  <td className="py-1 text-right font-medium text-green-700">{inr(cashPaid)}</td>
+                                </tr>
+                              )}
+                              {onlinePaid > 0 && (
+                                <tr className={cashPaid > 0 ? "" : "border-t border-slate-200"}>
+                                  <td className="py-1 text-slate-600">Paid (Online)</td>
+                                  <td className="py-1 text-right font-medium text-green-700">{inr(onlinePaid)}</td>
+                                </tr>
+                              )}
+                              {cashPaid > 0 && onlinePaid > 0 && (
+                                <tr>
+                                  <td className="py-1.5 font-bold text-slate-800">Total Paid</td>
+                                  <td className="py-1.5 text-right font-bold text-green-700">{inr(inv.amountPaid)}</td>
+                                </tr>
+                              )}
+                            </>
+                          );
+                        }
+                        return (
+                          <tr className="border-t border-slate-200">
+                            <td className="py-1.5 text-slate-600">Amount Paid {inv.paymentMode && !inv.paymentMode.includes("+") ? `(${inv.paymentMode})` : ""}</td>
+                            <td className="py-1.5 text-right font-semibold text-green-700">{inr(inv.amountPaid)}</td>
+                          </tr>
+                        );
+                      })()}
                       <tr>
                         <td className="py-1.5 font-bold">Balance Due</td>
                         <td className="py-1.5 text-right font-bold text-rose-700">{inr(inv.balanceDue || 0)}</td>
@@ -883,6 +997,10 @@ function InvoiceModal({ inv, onClose }: { inv: any; onClose: () => void }) {
                 </tbody>
               </table>
             </div>
+          </div>
+
+          <div className="mt-8 flex justify-center border-t border-slate-200 pt-5">
+            <PaymentQr amount={inv.balanceDue || 0} />
           </div>
 
           {/* Signatures */}

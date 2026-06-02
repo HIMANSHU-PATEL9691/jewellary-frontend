@@ -11,6 +11,7 @@ import { formatDate } from "@/lib/utils";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { purchasesAPI, supplierAPI } from "@/lib/api";
 import { Plus, Trash2, ShoppingBag } from "lucide-react";
+import { DatePicker } from "@/components/ui/date-picker";
 
 function calcTotal(p: Purchase) {
   const base = p.weight * p.ratePerGram + p.makingCharge;
@@ -49,10 +50,10 @@ export default function PurchasesPage() {
 
   return (
     <Layout>
-      <header className="flex items-end justify-between mb-6">
+      <header className="flex flex-col sm:flex-row items-start sm:items-end justify-between gap-4 mb-6">
         <div><h1 className="text-4xl">Purchases</h1><p className="text-muted-foreground mt-1">Stock & metal purchased from suppliers.</p></div>
         <Dialog open={open} onOpenChange={setOpen}>
-          <DialogTrigger asChild><Button size="lg"><Plus className="w-4 h-4 mr-2"/>New Purchase</Button></DialogTrigger>
+          <DialogTrigger asChild><Button size="lg" className="w-full sm:w-auto"><Plus className="w-4 h-4 mr-2"/>New Purchase</Button></DialogTrigger>
           <DialogContent className="max-w-2xl max-h-[75vh] overflow-y-auto" aria-describedby={undefined}><DialogHeader><DialogTitle>Record Purchase</DialogTitle></DialogHeader>
             <div className="grid grid-cols-2 gap-3">
               <div className="col-span-2 grid grid-cols-2 gap-3">
@@ -101,7 +102,7 @@ export default function PurchasesPage() {
         </Dialog>
       </header>
 
-      <div className="grid grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
         <Stat label="Total Purchases" value={list.length} />
         <Stat label="This Month" value={inr(monthTotal)} />
         <Stat label="Suppliers Used" value={new Set(list.map(p => p.supplierName)).size} />
@@ -111,13 +112,15 @@ export default function PurchasesPage() {
         <CardHeader><CardTitle className="font-display flex items-center gap-2"><ShoppingBag className="w-5 h-5"/>Purchase Bills</CardTitle></CardHeader>
         <CardContent>
           {isLoading ? <p className="text-center text-muted-foreground py-12">Loading purchases...</p> : list.length === 0 ? <p className="text-center text-muted-foreground py-12">No purchases yet.</p> :
+          <div className="overflow-x-auto">
           <table className="w-full text-sm"><thead className="text-left text-muted-foreground border-b"><tr><th className="py-2">Bill</th><th>Date</th><th>Supplier</th><th>Metal</th><th>Wt</th><th>Rate</th><th>Mode</th><th className="text-right">Total</th><th></th></tr></thead>
             <tbody>{list.map(p => (<tr key={(p as any)._id || p.id} className="border-b last:border-0">
               <td className="py-2 font-medium">{p.billNo}</td><td>{formatDate(p.date)}</td><td>{p.supplierName}</td>
               <td>{p.metal} {p.purity}</td><td>{p.weight}g</td><td>{inr(p.ratePerGram)}</td><td>{p.paymentMode}</td>
               <td className="text-right">{inr(p.total)}</td>
               <td className="text-right"><Button size="sm" variant="ghost" onClick={() => remove((p as any)._id || p.id)}><Trash2 className="w-4 h-4"/></Button></td>
-            </tr>))}</tbody></table>}
+            </tr>))}</tbody></table>
+            </div>}
         </CardContent>
       </Card>
     </Layout>
@@ -125,7 +128,10 @@ export default function PurchasesPage() {
 }
 
 function Field({ label, v, on, type = "text" }: { label: string; v: string; on: (v: string) => void; type?: string }) {
-  return <div><Label className="text-xs">{label}</Label><Input type={type} value={v} onChange={e => on(e.target.value)} /></div>;
+  if (type === "date") {
+    return <div className="space-y-1.5"><Label className="text-xs">{label}</Label><DatePicker value={v} onChange={on} className="w-full h-9" /></div>;
+  }
+  return <div className="space-y-1.5"><Label className="text-xs">{label}</Label><Input type={type} value={v} onChange={e => on(e.target.value)} /></div>;
 }
 function Stat({ label, value }: { label: string; value: string | number }) {
   return <Card><CardContent className="pt-6"><div className="text-sm text-muted-foreground">{label}</div><div className="text-2xl font-display mt-1">{value}</div></CardContent></Card>;

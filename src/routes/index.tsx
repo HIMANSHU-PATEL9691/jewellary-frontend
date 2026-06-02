@@ -88,7 +88,7 @@ export default function Dashboard() {
   const days: { label: string; total: number }[] = [];
   for (let i = 6; i >= 0; i--) {
     const d = new Date(); d.setDate(d.getDate() - i);
-    const lbl = d.toLocaleDateString(undefined, { weekday: "short", day: "numeric" });
+    const lbl = `${d.getDate().toString().padStart(2, "0")}/${(d.getMonth() + 1).toString().padStart(2, "0")}/${d.getFullYear()}`;
     const total = invoices.filter(inv => new Date(inv.createdAt).toDateString() === d.toDateString()).reduce((s, x) => s + x.total, 0);
     days.push({ label: lbl, total });
   }
@@ -132,17 +132,18 @@ export default function Dashboard() {
   const recent = [...invoices].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 6);
   const [dateString, setDateString] = useState("");
   useEffect(() => {
-    setDateString(new Date().toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long", year: "numeric" }));
+    const d = new Date();
+    setDateString(`${d.getDate().toString().padStart(2, "0")}/${(d.getMonth() + 1).toString().padStart(2, "0")}/${d.getFullYear()}`);
   }, []);
 
   return (
     <Layout>
-      <header className="flex items-end justify-between mb-8">
+      <header className="flex flex-col sm:flex-row items-start sm:items-end justify-between gap-4 mb-8">
         <div>
           <h1 className="text-4xl">Dashboard</h1>
           <p className="text-muted-foreground mt-1">Welcome back! Here's your business overview for {dateString}</p>
         </div>
-        <Link to="/billing"><Button size="lg">New Invoice</Button></Link>
+        <Link to="/billing" className="w-full sm:w-auto"><Button size="lg" className="w-full sm:w-auto">New Invoice</Button></Link>
       </header>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
@@ -212,10 +213,12 @@ export default function Dashboard() {
             {recent.length === 0 ? (
               <p className="text-sm text-muted-foreground py-8 text-center">No invoices yet. Create your first one from Billing.</p>
             ) : (
+              <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="text-left text-muted-foreground border-b"><tr><th className="py-2">Invoice</th><th>Customer</th><th>Type</th><th>Mode</th><th className="text-right">Total</th></tr></thead>
                 <tbody>{recent.map((i) => (<tr key={i._id || i.id} className="border-b last:border-0"><td className="py-2 font-medium">{i.number}</td><td>{i.customerName || "—"}</td><td>{i.type}</td><td>{i.paymentMode}</td><td className="text-right">{inr(i.total)}</td></tr>))}</tbody>
               </table>
+              </div>
             )}
           </CardContent>
         </Card>

@@ -1,13 +1,14 @@
 import { Layout } from "@/components/Layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { inr } from "@/lib/storage";
+import { formatDate } from "@/lib/utils";
 import { TrendingUp, Wallet, AlertTriangle, Download } from "lucide-react";
 import { useMemo, useState } from "react";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { useApi } from "@/hooks/useApi";
 import { invoicesAPI, expensesAPI, supplierAPI } from "@/lib/api";
+import { DatePicker } from "@/components/ui/date-picker";
 
 export default function ReportsPage() {
   const { data: invoices = [] } = useApi<any[]>(["invoices"], () => invoicesAPI.getAll());
@@ -40,7 +41,7 @@ export default function ReportsPage() {
 
   const exportToExcel = () => {
     const rows = [
-      ["Report Date", targetDateStr],
+      ["Report Date", formatDate(selectedDate)],
       ["Daily Income", stats.dailyIncome],
       ["Daily Expenses", stats.dailyExpenseTotal],
       ["Total Due", stats.totalDue],
@@ -50,7 +51,7 @@ export default function ReportsPage() {
     ];
 
     dailyInvoices.forEach(i => rows.push(["Income", i.number, i.customerName || "Walk-in", i.total]));
-    dailyExpenses.forEach(e => rows.push(["Expense", e.date, `${e.category} - ${e.description}`, e.amount]));
+    dailyExpenses.forEach(e => rows.push(["Expense", formatDate(e.date), `${e.category} - ${e.description}`, e.amount]));
     suppliers.forEach(s => {
       const due = s.outstanding || 0;
       if (due > 0) rows.push(["Supplier Due", "", s.name, due]);
@@ -68,22 +69,21 @@ export default function ReportsPage() {
 
   return (
     <Layout>
-      <header className="flex items-end justify-between mb-8">
+      <header className="flex flex-col sm:flex-row items-start sm:items-end justify-between gap-4 mb-8">
         <div>
           <h1 className="text-4xl">Reports</h1>
           <p className="text-muted-foreground mt-1">View your daily income, expenses, and due.</p>
         </div>
-        <div className="flex items-end gap-4">
-          <div className="space-y-1.5">
+        <div className="flex flex-col sm:flex-row items-start sm:items-end w-full sm:w-auto gap-4">
+          <div className="space-y-1.5 w-full sm:w-auto">
             <Label className="text-xs">Select Date</Label>
-            <Input 
-              type="date" 
+            <DatePicker 
               value={selectedDate} 
-              onChange={(e) => setSelectedDate(e.target.value)} 
-              className="w-48 bg-background"
+              onChange={setSelectedDate} 
+              className="w-full sm:w-48 bg-background"
             />
           </div>
-          <Button onClick={exportToExcel} variant="outline" className="h-10">
+          <Button onClick={exportToExcel} variant="outline" className="h-10 w-full sm:w-auto">
             <Download className="w-4 h-4 mr-2" /> Export CSV
           </Button>
         </div>
@@ -142,7 +142,7 @@ export default function ReportsPage() {
         </CardHeader>
         <CardContent>
           <div className="text-sm">
-             On <strong>{targetDateStr}</strong>, you have a net revenue of <strong className={stats.net >= 0 ? "text-green-500" : "text-rose-500"}>{inr(stats.net)}</strong> after deducting your daily expenses from your daily sales.
+             On <strong>{formatDate(selectedDate)}</strong>, you have a net revenue of <strong className={stats.net >= 0 ? "text-green-500" : "text-rose-500"}>{inr(stats.net)}</strong> after deducting your daily expenses from your daily sales.
           </div>
         </CardContent>
       </Card>

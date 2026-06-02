@@ -21,6 +21,7 @@ import { useApi, useApiMutation } from "@/hooks/useApi";
 import { advancesAPI, customerAPI } from "@/lib/api";
 import { useMemo, useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
+import { DatePicker } from "@/components/ui/date-picker";
 
 export default function AdvancePage() {
   const { data: advances = [], isLoading } = useApi<Advance[]>(["advances"], () => advancesAPI.getAll());
@@ -83,7 +84,7 @@ export default function AdvancePage() {
 
   return (
     <Layout>
-      <header className="flex items-end justify-between mb-6">
+      <header className="flex flex-col sm:flex-row items-start sm:items-end justify-between gap-4 mb-6">
         <div>
           <h1 className="text-4xl">Advance Payments</h1>
           <p className="text-muted-foreground mt-1">
@@ -93,7 +94,7 @@ export default function AdvancePage() {
 
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
-            <Button size="lg">
+            <Button size="lg" className="w-full sm:w-auto">
               <Plus className="w-4 h-4 mr-2" /> New Advance
             </Button>
           </DialogTrigger>
@@ -105,7 +106,7 @@ export default function AdvancePage() {
             <div className="space-y-3">
               <div>
                 <Label>Date</Label>
-                <Input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} />
+                <DatePicker value={form.date} onChange={(v) => setForm({ ...form, date: v })} className="w-full" />
               </div>
 
               <div className="col-span-2 grid grid-cols-2 gap-3">

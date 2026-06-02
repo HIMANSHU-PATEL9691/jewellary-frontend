@@ -232,14 +232,14 @@ export default function InventoryPage() {
 
   return (
     <Layout>
-      <header className="flex items-end justify-between mb-6">
+      <header className="flex flex-col sm:flex-row items-start sm:items-end justify-between gap-4 mb-6">
         <div>
           <h1 className="text-4xl">Inventory</h1>
           <p className="text-muted-foreground mt-1">
             {products.length} item{products.length === 1 ? "" : "s"} in stock.
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2 w-full sm:w-auto">
           <input 
             ref={fileInputRef}
             type="file" 
@@ -252,7 +252,7 @@ export default function InventoryPage() {
               e.target.value = ''; // Allow selecting the same file again
             }} 
           />
-          <Button variant="outline" onClick={() => fileInputRef.current?.click()}>
+          <Button variant="outline" className="flex-1 sm:flex-none" onClick={() => fileInputRef.current?.click()}>
             <Upload className="w-4 h-4 mr-2" /> Import Excel
           </Button>
           <Dialog open={importOpen} onOpenChange={(val) => { setImportOpen(val); if (!val) setParsedProducts([]); }}>
@@ -298,7 +298,7 @@ export default function InventoryPage() {
           </Dialog>
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
-            <Button size="lg" onClick={startNew}>
+            <Button size="lg" className="flex-1 sm:flex-none" onClick={startNew}>
               <Plus className="w-4 h-4 mr-2" /> Add Product
             </Button>
             </DialogTrigger>
@@ -456,6 +456,7 @@ export default function InventoryPage() {
               No products yet. Click "Add Product" to start.
             </p>
           ) : (
+            <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="text-left text-muted-foreground border-b">
                 <tr>
@@ -503,6 +504,7 @@ export default function InventoryPage() {
                 ))}
               </tbody>
             </table>
+            </div>
           )}
         </CardContent>
       </Card>

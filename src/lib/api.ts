@@ -208,3 +208,12 @@ export const ordersAPI = {
   },
   delete: (id: string) => apiCall(`/orders/${id}`, { method: 'DELETE' }),
 };
+
+// Employees API
+export const employeesAPI = {
+  getAll: () => apiCall('/employees'),
+  getById: (id: string) => apiCall(`/employees/${id}`),
+  create: (data: any) => apiCall('/employees', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id: string, data: any) => apiCall(`/employees/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  delete: (id: string) => apiCall(`/employees/${id}`, { method: 'DELETE' }),
+};

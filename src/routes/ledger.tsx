@@ -1,12 +1,12 @@
 import { useState, useMemo } from "react";
 import { Layout } from "@/components/Layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useApi } from "@/hooks/useApi";
 import { customerAPI, expensesAPI, invoicesAPI, ordersAPI, repairsAPI } from "@/lib/api";
 import { inr, type Customer, type Expense, type Invoice, type Order, type Repair } from "@/lib/storage";
 import { BookOpen, ArrowDownLeft, ArrowUpRight, Users, Wrench, ShoppingBag, Receipt, Wallet } from "lucide-react";
+import { DatePicker } from "@/components/ui/date-picker";
 
 export default function LedgerPage() {
   const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().slice(0, 10));
@@ -66,23 +66,22 @@ export default function LedgerPage() {
 
   return (
     <Layout>
-      <header className="flex items-end justify-between mb-6">
+      <header className="flex flex-col sm:flex-row items-start sm:items-end justify-between gap-4 mb-6">
         <div>
           <h1 className="text-4xl">Daily Ledger</h1>
           <p className="text-muted-foreground mt-1">Consolidated view of all daily activities.</p>
         </div>
-        <div className="space-y-1.5">
+        <div className="space-y-1.5 w-full sm:w-auto">
           <Label className="text-xs">Select Date</Label>
-          <Input 
-            type="date" 
+          <DatePicker 
             value={selectedDate} 
-            onChange={(e) => setSelectedDate(e.target.value)} 
-            className="w-48 bg-background"
+            onChange={setSelectedDate} 
+            className="w-full sm:w-48 bg-background"
           />
         </div>
       </header>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         <Card className="border-border">
           <CardContent className="pt-6">
             <div className="text-sm text-muted-foreground flex items-center gap-1"><ArrowDownLeft className="w-4 h-4 text-green-500"/> Total In</div>

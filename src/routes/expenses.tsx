@@ -19,6 +19,7 @@ import { useApi, useApiMutation } from "@/hooks/useApi";
 import { expensesAPI } from "@/lib/api";
 import { useMemo, useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
+import { DatePicker } from "@/components/ui/date-picker";
 
 const CATEGORIES = ["Rent", "Salary", "Utilities", "Purchase", "Repair", "Marketing", "Misc"];
 
@@ -27,6 +28,7 @@ export default function ExpensesPage() {
   const createMutation = useApiMutation((data: Expense) => expensesAPI.create(data), ["expenses"]);
   const deleteMutation = useApiMutation((id: string) => expensesAPI.delete(id), ["expenses"]);
   const [open, setOpen] = useState(false);
+  const [dateFilter, setDateFilter] = useState<string>("");
 
   const [form, setForm] = useState<Omit<Expense, "id">>({
     date: new Date().toISOString().slice(0, 10),
@@ -52,16 +54,24 @@ export default function ExpensesPage() {
     [expenses, monthKey]
   );
 
+  const filteredExpenses = useMemo(() => {
+    let list = expenses;
+    if (dateFilter) {
+      const targetDateStr = new Date(dateFilter).toDateString();
+      list = list.filter(e => new Date(e.date).toDateString() === targetDateStr);
+    }
+    return [...list].sort((a, b) => b.date.localeCompare(a.date));
+  }, [expenses, dateFilter]);
+
   const byCategory = useMemo(() => {
     const map = new Map<string, number>();
-    expenses
-      .filter((e) => {
-        const d = new Date(e.date);
-        return `${d.getFullYear()}-${d.getMonth()}` === monthKey;
-      })
-      .forEach((e) => map.set(e.category, (map.get(e.category) || 0) + e.amount));
+    const listToGroup = dateFilter ? filteredExpenses : expenses.filter((e) => {
+      const d = new Date(e.date);
+      return `${d.getFullYear()}-${d.getMonth()}` === monthKey;
+    });
+    listToGroup.forEach((e) => map.set(e.category, (map.get(e.category) || 0) + e.amount));
     return [...map.entries()].sort((a, b) => b[1] - a[1]);
-  }, [expenses, monthKey]);
+  }, [expenses, filteredExpenses, dateFilter, monthKey]);
 
   async function add() {
     if (!form.amount || !form.description) return;
@@ -77,18 +87,16 @@ export default function ExpensesPage() {
     await deleteMutation.mutateAsync(id);
   }
 
-  const sorted = [...expenses].sort((a, b) => b.date.localeCompare(a.date));
-
   return (
     <Layout>
-      <header className="flex items-end justify-between mb-6">
+      <header className="flex flex-col sm:flex-row items-start sm:items-end justify-between gap-4 mb-6">
         <div>
           <h1 className="text-4xl">Expenses</h1>
           <p className="text-muted-foreground mt-1">Daily & monthly shop expense tracking.</p>
         </div>
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
-            <Button size="lg">
+            <Button size="lg" className="w-full sm:w-auto">
               <Plus className="w-4 h-4 mr-2" /> Add Expense
             </Button>
           </DialogTrigger>
@@ -99,7 +107,7 @@ export default function ExpensesPage() {
             <div className="space-y-3">
               <div>
                 <Label>Date</Label>
-                <Input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} />
+                <DatePicker value={form.date} onChange={(v) => setForm({ ...form, date: v })} className="w-full" />
               </div>
               <div>
                 <Label>Category</Label>
@@ -143,8 +151,20 @@ export default function ExpensesPage() {
       </div>
 
       <Card>
-          <CardHeader>
+          <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-2">
             <CardTitle className="font-display">Records</CardTitle>
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 w-full sm:w-auto">
+              <DatePicker 
+                value={dateFilter} 
+                onChange={setDateFilter} 
+                className="w-full sm:w-40 bg-background h-9"
+              />
+              {dateFilter && (
+                <Button variant="ghost" size="sm" onClick={() => setDateFilter("")} className="h-9 w-full sm:w-auto">
+                  Clear
+                </Button>
+              )}
+            </div>
           </CardHeader>
           <CardContent>
             {isLoading ? <p className="text-sm text-muted-foreground py-8 text-center">Loading expenses...</p> : 
@@ -157,9 +177,10 @@ export default function ExpensesPage() {
                 ))}
               </div>
             )}
-            {sorted.length === 0 ? (
+            {filteredExpenses.length === 0 ? (
               <p className="text-sm text-muted-foreground py-8 text-center">No expenses recorded yet.</p>
             ) : (
+              <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="text-left text-muted-foreground border-b">
                   <tr>
@@ -172,7 +193,7 @@ export default function ExpensesPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {sorted.map((e) => (
+                  {filteredExpenses.map((e) => (
                     <tr key={(e as any)._id || e.id} className="border-b last:border-0">
                       <td className="py-2">{formatDate(e.date)}</td>
                       <td>{e.category}</td>
@@ -188,6 +209,7 @@ export default function ExpensesPage() {
                   ))}
                 </tbody>
               </table>
+              </div>
             )}
           </CardContent>
         </Card>

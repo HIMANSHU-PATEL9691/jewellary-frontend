@@ -11,6 +11,9 @@ import { formatDate } from "@/lib/utils";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { repairsAPI, karigarsAPI, customerAPI } from "@/lib/api";
 import { Plus, Trash2, Wrench, Pencil, Printer } from "lucide-react";
+import { DatePicker } from "@/components/ui/date-picker";
+import { PaymentQr } from "@/components/PaymentQr";
+import { InvoiceTerms, ShopHeader } from "@/components/InvoiceBranding";
 
 export default function RepairsPage() {
   const [open, setOpen] = useState(false);
@@ -89,14 +92,14 @@ export default function RepairsPage() {
 
   return (
     <Layout>
-      <header className="flex items-end justify-between mb-6">
+      <header className="flex flex-col sm:flex-row items-start sm:items-end justify-between gap-4 mb-6">
         <div>
           <h1 className="text-4xl">Repairs</h1>
           <p className="text-muted-foreground mt-1">Customer repair orders & status.</p>
         </div>
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
-            <Button size="lg" onClick={() => { setForm(empty); setEditingId(null); }}>
+            <Button size="lg" className="w-full sm:w-auto" onClick={() => { setForm(empty); setEditingId(null); }}>
               <Plus className="w-4 h-4 mr-2" />New Repair
             </Button>
           </DialogTrigger>
@@ -204,7 +207,7 @@ export default function RepairsPage() {
         </Dialog>
       </header>
 
-      <div className="grid grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
         <Stat label="Total Tickets" value={list.length} />
         <Stat label="Pending" value={pending} />
         <Stat label="Pending Estimates" value={inr(totalEstimate)} />
@@ -224,6 +227,7 @@ export default function RepairsPage() {
           ) : list.length === 0 ? (
             <p className="text-center text-muted-foreground py-12">No repair tickets yet.</p>
           ) : (
+            <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="text-left text-muted-foreground border-b">
                 <tr>
@@ -274,6 +278,7 @@ export default function RepairsPage() {
                 ))}
               </tbody>
             </table>
+            </div>
           )}
         </CardContent>
       </Card>
@@ -284,7 +289,10 @@ export default function RepairsPage() {
 }
 
 function Field({ label, v, on, type = "text" }: { label: string; v: string; on: (v: string) => void; type?: string }) {
-  return <div><Label className="text-xs">{label}</Label><Input type={type} value={v} onChange={(e) => on(e.target.value)} /></div>;
+  if (type === "date") {
+    return <div className="space-y-1.5"><Label className="text-xs">{label}</Label><DatePicker value={v} onChange={on} className="w-full h-9" /></div>;
+  }
+  return <div className="space-y-1.5"><Label className="text-xs">{label}</Label><Input type={type} value={v} onChange={(e) => on(e.target.value)} /></div>;
 }
 function Stat({ label, value }: { label: string; value: string | number }) {
   return <Card><CardContent className="pt-6"><div className="text-sm text-muted-foreground">{label}</div><div className="text-2xl font-display mt-1">{value}</div></CardContent></Card>;
@@ -298,12 +306,7 @@ function RepairInvoiceModal({ repair, onClose }: { repair: Repair; onClose: () =
       <div className="bg-white w-full max-w-4xl rounded-lg shadow-xl print:shadow-none print:max-w-none text-slate-900 my-auto relative">
         <div className="p-6 sm:p-10 print:p-0 border-2 border-transparent print:border-none m-2 print:m-0 bg-white">
           
-          {/* Shop Header */}
-          <div className="text-center border-b-2 border-slate-300 pb-5 mb-6">
-            <h2 className="text-4xl font-display font-bold uppercase tracking-widest text-slate-900">Cloudiefy Jewellers</h2>
-            <p className="text-sm mt-2 text-slate-700">123 Main Bazaar, City Center, State - 123456</p>
-            <p className="text-sm text-slate-700">Mobile: +91 98765 43210 | Email: contact@cloudiefy.com</p>
-          </div>
+          <ShopHeader documentLabel="Repair Receipt" />
 
           {/* Invoice Meta & Customer Details */}
           <div className="flex justify-between items-start mb-6 text-sm">
@@ -349,15 +352,7 @@ function RepairInvoiceModal({ repair, onClose }: { repair: Repair; onClose: () =
           {/* Calculations & Totals */}
           <div className="flex flex-col sm:flex-row justify-between items-start text-sm gap-6">
             <div className="w-full sm:w-1/2 sm:pr-8 order-2 sm:order-1">
-               {/* Terms and conditions */}
-               <div className="text-xs text-slate-600 p-4 bg-slate-50 rounded-md border border-slate-200">
-                 <p className="font-bold mb-1 text-slate-800 uppercase tracking-wider">Terms & Conditions:</p>
-                 <ol className="list-decimal pl-4 space-y-1">
-                   <li>We are not responsible for old ornaments given for repair without proper documentation.</li>
-                   <li>Please verify weight and purity before taking delivery.</li>
-                   <li>Subject to local jurisdiction.</li>
-                 </ol>
-               </div>
+               <InvoiceTerms />
                
               {balanceDue <= 0 && (
                 <div className="mt-4 p-2 bg-green-50 border border-green-200 text-green-800 text-center font-bold rounded tracking-widest text-lg">
@@ -383,6 +378,10 @@ function RepairInvoiceModal({ repair, onClose }: { repair: Repair; onClose: () =
                 </tbody>
               </table>
             </div>
+          </div>
+
+          <div className="mt-8 flex justify-center border-t border-slate-200 pt-5">
+            <PaymentQr amount={balanceDue} />
           </div>
 
           {/* Signatures */}

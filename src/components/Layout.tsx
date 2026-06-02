@@ -24,6 +24,8 @@ import {
   Store,
   X,
   LogOut,
+  Calculator,
+  Briefcase,
 } from "lucide-react";
 import { useEffect, useState, type ReactNode, useMemo } from "react";
 import { cn } from "@/lib/utils";
@@ -39,7 +41,8 @@ type NavItem = { to: string; label: string; icon: typeof LayoutDashboard };
 const adminGroups: { title: string; items: NavItem[] }[] = [
   { title: "Overview", items: [
     { to: "/", label: "Dashboard", icon: LayoutDashboard },
-    { to: "/notifications", label: "Notifications", icon: BellRing }
+    { to: "/notifications", label: "Notifications", icon: BellRing },
+    { to: "/calculator", label: "Calculator", icon: Calculator },
   ] },
   { title: "Sales", items: [
     { to: "/billing", label: "POS / Billing", icon: ShoppingCart },
@@ -52,6 +55,7 @@ const adminGroups: { title: string; items: NavItem[] }[] = [
   ]},
   { title: "People", items: [
     { to: "/customers", label: "Customers", icon: Users },
+    { to: "/employees", label: "Employees", icon: Briefcase },
     { to: "/suppliers", label: "Suppliers", icon: Truck },
     { to: "/karigars", label: "Karigars", icon: Hammer },
   ]},

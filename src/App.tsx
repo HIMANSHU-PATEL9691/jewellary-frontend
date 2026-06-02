@@ -22,6 +22,8 @@ import ForwardedShopsPage from "./routes/forwarded-shops";
 import KarigarTasksPage from "./routes/karigar-tasks";
 import NotificationsPage from "./routes/notifications";
 import LoginPage from "./routes/login";
+import CalculatorPage from "./routes/calculator";
+import EmployeesPage from "./routes/employees";
 import { useLocalState } from "./lib/storage";
 
 export default function App() {
@@ -68,6 +70,8 @@ export default function App() {
         <Route path="/forwarded-shops" element={<ForwardedShopsPage />} />
         <Route path="/karigar-tasks" element={<KarigarTasksPage />} />
         <Route path="/notifications" element={<NotificationsPage />} />
+        <Route path="/employees" element={<EmployeesPage />} />
+        <Route path="/calculator" element={<CalculatorPage />} />
         <Route path="*" element={<div className="flex min-h-screen items-center justify-center text-2xl font-bold text-muted-foreground">404 - Page Not Found</div>} />
       </Routes>
     </BrowserRouter>

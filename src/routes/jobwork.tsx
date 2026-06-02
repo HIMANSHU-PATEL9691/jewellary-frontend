@@ -11,6 +11,7 @@ import { formatDate } from "@/lib/utils";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { jobworkAPI, karigarsAPI } from "@/lib/api";
 import { Plus, Trash2, ClipboardList } from "lucide-react";
+import { DatePicker } from "@/components/ui/date-picker";
 
 export default function JobWorkPage() {
   const { data: list = [], isLoading } = useApi<JobWork[]>(["jobwork"], () => jobworkAPI.getAll());
@@ -51,10 +52,10 @@ export default function JobWorkPage() {
 
   return (
     <Layout>
-      <header className="flex items-end justify-between mb-6">
+      <header className="flex flex-col sm:flex-row items-start sm:items-end justify-between gap-4 mb-6">
         <div><h1 className="text-4xl">Job Work</h1><p className="text-muted-foreground mt-1">Metal issued to karigars & received back.</p></div>
         <Dialog open={open} onOpenChange={setOpen}>
-          <DialogTrigger asChild><Button size="lg"><Plus className="w-4 h-4 mr-2"/>New Job</Button></DialogTrigger>
+          <DialogTrigger asChild><Button size="lg" className="w-full sm:w-auto"><Plus className="w-4 h-4 mr-2"/>New Job</Button></DialogTrigger>
           <DialogContent className="max-w-2xl max-h-[75vh] overflow-y-auto" aria-describedby={undefined}><DialogHeader><DialogTitle>Issue Job Work</DialogTitle></DialogHeader>
             <div className="grid grid-cols-2 gap-3">
               <div className="col-span-2 grid grid-cols-2 gap-3">
@@ -99,7 +100,7 @@ export default function JobWorkPage() {
         </Dialog>
       </header>
 
-      <div className="grid grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
         <Stat label="Total Jobs" value={list.length} />
         <Stat label="Pending" value={pending} />
         <Stat label="Issued (active)" value={`${issuedG.toFixed(2)} g`} />
@@ -109,6 +110,7 @@ export default function JobWorkPage() {
         <CardHeader><CardTitle className="font-display flex items-center gap-2"><ClipboardList className="w-5 h-5"/>Jobs</CardTitle></CardHeader>
         <CardContent>
           {isLoading ? <p className="text-center text-muted-foreground py-12">Loading jobs...</p> : list.length === 0 ? <p className="text-center text-muted-foreground py-12">No jobs issued yet.</p> :
+          <div className="overflow-x-auto">
           <table className="w-full text-sm"><thead className="text-left text-muted-foreground border-b"><tr><th className="py-2">Job</th><th>Date</th><th>Karigar</th><th>Item</th><th>Issued</th><th>Received</th><th>Making</th><th>Status</th><th></th></tr></thead>
             <tbody>{list.map(r => (<tr key={(r as any)._id || r.id} className="border-b last:border-0">
               <td className="py-2 font-medium">{r.jobNo}</td><td>{formatDate(r.date)}</td><td>{r.karigarName}</td><td>{r.itemDescription}</td>
@@ -117,7 +119,8 @@ export default function JobWorkPage() {
                 {["Issued","In Progress","Received","Settled"].map(s => <option key={s}>{s}</option>)}
               </select></td>
               <td className="text-right"><Button size="sm" variant="ghost" onClick={() => remove((r as any)._id || r.id)}><Trash2 className="w-4 h-4"/></Button></td>
-            </tr>))}</tbody></table>}
+            </tr>))}</tbody></table>
+            </div>}
         </CardContent>
       </Card>
     </Layout>
@@ -125,7 +128,10 @@ export default function JobWorkPage() {
 }
 
 function Field({ label, v, on, type = "text" }: { label: string; v: string; on: (v: string) => void; type?: string }) {
-  return <div><Label className="text-xs">{label}</Label><Input type={type} value={v} onChange={e => on(e.target.value)} /></div>;
+  if (type === "date") {
+    return <div className="space-y-1.5"><Label className="text-xs">{label}</Label><DatePicker value={v} onChange={on} className="w-full h-9" /></div>;
+  }
+  return <div className="space-y-1.5"><Label className="text-xs">{label}</Label><Input type={type} value={v} onChange={e => on(e.target.value)} /></div>;
 }
 function Stat({ label, value }: { label: string; value: string | number }) {
   return <Card><CardContent className="pt-6"><div className="text-sm text-muted-foreground">{label}</div><div className="text-2xl font-display mt-1">{value}</div></CardContent></Card>;
