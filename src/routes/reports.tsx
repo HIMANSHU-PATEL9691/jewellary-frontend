@@ -2,9 +2,10 @@ import { Layout } from "@/components/Layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { inr } from "@/lib/storage";
 import { formatDate } from "@/lib/utils";
-import { TrendingUp, Wallet, AlertTriangle, Download } from "lucide-react";
+import { TrendingUp, Wallet, AlertTriangle, Download, PieChart as PieChartIcon } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Label } from "@/components/ui/label";
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Legend, PieChart, Pie, Cell } from "recharts";
 import { Button } from "@/components/ui/button";
 import { useApi } from "@/hooks/useApi";
 import { invoicesAPI, expensesAPI, supplierAPI } from "@/lib/api";
@@ -38,6 +39,44 @@ export default function ReportsPage() {
       expensesCount: dailyExpenses.length
     };
   }, [dailyInvoices, dailyExpenses, suppliers]);
+
+  const trendData = useMemo(() => {
+    const arr = [];
+    const end = new Date(selectedDate);
+    for(let i = 14; i >= 0; i--) {
+      const d = new Date(end);
+      d.setDate(d.getDate() - i);
+      const dStr = d.toDateString();
+      const inc = invoices.filter(inv => new Date(inv.createdAt).toDateString() === dStr).reduce((s, x) => s + x.total, 0);
+      const exp = expenses.filter(e => new Date(e.date).toDateString() === dStr).reduce((s, x) => s + x.amount, 0);
+      arr.push({ date: `${d.getDate()}/${d.getMonth()+1}`, Income: inc, Expense: exp });
+    }
+    return arr;
+  }, [selectedDate, invoices, expenses]);
+
+  const pieData = useMemo(() => {
+    const monthStart = new Date(selectedDate);
+    monthStart.setDate(1);
+    const monthEnd = new Date(monthStart);
+    monthEnd.setMonth(monthEnd.getMonth() + 1);
+    
+    const monthExps = expenses.filter(e => {
+      const d = new Date(e.date);
+      return d >= monthStart && d < monthEnd;
+    });
+    
+    const map = new Map<string, number>();
+    monthExps.forEach(e => map.set(e.category, (map.get(e.category) || 0) + e.amount));
+    return Array.from(map.entries()).map(([name, value]) => ({ name, value })).sort((a,b) => b.value - a.value);
+  }, [selectedDate, expenses]);
+  
+  const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#f43f5e', '#a855f7', '#ec4899', '#64748b'];
+
+  const formatYAxis = (tickItem: number) => {
+    if (tickItem >= 100000) return `₹${(tickItem / 100000).toFixed(1)}L`;
+    if (tickItem >= 1000) return `₹${(tickItem / 1000).toFixed(1)}k`;
+    return `₹${tickItem}`;
+  };
 
   const exportToExcel = () => {
     const rows = [
@@ -146,6 +185,56 @@ export default function ReportsPage() {
           </div>
         </CardContent>
       </Card>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+        <Card className="lg:col-span-2">
+          <CardHeader><CardTitle className="font-display flex items-center gap-2"><TrendingUp className="w-5 h-5"/> Income vs Expenses (15 Days Trend)</CardTitle></CardHeader>
+          <CardContent className="h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={trendData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="colorInc" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.3}/>
+                    <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                  </linearGradient>
+                  <linearGradient id="colorExp" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#f43f5e" stopOpacity={0.3}/>
+                    <stop offset="95%" stopColor="#f43f5e" stopOpacity={0}/>
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                <XAxis dataKey="date" tickLine={false} axisLine={false} tick={{ fontSize: 12 }} />
+                <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 12 }} tickFormatter={formatYAxis} />
+                <RechartsTooltip formatter={(value: number) => [inr(value), undefined]} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                <Legend iconType="circle" wrapperStyle={{ fontSize: 12 }} />
+                <Area type="monotone" dataKey="Income" stroke="#10b981" strokeWidth={3} fillOpacity={1} fill="url(#colorInc)" />
+                <Area type="monotone" dataKey="Expense" stroke="#f43f5e" strokeWidth={3} fillOpacity={1} fill="url(#colorExp)" />
+              </AreaChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader><CardTitle className="font-display flex items-center gap-2"><PieChartIcon className="w-5 h-5"/> Expenses by Category (Month)</CardTitle></CardHeader>
+          <CardContent className="h-64">
+            {pieData.length === 0 ? (
+              <div className="h-full flex items-center justify-center text-sm text-muted-foreground">No expenses this month.</div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie data={pieData} cx="50%" cy="50%" innerRadius={60} outerRadius={90} paddingAngle={2} dataKey="value">
+                    {pieData.map((_entry, index) => (
+                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <RechartsTooltip formatter={(value: number) => [inr(value), "Amount"]} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                  <Legend layout="horizontal" verticalAlign="bottom" align="center" wrapperStyle={{ fontSize: 12 }} />
+                </PieChart>
+              </ResponsiveContainer>
+            )}
+          </CardContent>
+        </Card>
+      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
         <Card>

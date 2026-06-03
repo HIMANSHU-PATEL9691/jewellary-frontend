@@ -36,6 +36,7 @@ export default function OrdersPage() {
     date: new Date().toISOString().slice(0, 10),
     customerName: "",
     customerMobile: "",
+    customerAddress: "",
     itemDescription: "",
     metal: "Gold",
     purity: "22K",
@@ -119,7 +120,7 @@ export default function OrdersPage() {
                     onChange={(e) => {
                       setSearchCust(e.target.value);
                       const match = customers.find(c => c.mobile === e.target.value || (c as any).phone === e.target.value || c.name.toLowerCase() === e.target.value.toLowerCase());
-                      if (match) setForm({...form, customerName: match.name, customerMobile: match.mobile || (match as any).phone || ""});
+                      if (match) setForm({...form, customerName: match.name, customerMobile: match.mobile || (match as any).phone || "", customerAddress: match.address || ""});
                     }} 
                   />
                 </div>
@@ -127,7 +128,7 @@ export default function OrdersPage() {
                   <Label className="text-xs">Customer *</Label>
                   <Select value={form.customerMobile || ""} onValueChange={(val) => {
                     const match = customers.find(c => (c.mobile || c.phone) === val);
-                    if (match) setForm({...form, customerName: match.name, customerMobile: match.mobile || (match as any).phone || ""});
+                    if (match) setForm({...form, customerName: match.name, customerMobile: match.mobile || (match as any).phone || "", customerAddress: match.address || ""});
                   }}>
                     <SelectTrigger><SelectValue placeholder="Select customer" /></SelectTrigger>
                     <SelectContent>
@@ -137,6 +138,9 @@ export default function OrdersPage() {
                     </SelectContent>
                   </Select>
                 </div>
+              </div>
+              <div className="col-span-2">
+                <Field label="Customer Address" v={form.customerAddress || ""} on={v => setForm({...form, customerAddress: v})} />
               </div>
               <Field label="Item Description *" v={form.itemDescription} on={v => setForm({...form, itemDescription: v})} />
               <div>
@@ -279,6 +283,7 @@ function OrderInvoiceModal({ order, onClose }: { order: Order; onClose: () => vo
               <div className="font-bold text-xs text-slate-500 uppercase tracking-wider mb-1">Customer Details:</div>
               <div className="font-bold text-lg">{order.customerName}</div>
               <div className="text-slate-700">{order.customerMobile}</div>
+              {order.customerAddress && <div className="text-slate-700 mt-0.5 max-w-xs"><span className="font-medium">Address:</span> {order.customerAddress}</div>}
             </div>
             <div className="text-right">
               <div className="text-2xl font-display font-bold mb-2 text-slate-900">CUSTOM ORDER RECEIPT</div>

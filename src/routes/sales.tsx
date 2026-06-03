@@ -1,15 +1,16 @@
 import { Link } from "react-router-dom";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Layout } from "@/components/Layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { inr, type Invoice } from "@/lib/storage";
 import { formatDate } from "@/lib/utils";
-import { Receipt, Trash2 } from "lucide-react";
+import { Receipt, Trash2, TrendingUp } from "lucide-react";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { invoicesAPI, inventoryAPI } from "@/lib/api";
 import { toast } from "sonner";
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer } from "recharts";
 
 export default function SalesPage() {
   const { data: invoices = [] } = useApi<Invoice[]>(["invoices"], () => invoicesAPI.getAll());
@@ -25,6 +26,24 @@ export default function SalesPage() {
     (i.number + i.customerName + i.customerMobile).toLowerCase().includes(q.toLowerCase())
   );
   const total = filtered.reduce((s, i) => s + i.total, 0);
+
+  const last30Days = useMemo(() => {
+    const arr = [];
+    for (let i = 29; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const dStr = d.toDateString();
+      const dayTotal = filtered.filter(inv => new Date(inv.createdAt).toDateString() === dStr).reduce((s, x) => s + x.total, 0);
+      arr.push({ date: `${d.getDate()}/${d.getMonth()+1}`, Sales: dayTotal });
+    }
+    return arr;
+  }, [filtered]);
+
+  const formatYAxis = (tickItem: number) => {
+    if (tickItem >= 100000) return `₹${(tickItem / 100000).toFixed(1)}L`;
+    if (tickItem >= 1000) return `₹${(tickItem / 1000).toFixed(1)}k`;
+    return `₹${tickItem}`;
+  };
 
   const removeInvoice = async (invoice: Invoice) => {
     if (window.confirm(`Are you sure you want to delete Invoice ${invoice.number}? This will also add the sold items back to your inventory.`)) {
@@ -55,6 +74,23 @@ export default function SalesPage() {
         <Stat label="Filtered Total" value={inr(total)} />
         <Stat label="Avg Invoice" value={inr(filtered.length ? total / filtered.length : 0)} />
       </div>
+
+      <Card className="mb-6">
+        <CardHeader>
+          <CardTitle className="font-display flex items-center gap-2"><TrendingUp className="w-5 h-5"/> Sales Trend (Last 30 Days)</CardTitle>
+        </CardHeader>
+        <CardContent className="h-64">
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={last30Days} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} />
+              <XAxis dataKey="date" tickLine={false} axisLine={false} tick={{ fontSize: 12 }} />
+              <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 12 }} tickFormatter={formatYAxis} />
+              <RechartsTooltip formatter={(value: number) => [inr(value), "Sales"]} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+              <Line type="monotone" dataKey="Sales" stroke="#3b82f6" strokeWidth={3} dot={false} activeDot={{ r: 6 }} />
+            </LineChart>
+          </ResponsiveContainer>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between gap-3"><CardTitle className="font-display flex items-center gap-2"><Receipt className="w-5 h-5"/>Invoice History</CardTitle>

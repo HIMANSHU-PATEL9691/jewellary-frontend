@@ -1,12 +1,12 @@
 import { useState, useMemo } from "react";
 import { Layout } from "@/components/Layout";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { inr } from "@/lib/storage";
-import { Calculator, RotateCcw, Scale, Coins, ArrowRightLeft } from "lucide-react";
+import { Calculator, RotateCcw, Scale, ArrowRightLeft, Sparkles, Gem, Percent } from "lucide-react";
 
 export default function CalculatorPage() {
   // New Item States
@@ -64,56 +64,87 @@ export default function CalculatorPage() {
 
   return (
     <Layout>
-      <header className="flex items-end justify-between mb-6">
+      <header className="flex flex-col sm:flex-row items-start sm:items-end justify-between mb-4 gap-4">
         <div>
-          <h1 className="text-4xl">Jewelry Calculator</h1>
-          <p className="text-muted-foreground mt-1">Quick estimates for new purchases and old gold exchange.</p>
+          <h1 className="text-3xl font-display tracking-tight text-primary">Jewelry Calculator</h1>
+          <p className="text-muted-foreground mt-1 text-sm">Quick, precise estimates for new purchases and exchanges.</p>
         </div>
-        <Button variant="outline" onClick={reset} className="h-10">
-          <RotateCcw className="w-4 h-4 mr-2" /> Reset All
+        <Button variant="outline" onClick={reset} className="h-9 px-4 bg-background shadow-sm hover:bg-muted/50 w-full sm:w-auto">
+          <RotateCcw className="w-3.5 h-3.5 mr-2" /> Reset All
         </Button>
       </header>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 items-start">
         
         {/* Left Column: Inputs */}
-        <div className="lg:col-span-2 space-y-6">
+        <div className="xl:col-span-2 space-y-6">
           {/* New Item Calculator */}
-          <Card>
-            <CardHeader className="pb-4">
-              <CardTitle className="font-display flex items-center gap-2">
-                <Calculator className="w-5 h-5 text-primary" /> New Item Calculator
+          <Card className="shadow-lg border-primary/10 overflow-hidden transition-all duration-300 hover:shadow-xl">
+            <div className="bg-linear-to-r from-primary/10 via-primary/5 to-transparent px-4 py-3 border-b border-primary/10">
+              <CardTitle className="font-display flex items-center gap-2 text-primary text-lg">
+                <div className="p-2 bg-primary/20 rounded-lg shadow-inner text-primary">
+                  <Calculator className="w-4 h-4" />
+                </div>
+                New Item Details
               </CardTitle>
-            </CardHeader>
-            <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <F label="Net Weight (g)"><Input type="number" value={weight} onChange={e => setWeight(e.target.value === "" ? "" : Number(e.target.value))} placeholder="0.000" /></F>
-              <F label="Rate / gram (₹)"><Input type="number" value={rate} onChange={e => setRate(e.target.value === "" ? "" : Number(e.target.value))} placeholder="e.g. 7200" /></F>
-              
-              <F label="Making Charge">
-                <div className="flex gap-2">
-                  <Select value={makingType} onValueChange={v => setMakingType(v as "percent" | "fixed")}>
-                    <SelectTrigger className="w-24 shrink-0"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="percent">%</SelectItem>
-                      <SelectItem value="fixed">Fixed ₹</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <Input type="number" value={making} onChange={e => setMaking(e.target.value === "" ? "" : Number(e.target.value))} placeholder="0" className="flex-1" />
+            </div>
+            <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4 p-4 sm:p-5">
+              <F label="Net Weight">
+                <div className="relative shadow-sm rounded-md">
+                  <Scale className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <Input className="pl-9 h-10 text-base bg-muted/20 font-medium focus-visible:bg-background transition-colors" type="number" value={weight} onChange={e => setWeight(e.target.value === "" ? "" : Number(e.target.value))} placeholder="0.000" />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm font-semibold">g</span>
+                </div>
+              </F>
+              <F label="Rate / gram">
+                <div className="relative shadow-sm rounded-md">
+                  <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground font-medium">₹</span>
+                  <Input className="pl-8 h-10 text-base bg-muted/20 font-medium focus-visible:bg-background transition-colors" type="number" value={rate} onChange={e => setRate(e.target.value === "" ? "" : Number(e.target.value))} placeholder="7200" />
                 </div>
               </F>
               
-              <F label="Stone Charges (₹)"><Input type="number" value={stone} onChange={e => setStone(e.target.value === "" ? "" : Number(e.target.value))} placeholder="0" /></F>
-              <F label="Tax Options">
-                <div className="flex gap-2">
-                  <Select value={gstType} onValueChange={v => setGstType(v as "GST" | "NON-GST")}>
-                    <SelectTrigger className="w-28 shrink-0"><SelectValue /></SelectTrigger>
+              <F label="Making Charge">
+                <div className="flex gap-2 shadow-sm rounded-md">
+                  <Select value={makingType} onValueChange={v => setMakingType(v as "percent" | "fixed")}>
+                    <SelectTrigger className="w-24 shrink-0 h-10 bg-muted/20 font-medium text-sm focus:ring-1">
+                      <SelectValue />
+                    </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="GST">GST</SelectItem>
-                      <SelectItem value="NON-GST">Non-GST</SelectItem>
+                      <SelectItem value="percent" className="font-medium">% Percent</SelectItem>
+                      <SelectItem value="fixed" className="font-medium">₹ Fixed</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <div className="relative flex-1">
+                    {makingType === "fixed" ? <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground font-medium">₹</span> : <Percent className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground"/>}
+                    <Input type="number" value={making} onChange={e => setMaking(e.target.value === "" ? "" : Number(e.target.value))} placeholder="0" className="pl-8 h-10 text-base bg-muted/20 font-medium focus-visible:bg-background transition-colors" />
+                  </div>
+                </div>
+              </F>
+              
+              <F label="Stone Charges">
+                <div className="relative shadow-sm rounded-md">
+                  <Gem className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <Input className="pl-9 h-10 text-base bg-muted/20 font-medium focus-visible:bg-background transition-colors" type="number" value={stone} onChange={e => setStone(e.target.value === "" ? "" : Number(e.target.value))} placeholder="0" />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm font-medium">₹</span>
+                </div>
+              </F>
+              
+              <F label="Tax Options">
+                <div className="flex gap-2 shadow-sm rounded-md">
+                  <Select value={gstType} onValueChange={v => setGstType(v as "GST" | "NON-GST")}>
+                    <SelectTrigger className="w-28 shrink-0 h-10 bg-muted/20 font-medium text-sm focus:ring-1">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="GST" className="font-medium">GST</SelectItem>
+                      <SelectItem value="NON-GST" className="font-medium">NON-GST</SelectItem>
                     </SelectContent>
                   </Select>
                   {gstType === "GST" && (
-                    <Input type="number" value={gst} onChange={e => setGst(e.target.value === "" ? "" : Number(e.target.value))} placeholder="3" className="flex-1" />
+                    <div className="relative flex-1">
+                      <Percent className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground"/>
+                      <Input type="number" value={gst} onChange={e => setGst(e.target.value === "" ? "" : Number(e.target.value))} placeholder="3" className="pl-9 h-10 text-base bg-muted/20 font-medium focus-visible:bg-background transition-colors" />
+                    </div>
                   )}
                 </div>
               </F>
@@ -121,48 +152,67 @@ export default function CalculatorPage() {
           </Card>
 
           {/* Old Gold Calculator */}
-          <Card>
-            <CardHeader className="pb-4">
-              <CardTitle className="font-display flex items-center gap-2">
-                <ArrowRightLeft className="w-5 h-5 text-rose-500" /> Old Gold Exchange
+          <Card className="shadow-lg border-rose-500/20 overflow-hidden transition-all duration-300 hover:shadow-xl">
+            <div className="bg-linear-to-r from-rose-500/10 via-rose-500/5 to-transparent px-4 py-3 border-b border-rose-500/20">
+              <CardTitle className="font-display flex items-center gap-2 text-rose-700 text-lg">
+                <div className="p-2 bg-rose-500/20 rounded-lg shadow-inner text-rose-600">
+                  <ArrowRightLeft className="w-4 h-4" />
+                </div>
+                Old Gold Exchange
               </CardTitle>
-            </CardHeader>
-            <CardContent className="grid grid-cols-1 gap-4">
-              <F label="Old Gold Amount (₹)"><Input type="number" value={oldGoldAmount} onChange={e => setOldGoldAmount(e.target.value === "" ? "" : Number(e.target.value))} placeholder="0" /></F>
+            </div>
+            <CardContent className="p-4 sm:p-5">
+              <F label="Exchange Amount">
+                <div className="relative shadow-sm rounded-md max-w-sm">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-rose-600 font-bold text-base">₹</span>
+                  <Input className="pl-7 h-10 text-lg bg-rose-50 border-rose-200 font-bold text-rose-700 placeholder:text-rose-700/30 focus-visible:ring-rose-500 transition-colors" type="number" value={oldGoldAmount} onChange={e => setOldGoldAmount(e.target.value === "" ? "" : Number(e.target.value))} placeholder="0" />
+                </div>
+                <p className="text-xs text-muted-foreground mt-1.5 font-medium">Enter the total calculated value of the old gold being exchanged.</p>
+              </F>
             </CardContent>
           </Card>
         </div>
 
         {/* Right Column: Summary */}
         <div className="space-y-6">
-          <Card className="sticky top-6">
-            <CardHeader className="bg-muted/30 border-b pb-4">
-              <CardTitle className="font-display flex items-center gap-2">
-                <Coins className="w-5 h-5 text-amber-500" /> Final Estimate
+          <Card className="shadow-2xl border-amber-500/30 bg-linear-to-b from-amber-50/80 to-white overflow-hidden sticky top-24">
+            <div className="bg-linear-to-r from-amber-500/20 via-amber-500/10 to-transparent px-4 py-3 border-b border-amber-500/20">
+              <CardTitle className="font-display flex items-center gap-2 text-amber-800 text-lg">
+                <div className="p-2 bg-amber-500/20 rounded-lg shadow-inner text-amber-700">
+                  <Sparkles className="w-4 h-4" />
+                </div>
+                Final Estimate
               </CardTitle>
-            </CardHeader>
-            <CardContent className="pt-6 space-y-4">
-              <div className="space-y-2">
-                <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">New Item</div>
+            </div>
+            <CardContent className="p-4 sm:p-5 space-y-4">
+              <div className="space-y-4">
+                <div className="text-[10px] font-bold text-amber-700/70 uppercase tracking-widest mb-2 flex items-center gap-2">
+                  <div className="w-8 h-px bg-amber-700/30"></div>New Item Breakdown
+                </div>
                 <Row label="Metal Value" v={inr(calc.metalValue)} />
                 <Row label="Making Charges" v={inr(calc.makingValue)} />
                 {Number(stone) > 0 && <Row label="Stone Charges" v={inr(Number(stone))} />}
+                <div className="pt-0.5 pb-0.5"><div className="w-full h-px border-t border-dashed border-border/70"></div></div>
                 <Row label="Subtotal" v={inr(calc.subtotal)} />
                 {gstType === "GST" && <Row label={`GST (${Number(gst)}%)`} v={inr(calc.gstValue)} />}
-                <Row label="Total Item Value" v={inr(calc.total)} highlight />
+                <div className="p-3 bg-amber-500/10 rounded-xl mt-3 border border-amber-500/20 shadow-sm">
+                  <Row label="Total Item Value" v={inr(calc.total)} highlight boldValue />
+                </div>
               </div>
 
               {Number(oldGoldAmount) > 0 && (
-                <div className="space-y-2 pt-4 border-t">
-                  <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1"><Scale className="w-3.5 h-3.5"/> Exchange</div>
+                <div className="space-y-3 pt-3">
+                  <div className="text-[10px] font-bold text-rose-700/70 uppercase tracking-widest mb-2 flex items-center gap-2">
+                    <div className="w-8 h-px bg-rose-700/30"></div>Exchange Deduction
+                  </div>
                   <Row label="Exchange Value" v={`- ${inr(calc.exchangeValue)}`} negative />
                 </div>
               )}
 
-              <div className="pt-4 border-t-2 border-border mt-2">
-                <div className="flex justify-between items-center text-lg">
-                  <span className="font-bold text-slate-900">Net Payable</span>
-                  <span className={`font-display font-bold ${calc.payable < 0 ? "text-rose-600" : "text-green-600"}`}>
+              <div className="pt-4 border-t-2 border-amber-500/20 mt-3">
+                <div className="flex flex-col gap-1">
+                  <span className="font-display font-semibold text-sm text-slate-600 uppercase tracking-wider">Net Payable</span>
+                  <span className={`font-display font-bold text-3xl tracking-tighter ${calc.payable < 0 ? "text-rose-600" : "text-emerald-600"}`}>
                     {inr(calc.payable)}
                   </span>
                 </div>
@@ -178,18 +228,18 @@ export default function CalculatorPage() {
 
 function F({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="space-y-1.5">
-      <Label className="text-xs font-medium text-muted-foreground">{label}</Label>
+    <div className="space-y-2">
+      <Label className="text-sm font-semibold text-foreground/80">{label}</Label>
       {children}
     </div>
   );
 }
 
-function Row({ label, v, highlight = false, negative = false }: { label: string; v: string; highlight?: boolean; negative?: boolean }) {
+function Row({ label, v, highlight = false, negative = false, boldValue = false }: { label: string; v: string; highlight?: boolean; negative?: boolean; boldValue?: boolean }) {
   return (
-    <div className={`flex justify-between items-center ${highlight ? "font-bold text-base mt-2" : "text-sm"}`}>
-      <span className={highlight ? "text-foreground" : "text-muted-foreground"}>{label}</span>
-      <span className={highlight ? "text-primary" : negative ? "text-green-600 font-medium" : "font-medium"}>{v}</span>
+    <div className={`flex justify-between items-center ${highlight ? "mt-2" : "text-sm"}`}>
+      <span className={highlight ? "text-foreground font-semibold" : "text-muted-foreground font-medium"}>{label}</span>
+      <span className={highlight || boldValue ? "text-primary font-bold text-base" : negative ? "text-rose-600 font-bold" : "font-semibold text-foreground"}>{v}</span>
     </div>
   );
 }

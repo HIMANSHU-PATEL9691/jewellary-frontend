@@ -14,19 +14,47 @@ import { toast } from "sonner";
 import { PaymentQr } from "@/components/PaymentQr";
 import { InvoiceTerms, ShopHeader } from "@/components/InvoiceBranding";
 
-function calculateForwardedInterest(girvi: Girvi) {
-  if (!girvi.date || !girvi.forwardedAmount || !girvi.forwardedInterestPct) return 0;
-  
-  const start = new Date(girvi.date);
+function getElapsedMonthsAndDays(dateStr: string) {
+  if (!dateStr) return { months: 0, days: 0 };
+  const start = new Date(dateStr);
   start.setHours(0, 0, 0, 0);
   const now = new Date();
   now.setHours(0, 0, 0, 0);
+
+  if (now.getTime() <= start.getTime()) return { months: 0, days: 0 };
+
+  let months = (now.getFullYear() - start.getFullYear()) * 12 + (now.getMonth() - start.getMonth());
+  let days = now.getDate() - start.getDate();
+
+  if (days < 0) {
+    months--;
+    const prevMonth = new Date(now.getFullYear(), now.getMonth(), 0);
+    days += prevMonth.getDate();
+  }
+
+  return { months, days };
+}
+
+function calculateForwardedInterest(girvi: Girvi) {
+  if (!girvi.date || !girvi.forwardedAmount || !girvi.forwardedInterestPct) return 0;
   
-  const diffTime = now.getTime() > start.getTime() ? now.getTime() - start.getTime() : 0;
-  const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
-  
-  const interestPerDay = (girvi.forwardedAmount * (girvi.forwardedInterestPct / 100)) / 30;
-  return Math.round(interestPerDay * diffDays);
+  const isDaily = girvi.forwardedInterestPeriod === "Daily" || girvi.note?.includes("[FwdIntPeriod:Daily]");
+  if (isDaily) {
+    const start = new Date(girvi.date);
+    start.setHours(0, 0, 0, 0);
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+    const diffTime = now.getTime() > start.getTime() ? now.getTime() - start.getTime() : 0;
+    const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
+
+    const interestPerDay = girvi.forwardedAmount * (girvi.forwardedInterestPct / 100);
+    return Math.round(interestPerDay * diffDays);
+  } else {
+    const { months, days } = getElapsedMonthsAndDays(girvi.date);
+    const interestPerMonth = girvi.forwardedAmount * (girvi.forwardedInterestPct / 100);
+    const interestForDays = (interestPerMonth / 30) * days;
+    return Math.round((months * interestPerMonth) + interestForDays);
+  }
 }
 
 export type ForwardedShopProfile = {
@@ -321,7 +349,7 @@ export default function ForwardedShopsPage() {
                               </div>
                             </div>
                           </td>
-                          <td className="py-2 text-right">{r.forwardedInterestPct}%/mo</td>
+                          <td className="py-2 text-right">{r.forwardedInterestPct}%/{r.forwardedInterestPeriod === "Daily" || r.note?.includes("[FwdIntPeriod:Daily]") ? "day" : "mo"}</td>
                           <td className="py-2 text-right">{inr(r.forwardedAmount || 0)}</td>
                           <td className="py-2 text-right text-amber-600">{inr(interest)}</td>
                           <td className="py-2 px-3 text-right font-medium text-rose-600">{inr((r.forwardedAmount || 0) + interest)}</td>
@@ -451,7 +479,7 @@ function ForwardingReceiptModal({ data, onClose }: { data: any, onClose: () => v
               <tr>
                 <th className="border border-slate-300 py-2 px-3 text-left text-slate-600">Item Description</th>
                 <th className="border border-slate-300 py-2 px-3 text-right text-slate-600">Net Wt</th>
-                <th className="border border-slate-300 py-2 px-3 text-right text-slate-600">Rate/mo</th>
+                <th className="border border-slate-300 py-2 px-3 text-right text-slate-600">Rate</th>
                 <th className="border border-slate-300 py-2 px-3 text-right text-slate-600">Principal Taken</th>
                 <th className="border border-slate-300 py-2 px-3 text-right text-slate-600">Interest Accrued</th>
               </tr>
@@ -460,7 +488,7 @@ function ForwardingReceiptModal({ data, onClose }: { data: any, onClose: () => v
               <tr className="border-b border-slate-300">
                 <td className="border border-slate-300 py-2 px-3 font-medium">{girvi.itemDescription}</td>
                 <td className="border border-slate-300 py-2 px-3 text-right">{girvi.netWeight} g</td>
-                <td className="border border-slate-300 py-2 px-3 text-right">{girvi.forwardedInterestPct}%</td>
+                <td className="border border-slate-300 py-2 px-3 text-right">{girvi.forwardedInterestPct}% / {girvi.forwardedInterestPeriod === "Daily" || girvi.note?.includes("[FwdIntPeriod:Daily]") ? "day" : "mo"}</td>
                 <td className="border border-slate-300 py-2 px-3 text-right">{inr(principal)}</td>
                 <td className="border border-slate-300 py-2 px-3 text-right">{inr(interest)}</td>
               </tr>

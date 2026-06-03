@@ -36,27 +36,62 @@ function getElapsedDays(dateStr: string) {
   return Math.round(diffTime / (1000 * 60 * 60 * 24));
 }
 
+function getElapsedMonthsAndDays(dateStr: string) {
+  if (!dateStr) return { months: 0, days: 0 };
+  const start = new Date(dateStr);
+  start.setHours(0, 0, 0, 0);
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+
+  if (now.getTime() <= start.getTime()) return { months: 0, days: 0 };
+
+  let months = (now.getFullYear() - start.getFullYear()) * 12 + (now.getMonth() - start.getMonth());
+  let days = now.getDate() - start.getDate();
+
+  if (days < 0) {
+    months--;
+    const prevMonth = new Date(now.getFullYear(), now.getMonth(), 0);
+    days += prevMonth.getDate();
+  }
+
+  return { months, days };
+}
+
 function getElapsedTimeString(dateStr: string) {
-  const diffDays = getElapsedDays(dateStr);
-  const months = Math.floor(diffDays / 30);
-  const days = diffDays % 30;
+  const { months, days } = getElapsedMonthsAndDays(dateStr);
   
   if (months > 0 && days > 0) return `${months} mo, ${days} days`;
   if (months > 0) return `${months} mo`;
-  return `${diffDays} days`;
+  return `${days} days`;
 }
 
 function calculateInterest(girvi: Girvi) {
-  const diffDays = getElapsedDays(girvi.date);
-  const interestPerDay = (girvi.loanAmount * (girvi.interestPct / 100)) / 30;
-  return Math.round(interestPerDay * diffDays);
+  const isDaily = girvi.interestPeriod === "Daily" || girvi.note?.includes("[IntPeriod:Daily]");
+  if (isDaily) {
+    const diffDays = getElapsedDays(girvi.date);
+    const interestPerDay = girvi.loanAmount * (girvi.interestPct / 100);
+    return Math.round(interestPerDay * diffDays);
+  } else {
+    const { months, days } = getElapsedMonthsAndDays(girvi.date);
+    const interestPerMonth = girvi.loanAmount * (girvi.interestPct / 100);
+    const interestForDays = (interestPerMonth / 30) * days;
+    return Math.round((months * interestPerMonth) + interestForDays);
+  }
 }
 
 function calculateForwardedInterest(girvi: Girvi) {
   if (!girvi.forwardedAmount || !girvi.forwardedInterestPct) return 0;
-  const diffDays = getElapsedDays(girvi.date);
-  const interestPerDay = (girvi.forwardedAmount * (girvi.forwardedInterestPct / 100)) / 30;
-  return Math.round(interestPerDay * diffDays);
+  const isDaily = girvi.forwardedInterestPeriod === "Daily" || girvi.note?.includes("[FwdIntPeriod:Daily]");
+  if (isDaily) {
+    const diffDays = getElapsedDays(girvi.date);
+    const interestPerDay = girvi.forwardedAmount * (girvi.forwardedInterestPct / 100);
+    return Math.round(interestPerDay * diffDays);
+  } else {
+    const { months, days } = getElapsedMonthsAndDays(girvi.date);
+    const interestPerMonth = girvi.forwardedAmount * (girvi.forwardedInterestPct / 100);
+    const interestForDays = (interestPerMonth / 30) * days;
+    return Math.round((months * interestPerMonth) + interestForDays);
+  }
 }
 
 export default function GirviPage() {
@@ -89,6 +124,7 @@ export default function GirviPage() {
     marketValue: 0,
     loanAmount: 0,
     interestPct: 1.5,
+    interestPeriod: "Monthly",
     tenureMonths: 12,
     documentType: "Invoice",
     documentNumber: "",
@@ -102,6 +138,7 @@ export default function GirviPage() {
     forwardedShopAddress: "",
     forwardedAmount: 0,
     forwardedInterestPct: 0,
+    forwardedInterestPeriod: "Monthly",
     forwardedImageUrl: "",
     customerSignature: "",
     authorizedSignatory: "",
@@ -150,6 +187,15 @@ export default function GirviPage() {
       payload.documentType = payload.documentType || "Bill";
       payload.documentNumber = payload.documentNumber || `GRV-${Date.now().toString().slice(-6)}`;
     }
+
+    let safeNote = form.note || "";
+    safeNote = safeNote.replace(/\[IntPeriod:.*?\]/g, "").trim();
+    safeNote = safeNote.replace(/\[FwdIntPeriod:.*?\]/g, "").trim();
+    
+    if (form.interestPeriod === "Daily") safeNote += ` [IntPeriod:Daily]`;
+    if (form.forwardedInterestPeriod === "Daily") safeNote += ` [FwdIntPeriod:Daily]`;
+    payload.note = safeNote.trim();
+
     try {
       let saved;
       if (editingId) {
@@ -173,6 +219,7 @@ export default function GirviPage() {
         marketValue: 0,
         loanAmount: 0,
         interestPct: 1.5,
+        interestPeriod: "Monthly",
         tenureMonths: 12,
         documentType: "Invoice",
         documentNumber: "",
@@ -184,6 +231,7 @@ export default function GirviPage() {
         forwardedShopAddress: "",
         forwardedAmount: 0,
         forwardedInterestPct: 0,
+        forwardedInterestPeriod: "Monthly",
         forwardedImageUrl: "",
         customerSignature: "",
         authorizedSignatory: "",
@@ -269,6 +317,7 @@ export default function GirviPage() {
       marketValue: 0,
       loanAmount: 0,
       interestPct: 1.5,
+      interestPeriod: "Monthly",
       tenureMonths: 12,
       documentType: "Invoice",
       documentNumber: "",
@@ -282,6 +331,7 @@ export default function GirviPage() {
       forwardedShopAddress: "",
       forwardedAmount: 0,
       forwardedInterestPct: 0,
+      forwardedInterestPeriod: "Monthly",
       forwardedImageUrl: "",
       customerSignature: "",
       authorizedSignatory: "",
@@ -293,8 +343,19 @@ export default function GirviPage() {
 
   const startEdit = (g: Girvi) => {
     setEditingId((g as any)._id || g.id);
+    
+    let ip = g.interestPeriod || "Monthly";
+    let fip = g.forwardedInterestPeriod || "Monthly";
+    if (g.note) {
+      if (g.note.includes("[IntPeriod:Daily]")) ip = "Daily";
+      if (g.note.includes("[FwdIntPeriod:Daily]")) fip = "Daily";
+    }
+
     setForm({
       ...g,
+      interestPeriod: ip as any,
+      forwardedInterestPeriod: fip as any,
+      note: g.note ? g.note.replace(/\[IntPeriod:.*?\]/g, '').replace(/\[FwdIntPeriod:.*?\]/g, '').trim() : "",
       date: g.date ? new Date(g.date).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10),
       dueDate: g.dueDate ? new Date(g.dueDate).toISOString().slice(0, 10) : "",
     });
@@ -435,14 +496,24 @@ export default function GirviPage() {
                   <Input value={form.purity} onChange={(e) => setForm({ ...form, purity: e.target.value })} />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-[1fr_1fr_auto] gap-2">
                 <div>
                   <Label>Loan Amount</Label>
                   <Input type="number" value={form.loanAmount || ""} onChange={(e) => setForm({ ...form, loanAmount: +e.target.value })} />
                 </div>
                 <div>
-                  <Label>Interest %</Label>
+                  <Label>Interest Rate</Label>
                   <Input type="number" step="0.1" value={form.interestPct || ""} onChange={(e) => setForm({ ...form, interestPct: +e.target.value })} />
+                </div>
+                <div>
+                  <Label>Per</Label>
+                  <Select value={form.interestPeriod || "Monthly"} onValueChange={(v) => setForm({ ...form, interestPeriod: v as any })}>
+                    <SelectTrigger className="w-24"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Monthly">Month</SelectItem>
+                      <SelectItem value="Daily">Day</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-2">
@@ -494,14 +565,24 @@ export default function GirviPage() {
                   <Label>Shop Address</Label>
                   <Textarea rows={2} value={form.forwardedShopAddress || ""} onChange={(e) => setForm({ ...form, forwardedShopAddress: e.target.value })} placeholder="Address" />
                 </div>
-                <div className="grid grid-cols-2 gap-2 mb-2">
+                <div className="grid grid-cols-[1fr_1fr_auto] gap-2 mb-2">
                   <div>
                     <Label>Forwarded Amount ₹</Label>
                     <Input type="number" value={form.forwardedAmount || ""} onChange={(e) => setForm({ ...form, forwardedAmount: +e.target.value })} />
                   </div>
                   <div>
-                    <Label>Shop Interest %</Label>
+                    <Label>Shop Interest Rate</Label>
                     <Input type="number" step="0.1" value={form.forwardedInterestPct || ""} onChange={(e) => setForm({ ...form, forwardedInterestPct: +e.target.value })} />
+                  </div>
+                  <div>
+                    <Label>Per</Label>
+                    <Select value={form.forwardedInterestPeriod || "Monthly"} onValueChange={(v) => setForm({ ...form, forwardedInterestPeriod: v as any })}>
+                      <SelectTrigger className="w-24"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Monthly">Month</SelectItem>
+                        <SelectItem value="Daily">Day</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
                 <div>
@@ -722,6 +803,8 @@ function GirviModal({ girvi, onClose }: { girvi: Girvi; onClose: () => void }) {
   const forwardedInterest = calculateForwardedInterest(girvi);
   const forwardedTotal = (girvi.forwardedAmount || 0) + forwardedInterest;
 
+  const displayNote = girvi.note?.replace(/\[(IntPeriod|FwdIntPeriod):.*?\]/g, '').trim();
+
   return (
     <div className="fixed inset-0 z-50 bg-black/50 flex justify-center items-start p-2 sm:p-4 print:bg-white print:p-0 overflow-y-auto">
       <div className="bg-white w-full max-w-3xl rounded-lg shadow-xl print:shadow-none print:max-w-none text-slate-900 my-auto relative">
@@ -796,7 +879,7 @@ function GirviModal({ girvi, onClose }: { girvi: Girvi; onClose: () => void }) {
             <div className="border border-slate-300 rounded p-3 text-xs flex flex-col justify-center">
               <div className="flex justify-between mb-2">
                 <span className="text-slate-500">Interest Rate</span>
-                <span className="font-bold">{girvi.interestPct}% / month</span>
+                <span className="font-bold">{girvi.interestPct}% / {girvi.interestPeriod === "Daily" || girvi.note?.includes("[IntPeriod:Daily]") ? "day" : "month"}</span>
               </div>
               <div className="flex justify-between mb-2">
                 <span className="text-slate-500">Time Elapsed</span>
@@ -840,10 +923,10 @@ function GirviModal({ girvi, onClose }: { girvi: Girvi; onClose: () => void }) {
           {/* Note and Images */}
           <div className="grid grid-cols-2 gap-4 mb-4">
             <div>
-              {girvi.note && (
+              {displayNote && (
                 <div className="text-xs">
                   <strong className="text-xs uppercase text-slate-500 mb-1 block tracking-wider">Remarks / Note</strong>
-                  <p className="p-2 border border-slate-200 bg-slate-50 rounded text-slate-700">{girvi.note}</p>
+                  <p className="p-2 border border-slate-200 bg-slate-50 rounded text-slate-700">{displayNote}</p>
                 </div>
               )}
             </div>
@@ -875,7 +958,7 @@ function GirviModal({ girvi, onClose }: { girvi: Girvi; onClose: () => void }) {
                   <div className="text-purple-600/80 mb-0.5">Shop Financials</div>
                   <div className="grid grid-cols-2 gap-x-2 gap-y-1">
                     <span>Principal:</span> <span className="font-bold">{inr(girvi.forwardedAmount || 0)}</span>
-                    <span>Rate:</span> <span className="font-bold">{girvi.forwardedInterestPct || 0}%/mo</span>
+                    <span>Rate:</span> <span className="font-bold">{girvi.forwardedInterestPct || 0}%/{girvi.forwardedInterestPeriod === "Daily" || girvi.note?.includes("[FwdIntPeriod:Daily]") ? "day" : "mo"}</span>
                     <span>Interest:</span> <span className="font-bold text-amber-700">{inr(forwardedInterest)}</span>
                     <span className="font-bold pt-1 border-t border-purple-200">Total Owed:</span> <span className="font-bold text-rose-700 pt-1 border-t border-purple-200">{inr(forwardedTotal)}</span>
                   </div>

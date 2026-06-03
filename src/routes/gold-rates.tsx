@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { Layout } from "@/components/Layout";
 import { formatDate } from "@/lib/utils";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -16,6 +16,7 @@ import { inr, type MetalRates } from "@/lib/storage";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { goldRatesAPI } from "@/lib/api";
 import { TrendingUp } from "lucide-react";
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Legend } from "recharts";
 
 const defaultRates: MetalRates = {
   updatedAt: new Date().toISOString(),
@@ -65,11 +66,45 @@ export default function GoldRatesPage() {
   const markUpdatedNow = async () => {
     const nextRates = { ...rates, updatedAt: new Date().toISOString() };
     setRates(nextRates);
-    if (latest && (latest as any)._id) {
+
+    const todayStr = new Date().toDateString();
+    const latestDateStr = latest?.updatedAt ? new Date(latest.updatedAt).toDateString() : "";
+
+    // Create a new historical entry if it's a new day to build the graph, otherwise update today's
+    if (latest && (latest as any)._id && todayStr === latestDateStr) {
       await updateMutation.mutateAsync({ id: (latest as any)._id, body: nextRates });
     } else {
       await createMutation.mutateAsync(nextRates);
     }
+    setOpen(false);
+  };
+
+  const chartData = useMemo(() => {
+    const sorted = [...data].sort((a, b) => new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime());
+    if (sorted.length === 0) {
+      return [{
+        date: formatDate(defaultRates.updatedAt).split(",")[0],
+        "24K Gold": defaultRates.gold24,
+        "22K Gold": defaultRates.gold22,
+        "18K Gold": defaultRates.gold18,
+        "Silver": defaultRates.silver,
+      }];
+    }
+    return sorted.map(r => {
+      const d = new Date(r.updatedAt);
+      return {
+        date: `${d.getDate().toString().padStart(2, "0")}/${(d.getMonth()+1).toString().padStart(2, "0")}`,
+        "24K Gold": r.gold24,
+        "22K Gold": r.gold22,
+        "18K Gold": r.gold18,
+        "Silver": r.silver,
+      };
+    });
+  }, [data]);
+
+  const formatYAxis = (tickItem: number) => {
+    if (tickItem >= 1000) return `₹${(tickItem / 1000).toFixed(1)}k`;
+    return `₹${tickItem}`;
   };
 
   const cards = [
@@ -104,7 +139,7 @@ export default function GoldRatesPage() {
             </div>
             <div className="mt-4 flex items-center justify-between text-xs text-muted-foreground">
               {isLoading ? 'Loading rates...' : error ? 'Failed to load rates' : `Updated: ${formatDate(rates.updatedAt)}`}
-              <Button onClick={markUpdatedNow}>Save Rates</Button>
+              <Button onClick={markUpdatedNow}>Save Rates & Close</Button>
             </div>
           </DialogContent>
         </Dialog>
@@ -119,6 +154,76 @@ export default function GoldRatesPage() {
             </CardContent>
           </Card>
         ))}
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <Card>
+          <CardHeader>
+            <CardTitle className="font-display flex items-center gap-2"><TrendingUp className="w-5 h-5"/> Gold Price Trend</CardTitle>
+          </CardHeader>
+          <CardContent className="h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="color24k" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.3}/>
+                    <stop offset="95%" stopColor="#f59e0b" stopOpacity={0}/>
+                  </linearGradient>
+                  <linearGradient id="color22k" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#d97706" stopOpacity={0.3}/>
+                    <stop offset="95%" stopColor="#d97706" stopOpacity={0}/>
+                  </linearGradient>
+                  <linearGradient id="color18k" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#b45309" stopOpacity={0.3}/>
+                    <stop offset="95%" stopColor="#b45309" stopOpacity={0}/>
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                <XAxis dataKey="date" tickLine={false} axisLine={false} tick={{ fontSize: 12, fill: '#64748b' }} tickMargin={10} />
+                <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 12, fill: '#64748b' }} tickFormatter={formatYAxis} domain={['auto', 'auto']} tickMargin={10} />
+                <RechartsTooltip 
+                  formatter={(value: number) => [inr(value), undefined]} 
+                  contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', backgroundColor: 'rgba(255, 255, 255, 0.95)' }}
+                  labelStyle={{ fontWeight: 'bold', color: '#64748b', marginBottom: '4px' }}
+                  cursor={{ stroke: '#94a3b8', strokeWidth: 1, strokeDasharray: '4 4' }}
+                />
+                <Legend iconType="circle" wrapperStyle={{ fontSize: 13, paddingTop: '16px' }} />
+                <Area type="monotone" dataKey="24K Gold" stroke="#f59e0b" strokeWidth={3} fill="url(#color24k)" dot={chartData.length === 1} activeDot={{ r: 6, strokeWidth: 0, fill: '#f59e0b' }} />
+                <Area type="monotone" dataKey="22K Gold" stroke="#d97706" strokeWidth={3} fill="url(#color22k)" dot={chartData.length === 1} activeDot={{ r: 6, strokeWidth: 0, fill: '#d97706' }} />
+                <Area type="monotone" dataKey="18K Gold" stroke="#b45309" strokeWidth={3} fill="url(#color18k)" dot={chartData.length === 1} activeDot={{ r: 6, strokeWidth: 0, fill: '#b45309' }} />
+              </AreaChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="font-display flex items-center gap-2"><TrendingUp className="w-5 h-5"/> Silver Price Trend</CardTitle>
+          </CardHeader>
+          <CardContent className="h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="colorSilver" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#64748b" stopOpacity={0.3}/>
+                    <stop offset="95%" stopColor="#64748b" stopOpacity={0}/>
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                <XAxis dataKey="date" tickLine={false} axisLine={false} tick={{ fontSize: 12, fill: '#64748b' }} tickMargin={10} />
+                <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 12, fill: '#64748b' }} tickFormatter={formatYAxis} domain={['auto', 'auto']} tickMargin={10} />
+                <RechartsTooltip 
+                  formatter={(value: number) => [inr(value), undefined]} 
+                  contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', backgroundColor: 'rgba(255, 255, 255, 0.95)' }}
+                  labelStyle={{ fontWeight: 'bold', color: '#64748b', marginBottom: '4px' }}
+                  cursor={{ stroke: '#94a3b8', strokeWidth: 1, strokeDasharray: '4 4' }}
+                />
+                <Legend iconType="circle" wrapperStyle={{ fontSize: 13, paddingTop: '16px' }} />
+                <Area type="monotone" dataKey="Silver" stroke="#64748b" strokeWidth={3} fill="url(#colorSilver)" dot={chartData.length === 1} activeDot={{ r: 6, strokeWidth: 0, fill: '#64748b' }} />
+              </AreaChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
       </div>
     </Layout>
   );

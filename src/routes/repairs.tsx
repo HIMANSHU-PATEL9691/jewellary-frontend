@@ -20,7 +20,7 @@ export default function RepairsPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [searchCust, setSearchCust] = useState("");
   const [searchKar, setSearchKar] = useState("");
-  const empty: Repair = { ticketNo: "", date: new Date().toISOString().slice(0,10), customerName: "", customerMobile: "", itemDescription: "", itemWeight: 0, problem: "", estimate: 0, advance: 0, deliveryDate: "", karigarId: "", status: "Received", note: "", customerSignature: "", authorizedSignatory: "" };
+  const empty: Repair = { ticketNo: "", date: new Date().toISOString().slice(0,10), customerName: "", customerMobile: "", customerAddress: "", itemDescription: "", itemWeight: 0, problem: "", estimate: 0, advance: 0, deliveryDate: "", karigarId: "", status: "Received", note: "", customerSignature: "", authorizedSignatory: "" };
   const [form, setForm] = useState<Repair>(empty);
   const [viewingReceipt, setViewingReceipt] = useState<Repair | null>(null);
 
@@ -117,7 +117,7 @@ export default function RepairsPage() {
                     onChange={(e) => {
                       setSearchCust(e.target.value);
                       const match = customers.find(c => c.mobile === e.target.value || (c as any).phone === e.target.value || c.name.toLowerCase() === e.target.value.toLowerCase());
-                      if (match) setForm({...form, customerName: match.name, customerMobile: match.mobile || (match as any).phone || ""});
+                      if (match) setForm({...form, customerName: match.name, customerMobile: match.mobile || (match as any).phone || "", customerAddress: match.address || ""});
                     }} 
                   />
                 </div>
@@ -125,7 +125,7 @@ export default function RepairsPage() {
                   <Label className="text-xs">Customer *</Label>
                   <Select value={form.customerMobile || ""} onValueChange={(val) => {
                     const match = customers.find(c => (c.mobile || c.phone) === val);
-                    if (match) setForm({...form, customerName: match.name, customerMobile: match.mobile || (match as any).phone || ""});
+                    if (match) setForm({...form, customerName: match.name, customerMobile: match.mobile || (match as any).phone || "", customerAddress: match.address || ""});
                   }}>
                     <SelectTrigger><SelectValue placeholder="Select customer" /></SelectTrigger>
                     <SelectContent>
@@ -135,6 +135,9 @@ export default function RepairsPage() {
                     </SelectContent>
                   </Select>
                 </div>
+              </div>
+              <div className="col-span-2">
+                <Field label="Customer Address" v={form.customerAddress || ""} on={(v) => setForm({ ...form, customerAddress: v })} />
               </div>
               <div className="col-span-2">
                 <Field label="Item Description" v={form.itemDescription} on={(v) => setForm({ ...form, itemDescription: v })} />
@@ -314,6 +317,7 @@ function RepairInvoiceModal({ repair, onClose }: { repair: Repair; onClose: () =
               <div className="font-bold text-xs text-slate-500 uppercase tracking-wider mb-1">Customer Details:</div>
               <div className="font-bold text-lg">{repair.customerName}</div>
               <div className="text-slate-700">{repair.customerMobile}</div>
+              {repair.customerAddress && <div className="text-slate-700 mt-0.5 max-w-xs"><span className="font-medium">Address:</span> {repair.customerAddress}</div>}
             </div>
             <div className="text-right">
               <div className="text-2xl font-display font-bold mb-2 text-slate-900">REPAIR RECEIPT</div>

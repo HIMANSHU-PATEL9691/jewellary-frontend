@@ -19,9 +19,10 @@ import {
   Clock,
   BellRing,
 } from "lucide-react";
+import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Legend } from "recharts";
 import { Button } from "@/components/ui/button";
 import { formatDate } from "@/lib/utils";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useApi } from "@/hooks/useApi";
 import {
   inventoryAPI,
@@ -85,14 +86,33 @@ export default function Dashboard() {
   const silverGrams = products.filter(p => p.category === "Silver").reduce((s, p) => s + p.netWeight * p.stock, 0);
 
   // 7-day trend
-  const days: { label: string; total: number }[] = [];
+  const days: { label: string; Sales: number }[] = [];
   for (let i = 6; i >= 0; i--) {
     const d = new Date(); d.setDate(d.getDate() - i);
-    const lbl = `${d.getDate().toString().padStart(2, "0")}/${(d.getMonth() + 1).toString().padStart(2, "0")}/${d.getFullYear()}`;
+    const lbl = `${d.getDate().toString().padStart(2, "0")}/${(d.getMonth() + 1).toString().padStart(2, "0")}`;
     const total = invoices.filter(inv => new Date(inv.createdAt).toDateString() === d.toDateString()).reduce((s, x) => s + x.total, 0);
-    days.push({ label: lbl, total });
+    days.push({ label: lbl, Sales: total });
   }
-  const maxDay = Math.max(1, ...days.map(d => d.total));
+
+  // 6-month trend
+  const sixMonthsData = useMemo(() => {
+    const arr = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date();
+      d.setMonth(d.getMonth() - i);
+      const mKey = `${d.getFullYear()}-${d.getMonth()}`;
+      const rev = invoices.filter(inv => { const id = new Date(inv.createdAt); return `${id.getFullYear()}-${id.getMonth()}` === mKey; }).reduce((s, x) => s + x.total, 0);
+      const exp = expenses.filter(e => { const ed = new Date(e.date); return `${ed.getFullYear()}-${ed.getMonth()}` === mKey; }).reduce((s, x) => s + x.amount, 0);
+      arr.push({ name: d.toLocaleString('default', { month: 'short' }), Revenue: rev, Expense: exp });
+    }
+    return arr;
+  }, [invoices, expenses]);
+
+  const formatYAxis = (tickItem: number) => {
+    if (tickItem >= 100000) return `₹${(tickItem / 100000).toFixed(1)}L`;
+    if (tickItem >= 1000) return `₹${(tickItem / 1000).toFixed(1)}k`;
+    return `₹${tickItem}`;
+  };
 
   const lowStock = products.filter(p => p.stock <= 2).length;
   const pendingRepairs = repairs.filter(r => r.status !== "Delivered").length;
@@ -138,7 +158,7 @@ export default function Dashboard() {
 
   return (
     <Layout>
-      <header className="flex flex-col sm:flex-row items-start sm:items-end justify-between gap-4 mb-8">
+      <header className="flex flex-col sm:flex-row items-start sm:items-end justify-between gap-4 mb-6">
         <div>
           <h1 className="text-4xl">Dashboard</h1>
           <p className="text-muted-foreground mt-1">Welcome back! Here's your business overview for {dateString}</p>
@@ -173,35 +193,60 @@ export default function Dashboard() {
         })}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
-        <Card className="lg:col-span-2">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+        <Card>
           <CardHeader><CardTitle className="font-display">Sales Trend (7 Days)</CardTitle></CardHeader>
-          <CardContent>
-            <div className="flex items-end gap-3 h-48">
-              {days.map(d => (
-                <div key={d.label} className="flex-1 flex flex-col items-center gap-2">
-                  <div className="text-xs text-muted-foreground">{d.total ? inr(d.total).replace("₹","₹") : ""}</div>
-                  <div className="w-full bg-accent rounded-t-md relative" style={{ height: `${(d.total / maxDay) * 100}%`, minHeight: "4px" }}>
-                    <div className="absolute inset-0 bg-primary rounded-t-md opacity-90"/>
-                  </div>
-                  <div className="text-xs text-muted-foreground">{d.label}</div>
-                </div>
-              ))}
-            </div>
+          <CardContent className="h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={days} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="colorSales" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.3}/>
+                    <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                <XAxis dataKey="label" tickLine={false} axisLine={false} tick={{ fontSize: 12 }} />
+                <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 12 }} tickFormatter={formatYAxis} />
+                <RechartsTooltip formatter={(value: number) => [inr(value), "Sales"]} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                <Area type="monotone" dataKey="Sales" stroke="#10b981" strokeWidth={3} fillOpacity={1} fill="url(#colorSales)" />
+              </AreaChart>
+            </ResponsiveContainer>
           </CardContent>
         </Card>
 
-        <Card className="bg-sidebar text-sidebar-foreground">
-          <CardHeader><CardTitle className="font-display">Today's Metal Rates</CardTitle></CardHeader>
-          <CardContent className="grid grid-cols-2 gap-3">
+        <Card>
+          <CardHeader><CardTitle className="font-display">Revenue vs Expenses (6 Months)</CardTitle></CardHeader>
+          <CardContent className="h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={sixMonthsData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                <XAxis dataKey="name" tickLine={false} axisLine={false} tick={{ fontSize: 12 }} />
+                <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 12 }} tickFormatter={formatYAxis} />
+                <RechartsTooltip formatter={(value: number) => [inr(value), undefined]} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} cursor={{ fill: 'transparent' }} />
+                <Legend iconType="circle" wrapperStyle={{ fontSize: 12 }} />
+                <Bar dataKey="Revenue" fill="#10b981" radius={[4, 4, 0, 0]} maxBarSize={40} />
+                <Bar dataKey="Expense" fill="#f43f5e" radius={[4, 4, 0, 0]} maxBarSize={40} />
+              </BarChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
+        <Card className="bg-sidebar text-sidebar-foreground lg:col-span-3">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="font-display">Today's Metal Rates</CardTitle>
+            <div className="text-xs text-muted-foreground text-right">
+              <span suppressHydrationWarning>Updated: {formatDate(displayRates.updatedAt) || dateString || "—"}</span>
+              <Link to="/gold-rates" className="ml-2 underline text-primary">Edit</Link>
+            </div>
+          </CardHeader>
+          <CardContent className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             <RateBox label="24K Gold" value={displayRates.gold24} />
             <RateBox label="22K Gold" value={displayRates.gold22} />
             <RateBox label="18K Gold" value={displayRates.gold18} />
             <RateBox label="Silver" value={displayRates.silver} />
-            <div className="col-span-2 text-xs text-muted-foreground text-right">
-              <span suppressHydrationWarning>Updated: {formatDate(displayRates.updatedAt) || dateString || "—"}</span>
-              <Link to="/gold-rates" className="ml-2 underline">Edit</Link>
-            </div>
           </CardContent>
         </Card>
       </div>

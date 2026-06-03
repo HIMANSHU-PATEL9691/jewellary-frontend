@@ -11,7 +11,6 @@ import {
   Truck,
   Hammer,
   Wrench,
-  PiggyBank,
   ShoppingBag,
   TrendingUp,
   ShoppingCart,
@@ -26,6 +25,7 @@ import {
   LogOut,
   Calculator,
   Briefcase,
+  FileText,
 } from "lucide-react";
 import { useEffect, useState, type ReactNode, useMemo } from "react";
 import { cn } from "@/lib/utils";
@@ -62,7 +62,6 @@ const adminGroups: { title: string; items: NavItem[] }[] = [
   { title: "Operations", items: [
     { to: "/repairs", label: "Repairs", icon: Wrench },
     { to: "/karigar-tasks", label: "Karigar Tasks", icon: ClipboardList },
-    { to: "/schemes", label: "Schemes", icon: PiggyBank },
   ]},
   { title: "Finance", items: [
     { to: "/purchases", label: "Purchases", icon: ShoppingBag },
@@ -72,6 +71,7 @@ const adminGroups: { title: string; items: NavItem[] }[] = [
     { to: "/girvi", label: "Girvi (Loans)", icon: Landmark },
     { to: "/forwarded-shops", label: "Forwarded Shops", icon: Store },
     { to: "/reports", label: "Reports", icon: BarChart3 },
+    { to: "/gst-report", label: "GST Report", icon: FileText },
     { to: "/ledger", label: "Daily Ledger", icon: BookOpen },
   ]},
 ];
@@ -137,15 +137,16 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
         </nav>
       </ScrollArea>
       <div className="p-4 text-xs text-muted-foreground border-t border-sidebar-border">
-        <button 
+        <Button
+          variant="ghost" 
           onClick={() => {
             localStorage.removeItem("ajms.auth");
             window.location.reload();
           }}
-          className="flex items-center gap-2 text-rose-500 hover:text-rose-600 font-medium mb-4 w-full text-left transition-colors"
+          className="w-full justify-start text-rose-500 hover:text-rose-600 hover:bg-rose-500/10 font-medium mb-4"
         >
-          <LogOut className="w-4 h-4" /> Log out securely
-        </button>
+          <LogOut className="w-4 h-4 mr-2" /> Log out securely
+        </Button>
         <div>CLOUDIEFY @ 2026</div>
         <a
           href="https://www.cloudiefy.com/"
@@ -243,7 +244,7 @@ export function Layout({ children }: { children: ReactNode }) {
         </header>
         <main className="flex-1 overflow-hidden">
           <ScrollArea className="h-full">
-            <div className="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8">{children}</div>
+            <div className="max-w-7xl mx-auto p-4 sm:p-6 lg:p-6">{children}</div>
           </ScrollArea>
         </main>
       </div>

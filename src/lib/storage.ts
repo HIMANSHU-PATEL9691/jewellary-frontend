@@ -135,6 +135,7 @@ export type Girvi = {
   marketValue: number;
   loanAmount: number;
   interestPct: number; // monthly %
+  interestPeriod?: "Monthly" | "Daily";
   tenureMonths: number;
   documentType?: "Invoice" | "Bill" | "Receipt";
   documentNumber?: string;
@@ -148,6 +149,7 @@ export type Girvi = {
   forwardedShopAddress?: string;
   forwardedAmount?: number;
   forwardedInterestPct?: number;
+  forwardedInterestPeriod?: "Monthly" | "Daily";
   forwardedImageUrl?: string;
   customerSignature?: string;
   authorizedSignatory?: string;
@@ -190,6 +192,7 @@ export type Repair = {
   date: string;
   customerName: string;
   customerMobile: string;
+  customerAddress?: string;
   itemDescription: string;
   itemWeight: number;
   problem: string;
@@ -229,6 +232,7 @@ export type Order = {
   date: string;
   customerName: string;
   customerMobile: string;
+  customerAddress?: string;
   itemDescription: string;
   metal: "Gold" | "Silver" | "Diamond" | "Platinum" | "Other";
   purity: string;
@@ -243,21 +247,6 @@ export type Order = {
   authorizedSignatory?: string;
 };
 
-export type Scheme = {
-  _id?: string;
-  id: string;
-  schemeNo: string;
-  date: string;
-  customerName: string;
-  customerMobile: string;
-  planName: string; // 11+1 monthly etc
-  monthlyAmount: number;
-  tenureMonths: number;
-  paidMonths: number;
-  totalPaid: number;
-  maturityDate?: string;
-  status: "Active" | "Matured" | "Closed";
-};
 
 export type Purchase = {
   _id?: string;

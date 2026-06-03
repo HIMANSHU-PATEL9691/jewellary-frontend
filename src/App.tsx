@@ -12,7 +12,6 @@ import PurchasesPage from "./routes/purchases";
 import RepairsPage from "./routes/repairs";
 import ReportsPage from "./routes/reports";
 import SalesPage from "./routes/sales";
-import SchemesPage from "./routes/schemes";
 import SuppliersPage from "./routes/suppliers";
 import GoldRatesPage from "./routes/gold-rates";
 import OrdersPage from "./routes/orders";
@@ -24,6 +23,7 @@ import NotificationsPage from "./routes/notifications";
 import LoginPage from "./routes/login";
 import CalculatorPage from "./routes/calculator";
 import EmployeesPage from "./routes/employees";
+import GstReportPage from "./routes/gst-report";
 import { useLocalState } from "./lib/storage";
 
 export default function App() {
@@ -61,12 +61,12 @@ export default function App() {
         <Route path="/repairs" element={<RepairsPage />} />
         <Route path="/reports" element={<ReportsPage />} />
         <Route path="/sales" element={<SalesPage />} />
-        <Route path="/schemes" element={<SchemesPage />} />
         <Route path="/suppliers" element={<SuppliersPage />} />
         <Route path="/gold-rates" element={<GoldRatesPage />} />
         <Route path="/orders" element={<OrdersPage />} />
         <Route path="/ledger" element={<LedgerPage />} />
         <Route path="/dues" element={<DuesPage />} />
+        <Route path="/gst-report" element={<GstReportPage />} />
         <Route path="/forwarded-shops" element={<ForwardedShopsPage />} />
         <Route path="/karigar-tasks" element={<KarigarTasksPage />} />
         <Route path="/notifications" element={<NotificationsPage />} />
