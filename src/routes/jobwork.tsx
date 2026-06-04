@@ -23,6 +23,7 @@ export default function JobWorkPage() {
 
   const [open, setOpen] = useState(false);
   const [searchKar, setSearchKar] = useState("");
+  const [page, setPage] = useState(1);
   const empty: JobWork = { id: "", jobNo: "", date: new Date().toISOString().slice(0,10), karigarId: "", karigarName: "", itemDescription: "", metal: "Gold", purity: "22K", issuedWeight: 0, receivedWeight: 0, makingCharge: 0, dueDate: "", status: "Issued", note: "" };
   const [form, setForm] = useState<JobWork>(empty);
 
@@ -49,6 +50,10 @@ export default function JobWorkPage() {
 
   const pending = list.filter(r => r.status !== "Settled").length;
   const issuedG = list.filter(r => r.status !== "Settled").reduce((s, r) => s + r.issuedWeight, 0);
+
+  const totalPages = Math.ceil(list.length / 10) || 1;
+  const currentPage = Math.min(page, totalPages);
+  const paginated = list.slice((currentPage - 1) * 10, currentPage * 10);
 
   return (
     <Layout>
@@ -112,7 +117,7 @@ export default function JobWorkPage() {
           {isLoading ? <p className="text-center text-muted-foreground py-12">Loading jobs...</p> : list.length === 0 ? <p className="text-center text-muted-foreground py-12">No jobs issued yet.</p> :
           <div className="overflow-x-auto">
           <table className="w-full text-sm"><thead className="text-left text-muted-foreground border-b"><tr><th className="py-2">Job</th><th>Date</th><th>Karigar</th><th>Item</th><th>Issued</th><th>Received</th><th>Making</th><th>Status</th><th></th></tr></thead>
-            <tbody>{list.map(r => (<tr key={(r as any)._id || r.id} className="border-b last:border-0">
+          <tbody>{paginated.map(r => (<tr key={(r as any)._id || r.id} className="border-b last:border-0">
               <td className="py-2 font-medium">{r.jobNo}</td><td>{formatDate(r.date)}</td><td>{r.karigarName}</td><td>{r.itemDescription}</td>
               <td>{r.issuedWeight}g</td><td>{r.receivedWeight}g</td><td>{inr(r.makingCharge)}</td>
               <td><select className="border rounded px-2 py-1 bg-background text-xs" value={r.status} onChange={e => setStatus((r as any)._id || r.id, e.target.value as JobWork["status"])}>
@@ -120,6 +125,15 @@ export default function JobWorkPage() {
               </select></td>
               <td className="text-right"><Button size="sm" variant="ghost" onClick={() => remove((r as any)._id || r.id)}><Trash2 className="w-4 h-4"/></Button></td>
             </tr>))}</tbody></table>
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between px-4 py-3 border-t">
+              <div className="text-xs text-muted-foreground">Showing {(currentPage - 1) * 10 + 1} to {Math.min(currentPage * 10, list.length)} of {list.length} entries</div>
+              <div className="flex gap-1">
+                <Button size="sm" variant="outline" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={currentPage === 1}>Prev</Button>
+                <Button size="sm" variant="outline" onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages}>Next</Button>
+              </div>
+            </div>
+          )}
             </div>}
         </CardContent>
       </Card>

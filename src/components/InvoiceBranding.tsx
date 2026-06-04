@@ -2,6 +2,7 @@ export const SHOP_DETAILS = {
   name: "Arihant Jewellers",
   address: "224, Maheshwar Road, Barwaha (Dist. Khargone) M.P.",
   phones: ["9826049083", "9926702700"],
+  gstNumber: "23AVHPB4250H1Z2",
 };
 
 const TERMS = [
@@ -18,6 +19,9 @@ export function ShopHeader({ documentLabel, compact = false }: { documentLabel?:
       </h2>
       <p className="mt-2 text-sm font-medium text-slate-700">{SHOP_DETAILS.address}</p>
       <p className="text-sm font-semibold text-slate-800">Mobile: {SHOP_DETAILS.phones.join(" / ")}</p>
+      {documentLabel === "Tax Invoice" && (
+        <p className="text-sm font-semibold text-slate-800">GSTIN: {SHOP_DETAILS.gstNumber}</p>
+      )}
       {documentLabel && (
         <p className="mt-2 text-xs font-bold uppercase tracking-[0.25em] text-slate-500">{documentLabel}</p>
       )}

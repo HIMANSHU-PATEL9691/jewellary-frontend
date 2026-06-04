@@ -29,6 +29,7 @@ export default function ExpensesPage() {
   const deleteMutation = useApiMutation((id: string) => expensesAPI.delete(id), ["expenses"]);
   const [open, setOpen] = useState(false);
   const [dateFilter, setDateFilter] = useState<string>("");
+  const [page, setPage] = useState(1);
 
   const [form, setForm] = useState<Omit<Expense, "id">>({
     date: new Date().toISOString().slice(0, 10),
@@ -72,6 +73,10 @@ export default function ExpensesPage() {
     listToGroup.forEach((e) => map.set(e.category, (map.get(e.category) || 0) + e.amount));
     return [...map.entries()].sort((a, b) => b[1] - a[1]);
   }, [expenses, filteredExpenses, dateFilter, monthKey]);
+
+  const totalPages = Math.ceil(filteredExpenses.length / 10) || 1;
+  const currentPage = Math.min(page, totalPages);
+  const paginated = filteredExpenses.slice((currentPage - 1) * 10, currentPage * 10);
 
   async function add() {
     if (!form.amount || !form.description) return;
@@ -193,7 +198,7 @@ export default function ExpensesPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredExpenses.map((e) => (
+              {paginated.map((e) => (
                     <tr key={(e as any)._id || e.id} className="border-b last:border-0">
                       <td className="py-2">{formatDate(e.date)}</td>
                       <td>{e.category}</td>
@@ -209,6 +214,15 @@ export default function ExpensesPage() {
                   ))}
                 </tbody>
               </table>
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between px-4 py-3 border-t">
+              <div className="text-xs text-muted-foreground">Showing {(currentPage - 1) * 10 + 1} to {Math.min(currentPage * 10, filteredExpenses.length)} of {filteredExpenses.length} entries</div>
+              <div className="flex gap-1">
+                <Button size="sm" variant="outline" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={currentPage === 1}>Prev</Button>
+                <Button size="sm" variant="outline" onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages}>Next</Button>
+              </div>
+            </div>
+          )}
               </div>
             )}
           </CardContent>

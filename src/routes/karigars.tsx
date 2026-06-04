@@ -42,6 +42,7 @@ export default function KarigarsPage() {
   const [form, setForm] = useState<Karigar>(empty);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [q, setQ] = useState("");
+  const [page, setPage] = useState(1);
 
   const [categories, setCategories] = useLocalState<string[]>("ajms.karigarCategories", ["Goldsmith", "Polisher", "Stone Setter"]);
   const [addCatOpen, setAddCatOpen] = useState(false);
@@ -95,6 +96,10 @@ export default function KarigarsPage() {
 
   const isLoading_UI = isLoading || createMutation.isPending || updateMutation.isPending || deleteMutation.isPending;
 
+  const totalPages = Math.ceil(filtered.length / 10) || 1;
+  const currentPage = Math.min(page, totalPages);
+  const paginated = filtered.slice((currentPage - 1) * 10, currentPage * 10);
+
   return (
     <Layout>
       <header className="flex items-end justify-between mb-6">
@@ -114,15 +119,15 @@ export default function KarigarsPage() {
               <DialogDescription>Add or update karigar details and category.</DialogDescription>
             </DialogHeader>
             <div className="grid grid-cols-2 gap-4">
-              <Field label="Karigar Name *" v={form.name} on={v => setForm({...form, name: v})} />
-              <Field label="Company Name" v={form.companyName} on={v => setForm({...form, companyName: v})} />
-              <Field label="Mobile No *" v={form.mobile} on={v => setForm({...form, mobile: v})} />
-              <Field label="Mobile No 2 (optional)" v={form.mobile2 || ""} on={v => setForm({...form, mobile2: v})} />
-              <Field label="Email (optional)" v={form.email || ""} on={v => setForm({...form, email: v})} />
+              <Field label="Karigar Name *" v={form.name} on={v => setForm({...form, name: v})} autoComplete="off" />
+              <Field label="Company Name" v={form.companyName} on={v => setForm({...form, companyName: v})} autoComplete="off" />
+              <Field label="Mobile No *" v={form.mobile} on={v => setForm({...form, mobile: v})} autoComplete="off" />
+              <Field label="Mobile No 2 (optional)" v={form.mobile2 || ""} on={v => setForm({...form, mobile2: v})} autoComplete="off" />
+              <Field label="Email (optional)" v={form.email || ""} on={v => setForm({...form, email: v})} autoComplete="off" />
               
               <div className="col-span-2 grid grid-cols-2 gap-4 mt-2 p-3 bg-muted/30 rounded-md border border-border">
-                <Field label="Login Username *" v={form.username || ""} on={v => setForm({...form, username: v})} />
-                <Field label="Login Password *" v={form.password || ""} on={v => setForm({...form, password: v})} />
+                <Field label="Login Username *" v={form.username || ""} on={v => setForm({...form, username: v})} autoComplete="new-username" />
+                <Field label="Login Password *" type="password" v={form.password || ""} on={v => setForm({...form, password: v})} autoComplete="new-password" />
               </div>
 
               <div className="space-y-1.5">
@@ -179,17 +184,18 @@ export default function KarigarsPage() {
 
       <div className="relative mb-4 max-w-md">
         <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-        <Input className="pl-9" placeholder="Search by name, mobile or company" value={q} onChange={(e) => setQ(e.target.value)} />
+        <Input className="pl-9" placeholder="Search by name, mobile or company" value={q} onChange={(e) => setQ(e.target.value)} name="search-karigars-query" id="search-karigars-query" autoComplete="new-password" role="presentation" />
       </div>
 
       <Card>
         <CardContent className="p-0">
-          {isLoading ? <p className="text-center text-muted-foreground py-12">Loading karigars...</p> : error ? <p className="text-center text-red-500 py-12">Failed to load karigars</p> : filtered.length === 0 ? <p className="text-center text-muted-foreground py-12">No karigars yet.</p> :
-          <table className="w-full text-sm">
+          {isLoading ? <p className="text-center text-muted-foreground py-12">Loading karigars...</p> : error ? <p className="text-center text-red-500 py-12">Failed to load karigars</p> : filtered.length === 0 ? <p className="text-center text-muted-foreground py-12">No karigars yet.</p> : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
             <thead className="text-left text-muted-foreground border-b">
               <tr><th className="p-3">Name</th><th>Mobile</th><th>Company / Login</th><th>Category</th><th>Address</th><th className="text-right">Pending Wt</th><th></th></tr>
             </thead>
-            <tbody>{filtered.map(s => (
+        <tbody>{paginated.map(s => (
               <tr key={s._id} className="border-b last:border-0 hover:bg-muted/40">
                 <td className="p-3 font-medium">{s.name}</td>
                 <td>
@@ -211,13 +217,24 @@ export default function KarigarsPage() {
                 </td>
               </tr>
             ))}</tbody>
-          </table>}
+          </table>
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between px-4 py-3 border-t">
+              <div className="text-xs text-muted-foreground">Showing {(currentPage - 1) * 10 + 1} to {Math.min(currentPage * 10, filtered.length)} of {filtered.length} entries</div>
+              <div className="flex gap-1">
+                <Button size="sm" variant="outline" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={currentPage === 1}>Prev</Button>
+                <Button size="sm" variant="outline" onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages}>Next</Button>
+              </div>
+            </div>
+          )}
+          </div>
+          )}
         </CardContent>
       </Card>
     </Layout>
   );
 }
 
-function Field({ label, v, on, type = "text" }: { label: string; v: string; on: (v: string) => void; type?: string }) {
-  return <div className="space-y-1.5"><Label className="text-xs font-medium text-muted-foreground">{label}</Label><Input type={type} value={v} onChange={e => on(e.target.value)} /></div>;
+function Field({ label, v, on, type = "text", autoComplete }: { label: string; v: string; on: (v: string) => void; type?: string; autoComplete?: string }) {
+  return <div className="space-y-1.5"><Label className="text-xs font-medium text-muted-foreground">{label}</Label><Input type={type} value={v} onChange={e => on(e.target.value)} autoComplete={autoComplete} /></div>;
 }

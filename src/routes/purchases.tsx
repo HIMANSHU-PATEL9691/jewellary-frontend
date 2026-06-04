@@ -27,6 +27,7 @@ export default function PurchasesPage() {
 
   const [open, setOpen] = useState(false);
   const [searchSup, setSearchSup] = useState("");
+  const [page, setPage] = useState(1);
   const empty: Purchase = { id: "", billNo: "", date: new Date().toISOString().slice(0,10), supplierId: "", supplierName: "", metal: "Gold", purity: "22K", weight: 0, ratePerGram: 0, makingCharge: 0, gstPct: 3, total: 0, paymentMode: "Cash", note: "" };
   const [form, setForm] = useState<Purchase>(empty);
 
@@ -47,6 +48,10 @@ export default function PurchasesPage() {
   };
   const monthKey = `${new Date().getFullYear()}-${new Date().getMonth()}`;
   const monthTotal = list.filter(p => { const d = new Date(p.date); return `${d.getFullYear()}-${d.getMonth()}` === monthKey; }).reduce((s, p) => s + p.total, 0);
+
+  const totalPages = Math.ceil(list.length / 10) || 1;
+  const currentPage = Math.min(page, totalPages);
+  const paginated = list.slice((currentPage - 1) * 10, currentPage * 10);
 
   return (
     <Layout>
@@ -114,12 +119,21 @@ export default function PurchasesPage() {
           {isLoading ? <p className="text-center text-muted-foreground py-12">Loading purchases...</p> : list.length === 0 ? <p className="text-center text-muted-foreground py-12">No purchases yet.</p> :
           <div className="overflow-x-auto">
           <table className="w-full text-sm"><thead className="text-left text-muted-foreground border-b"><tr><th className="py-2">Bill</th><th>Date</th><th>Supplier</th><th>Metal</th><th>Wt</th><th>Rate</th><th>Mode</th><th className="text-right">Total</th><th></th></tr></thead>
-            <tbody>{list.map(p => (<tr key={(p as any)._id || p.id} className="border-b last:border-0">
+          <tbody>{paginated.map(p => (<tr key={(p as any)._id || p.id} className="border-b last:border-0">
               <td className="py-2 font-medium">{p.billNo}</td><td>{formatDate(p.date)}</td><td>{p.supplierName}</td>
               <td>{p.metal} {p.purity}</td><td>{p.weight}g</td><td>{inr(p.ratePerGram)}</td><td>{p.paymentMode}</td>
               <td className="text-right">{inr(p.total)}</td>
               <td className="text-right"><Button size="sm" variant="ghost" onClick={() => remove((p as any)._id || p.id)}><Trash2 className="w-4 h-4"/></Button></td>
             </tr>))}</tbody></table>
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between px-4 py-3 border-t">
+              <div className="text-xs text-muted-foreground">Showing {(currentPage - 1) * 10 + 1} to {Math.min(currentPage * 10, list.length)} of {list.length} entries</div>
+              <div className="flex gap-1">
+                <Button size="sm" variant="outline" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={currentPage === 1}>Prev</Button>
+                <Button size="sm" variant="outline" onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages}>Next</Button>
+              </div>
+            </div>
+          )}
             </div>}
         </CardContent>
       </Card>

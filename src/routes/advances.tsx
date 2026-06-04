@@ -33,6 +33,7 @@ export default function AdvancePage() {
 
   const [open, setOpen] = useState(false);
   const [searchCust, setSearchCust] = useState("");
+  const [page, setPage] = useState(1);
   const [form, setForm] = useState({
     date: new Date().toISOString().slice(0, 10),
     customerId: "",
@@ -81,6 +82,10 @@ export default function AdvancePage() {
   }
 
   const sorted = [...advances].sort((a, b) => b.date.localeCompare(a.date));
+
+  const totalPages = Math.ceil(sorted.length / 10) || 1;
+  const currentPage = Math.min(page, totalPages);
+  const paginated = sorted.slice((currentPage - 1) * 10, currentPage * 10);
 
   return (
     <Layout>
@@ -214,7 +219,7 @@ export default function AdvancePage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {sorted.map((a) => (
+                {paginated.map((a) => (
                       <tr key={(a as any)._id || a.id} className="border-b last:border-0 hover:bg-muted/40">
                         <td className="py-2 pl-4">{formatDate(a.date)}</td>
                         <td className="px-2">
@@ -244,6 +249,15 @@ export default function AdvancePage() {
                     ))}
                   </tbody>
                 </table>
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between px-4 py-3 border-t">
+                <div className="text-xs text-muted-foreground">Showing {(currentPage - 1) * 10 + 1} to {Math.min(currentPage * 10, sorted.length)} of {sorted.length} entries</div>
+                <div className="flex gap-1">
+                  <Button size="sm" variant="outline" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={currentPage === 1}>Prev</Button>
+                  <Button size="sm" variant="outline" onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages}>Next</Button>
+                </div>
+              </div>
+            )}
               </div>
             )}
           </CardContent>

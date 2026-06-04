@@ -1,53 +1,61 @@
+import React, { Suspense } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-
-import Dashboard from "./routes/index";
-import BillingPage from "./routes/billing";
-import AdvancePage from "./routes/advances";
-import CustomersPage from "./routes/customers";
-import ExpensesPage from "./routes/expenses";
-import GirviPage from "./routes/girvi";
-import InventoryPage from "./routes/inventory";
-import KarigarsPage from "./routes/karigars";
-import PurchasesPage from "./routes/purchases";
-import RepairsPage from "./routes/repairs";
-import ReportsPage from "./routes/reports";
-import SalesPage from "./routes/sales";
-import SuppliersPage from "./routes/suppliers";
-import GoldRatesPage from "./routes/gold-rates";
-import OrdersPage from "./routes/orders";
-import LedgerPage from "./routes/ledger";
-import DuesPage from "./routes/dues";
-import ForwardedShopsPage from "./routes/forwarded-shops";
-import KarigarTasksPage from "./routes/karigar-tasks";
-import NotificationsPage from "./routes/notifications";
-import LoginPage from "./routes/login";
-import CalculatorPage from "./routes/calculator";
-import EmployeesPage from "./routes/employees";
-import GstReportPage from "./routes/gst-report";
 import { useLocalState } from "./lib/storage";
+import { Loader2 } from "lucide-react";
+
+const Dashboard = React.lazy(() => import("./routes/index"));
+const BillingPage = React.lazy(() => import("./routes/billing"));
+const AdvancePage = React.lazy(() => import("./routes/advances"));
+const CustomersPage = React.lazy(() => import("./routes/customers"));
+const ExpensesPage = React.lazy(() => import("./routes/expenses"));
+const GirviPage = React.lazy(() => import("./routes/girvi"));
+const InventoryPage = React.lazy(() => import("./routes/inventory"));
+const KarigarsPage = React.lazy(() => import("./routes/karigars"));
+const PurchasesPage = React.lazy(() => import("./routes/purchases"));
+const RepairsPage = React.lazy(() => import("./routes/repairs"));
+const ReportsPage = React.lazy(() => import("./routes/reports"));
+const SalesPage = React.lazy(() => import("./routes/sales"));
+const SuppliersPage = React.lazy(() => import("./routes/suppliers"));
+const GoldRatesPage = React.lazy(() => import("./routes/gold-rates"));
+const OrdersPage = React.lazy(() => import("./routes/orders"));
+const LedgerPage = React.lazy(() => import("./routes/ledger"));
+const DuesPage = React.lazy(() => import("./routes/dues"));
+const ForwardedShopsPage = React.lazy(() => import("./routes/forwarded-shops"));
+const KarigarTasksPage = React.lazy(() => import("./routes/karigar-tasks"));
+const NotificationsPage = React.lazy(() => import("./routes/notifications"));
+const LoginPage = React.lazy(() => import("./routes/login"));
+const CalculatorPage = React.lazy(() => import("./routes/calculator"));
+const EmployeesPage = React.lazy(() => import("./routes/employees"));
+const GstReportPage = React.lazy(() => import("./routes/gst-report"));
+const CatalogPage = React.lazy(() => import("./routes/catalog"));
 
 export default function App() {
   // Stores the login state securely in the local storage so it persists on refresh
   const [authUser, setAuthUser] = useLocalState<any>("ajms.auth", null);
 
+  const fallback = <div className="flex h-screen w-full items-center justify-center text-muted-foreground"><Loader2 className="w-8 h-8 animate-spin" /></div>;
+
   if (!authUser) {
-    return <LoginPage onLogin={(user) => setAuthUser(user)} />;
+    return <Suspense fallback={fallback}><LoginPage onLogin={(user) => setAuthUser(user)} /></Suspense>;
   }
 
   // STRIKED DOWN KARIGAR ROUTE
   if (authUser.role === "karigar") {
     return (
       <BrowserRouter>
+        <Suspense fallback={fallback}>
         <Routes>
           <Route path="/karigar-tasks" element={<KarigarTasksPage />} />
           <Route path="*" element={<Navigate to="/karigar-tasks" replace />} />
         </Routes>
+        </Suspense>
       </BrowserRouter>
     );
   }
 
   return (
     <BrowserRouter>
+      <Suspense fallback={fallback}>
       <Routes>
         <Route path="/" element={<Dashboard />} />
         <Route path="/billing" element={<BillingPage />} />
@@ -69,11 +77,13 @@ export default function App() {
         <Route path="/gst-report" element={<GstReportPage />} />
         <Route path="/forwarded-shops" element={<ForwardedShopsPage />} />
         <Route path="/karigar-tasks" element={<KarigarTasksPage />} />
+        <Route path="/catalog" element={<CatalogPage />} />
         <Route path="/notifications" element={<NotificationsPage />} />
         <Route path="/employees" element={<EmployeesPage />} />
         <Route path="/calculator" element={<CalculatorPage />} />
         <Route path="*" element={<div className="flex min-h-screen items-center justify-center text-2xl font-bold text-muted-foreground">404 - Page Not Found</div>} />
       </Routes>
+      </Suspense>
     </BrowserRouter>
   );
 }

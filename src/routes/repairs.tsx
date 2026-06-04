@@ -23,6 +23,7 @@ export default function RepairsPage() {
   const empty: Repair = { ticketNo: "", date: new Date().toISOString().slice(0,10), customerName: "", customerMobile: "", customerAddress: "", itemDescription: "", itemWeight: 0, problem: "", estimate: 0, advance: 0, deliveryDate: "", karigarId: "", status: "Received", note: "", customerSignature: "", authorizedSignatory: "" };
   const [form, setForm] = useState<Repair>(empty);
   const [viewingReceipt, setViewingReceipt] = useState<Repair | null>(null);
+  const [page, setPage] = useState(1);
 
   const { data = [], isLoading, error } = useApi<Repair[]>(["repairs"], () => repairsAPI.getAll());
   const { data: karigars = [] } = useApi<Karigar[]>(["karigars"], () => karigarsAPI.getAll());
@@ -89,6 +90,10 @@ export default function RepairsPage() {
 
   const pending = list.filter((r) => r.status !== "Delivered").length;
   const totalEstimate = list.filter((r) => r.status !== "Delivered").reduce((s, r) => s + (r.estimate || 0), 0);
+
+  const totalPages = Math.ceil(list.length / 10) || 1;
+  const currentPage = Math.min(page, totalPages);
+  const paginated = list.slice((currentPage - 1) * 10, currentPage * 10);
 
   return (
     <Layout>
@@ -245,7 +250,7 @@ export default function RepairsPage() {
                 </tr>
               </thead>
               <tbody>
-                {list.map((r) => (
+            {paginated.map((r) => (
                   <tr key={r.id} className="border-b last:border-0">
                     <td className="py-2 font-medium">{r.ticketNo}</td>
                     <td>{formatDate(r.date)}</td>
@@ -281,6 +286,15 @@ export default function RepairsPage() {
                 ))}
               </tbody>
             </table>
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between px-4 py-3 border-t">
+            <div className="text-xs text-muted-foreground">Showing {(currentPage - 1) * 10 + 1} to {Math.min(currentPage * 10, list.length)} of {list.length} entries</div>
+            <div className="flex gap-1">
+              <Button size="sm" variant="outline" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={currentPage === 1}>Prev</Button>
+              <Button size="sm" variant="outline" onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages}>Next</Button>
+            </div>
+          </div>
+        )}
             </div>
           )}
         </CardContent>
@@ -356,10 +370,8 @@ function RepairInvoiceModal({ repair, onClose }: { repair: Repair; onClose: () =
           {/* Calculations & Totals */}
           <div className="flex flex-col sm:flex-row justify-between items-start text-sm gap-6">
             <div className="w-full sm:w-1/2 sm:pr-8 order-2 sm:order-1">
-               <InvoiceTerms />
-               
               {balanceDue <= 0 && (
-                <div className="mt-4 p-2 bg-green-50 border border-green-200 text-green-800 text-center font-bold rounded tracking-widest text-lg">
+                <div className="p-2 bg-green-50 border border-green-200 text-green-800 text-center font-bold rounded tracking-widest text-lg">
                   PAYMENT DONE
                 </div>
               )}
@@ -389,8 +401,8 @@ function RepairInvoiceModal({ repair, onClose }: { repair: Repair; onClose: () =
           </div>
 
           {/* Signatures */}
-          <div className="mt-16 flex justify-between items-end text-xs font-bold text-slate-500 uppercase tracking-wider">
-            <div className="text-center">
+          <div className="mt-12 grid grid-cols-1 sm:grid-cols-3 gap-6 items-end text-xs font-bold text-slate-500 uppercase tracking-wider">
+            <div className="text-center order-2 sm:order-1">
               {repair.customerSignature ? (
                 <img src={repair.customerSignature} alt="Customer Signature" className="h-16 mx-auto mb-2 object-contain" />
               ) : (
@@ -398,7 +410,10 @@ function RepairInvoiceModal({ repair, onClose }: { repair: Repair; onClose: () =
               )}
               Customer Signature
             </div>
-            <div className="text-center">
+            <div className="normal-case tracking-normal font-normal text-left text-slate-800 order-1 sm:order-2">
+              <InvoiceTerms compact />
+            </div>
+            <div className="text-center order-3 sm:order-3">
               {repair.authorizedSignatory ? (
                 <img src={repair.authorizedSignatory} alt="Authorized Signatory" className="h-16 mx-auto mb-2 object-contain" />
               ) : (

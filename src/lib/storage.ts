@@ -37,6 +37,7 @@ export type Product = {
   stock: number;
   barcode: string;
   imageUrl?: string;
+  imageUrls?: string[];
 };
 
 export type Customer = {
@@ -55,6 +56,8 @@ export type InvoiceItem = {
   name: string;
   purity: string;
   netWeight: number;
+  grossWeight?: number;
+  stoneWeight?: number;
   ratePerGram: number;
   makingCharge: number;
   makingChargePct?: number;

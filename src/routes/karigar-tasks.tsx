@@ -25,6 +25,8 @@ export default function KarigarTasksPage() {
   const [selectedKarigarId, setSelectedKarigarId] = useState<string>(isKarigar ? authUser.id : "");
   const [viewingRepair, setViewingRepair] = useState<Repair | null>(null);
   const [viewingOrder, setViewingOrder] = useState<Order | null>(null);
+  const [pageR, setPageR] = useState(1);
+  const [pageO, setPageO] = useState(1);
 
   const activeKarigarName = useMemo(() => karigars.find(k => (k._id || k.id) === selectedKarigarId)?.name || "", [karigars, selectedKarigarId]);
 
@@ -40,6 +42,14 @@ export default function KarigarTasksPage() {
   const activeOrders = useMemo(() => assignedOrders.filter(o => o.status !== "Delivered" && o.status !== "Cancelled"), [assignedOrders]);
   const repairsWeight = activeRepairs.reduce((sum, r) => sum + (Number(r.itemWeight) || 0), 0);
   const ordersWeight = activeOrders.reduce((sum, o) => sum + (Number(o.estimatedWeight) || 0), 0);
+
+  const totalPagesR = Math.ceil(assignedRepairs.length / 10) || 1;
+  const currentPageR = Math.min(pageR, totalPagesR);
+  const paginatedR = assignedRepairs.slice((currentPageR - 1) * 10, currentPageR * 10);
+
+  const totalPagesO = Math.ceil(assignedOrders.length / 10) || 1;
+  const currentPageO = Math.min(pageO, totalPagesO);
+  const paginatedO = assignedOrders.slice((currentPageO - 1) * 10, currentPageO * 10);
 
   const updateRepairStatus = async (id: string, status: Repair["status"]) => {
     const repair = repairs.find(r => r._id === id || r.id === id);
@@ -124,7 +134,7 @@ export default function KarigarTasksPage() {
               <CardHeader><CardTitle className="font-display flex items-center gap-2"><Wrench className="w-5 h-5"/> Repairs ({assignedRepairs.length})</CardTitle></CardHeader>
               <CardContent className="p-0">
                 <table className="w-full text-sm"><thead className="text-left text-muted-foreground border-b bg-muted/20"><tr><th className="py-2 px-4">Ticket</th><th>Item</th><th>Due</th><th className="px-4 text-right">Status</th><th className="px-4"></th></tr></thead>
-                  <tbody>{assignedRepairs.map(r => (<tr key={r._id || r.id} className="border-b last:border-0 hover:bg-muted/40">
+              <tbody>{paginatedR.map(r => (<tr key={r._id || r.id} className="border-b last:border-0 hover:bg-muted/40">
                     <td className="py-2 px-4"><div className="font-medium">{r.ticketNo}</div><div className="text-xs text-muted-foreground">{formatDate(r.date)}</div></td>
                     <td><div className="font-medium">{r.itemDescription}</div><div className="text-xs text-rose-500">{r.problem}</div></td>
                     <td>{r.deliveryDate ? formatDate(r.deliveryDate) : "—"}</td>
@@ -141,6 +151,15 @@ export default function KarigarTasksPage() {
                   </tr>))}
                   {assignedRepairs.length === 0 && <tr><td colSpan={5} className="text-center py-6 text-muted-foreground">No repairs assigned.</td></tr>}
                   </tbody></table>
+            {totalPagesR > 1 && (
+              <div className="flex items-center justify-between px-4 py-3 border-t">
+                <div className="text-xs text-muted-foreground">Showing {(currentPageR - 1) * 10 + 1} to {Math.min(currentPageR * 10, assignedRepairs.length)} of {assignedRepairs.length} entries</div>
+                <div className="flex gap-1">
+                  <Button size="sm" variant="outline" onClick={() => setPageR(p => Math.max(1, p - 1))} disabled={currentPageR === 1}>Prev</Button>
+                  <Button size="sm" variant="outline" onClick={() => setPageR(p => Math.min(totalPagesR, p + 1))} disabled={currentPageR === totalPagesR}>Next</Button>
+                </div>
+              </div>
+            )}
               </CardContent>
             </Card>
 
@@ -149,7 +168,7 @@ export default function KarigarTasksPage() {
               <CardHeader><CardTitle className="font-display flex items-center gap-2"><ShoppingBag className="w-5 h-5"/> Custom Orders ({assignedOrders.length})</CardTitle></CardHeader>
               <CardContent className="p-0">
                 <table className="w-full text-sm"><thead className="text-left text-muted-foreground border-b bg-muted/20"><tr><th className="py-2 px-4">Order</th><th>Item</th><th>Due</th><th className="px-4 text-right">Status</th><th className="px-4"></th></tr></thead>
-                  <tbody>{assignedOrders.map(o => (<tr key={o._id || o.id} className="border-b last:border-0 hover:bg-muted/40">
+              <tbody>{paginatedO.map(o => (<tr key={o._id || o.id} className="border-b last:border-0 hover:bg-muted/40">
                     <td className="py-2 px-4"><div className="font-medium">{o.orderNo}</div><div className="text-xs text-muted-foreground">{formatDate(o.date)}</div></td>
                     <td><div className="font-medium">{o.itemDescription}</div><div className="text-xs text-muted-foreground">{o.metal} {o.purity} • {o.estimatedWeight}g</div></td>
                     <td>{o.dueDate ? formatDate(o.dueDate) : "—"}</td>
@@ -166,6 +185,15 @@ export default function KarigarTasksPage() {
                   </tr>))}
                   {assignedOrders.length === 0 && <tr><td colSpan={5} className="text-center py-6 text-muted-foreground">No custom orders assigned.</td></tr>}
                   </tbody></table>
+            {totalPagesO > 1 && (
+              <div className="flex items-center justify-between px-4 py-3 border-t">
+                <div className="text-xs text-muted-foreground">Showing {(currentPageO - 1) * 10 + 1} to {Math.min(currentPageO * 10, assignedOrders.length)} of {assignedOrders.length} entries</div>
+                <div className="flex gap-1">
+                  <Button size="sm" variant="outline" onClick={() => setPageO(p => Math.max(1, p - 1))} disabled={currentPageO === 1}>Prev</Button>
+                  <Button size="sm" variant="outline" onClick={() => setPageO(p => Math.min(totalPagesO, p + 1))} disabled={currentPageO === totalPagesO}>Next</Button>
+                </div>
+              </div>
+            )}
               </CardContent>
             </Card>
           </div>

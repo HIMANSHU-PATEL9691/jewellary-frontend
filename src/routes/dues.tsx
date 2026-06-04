@@ -14,6 +14,7 @@ export default function DuesPage() {
   const { data: invoices = [], isLoading } = useApi<Invoice[]>(["invoices"], () => invoicesAPI.getAll());
   const [q, setQ] = useState("");
   const [dateFilter, setDateFilter] = useState<string>("");
+  const [page, setPage] = useState(1);
 
   const dueInvoices = useMemo(() => {
     return invoices
@@ -32,6 +33,10 @@ export default function DuesPage() {
   }, [invoices, q, dateFilter]);
 
   const totalDue = dueInvoices.reduce((sum, i) => sum + (i.balanceDue || 0), 0);
+
+  const totalPages = Math.ceil(dueInvoices.length / 10) || 1;
+  const currentPage = Math.min(page, totalPages);
+  const paginated = dueInvoices.slice((currentPage - 1) * 10, currentPage * 10);
 
   const sendWhatsApp = (inv: Invoice) => {
     let phone = inv.customerMobile.replace(/\D/g, "");
@@ -112,7 +117,7 @@ export default function DuesPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {dueInvoices.map((inv) => (
+              {paginated.map((inv) => (
                     <tr key={inv._id || inv.id} className="border-b last:border-0 hover:bg-muted/40">
                       <td className="py-3 px-4">{formatDate(inv.createdAt)}</td>
                       <td className="py-3 font-medium">{inv.number}</td>
@@ -131,6 +136,15 @@ export default function DuesPage() {
                   ))}
                 </tbody>
               </table>
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between px-4 py-3 border-t">
+              <div className="text-xs text-muted-foreground">Showing {(currentPage - 1) * 10 + 1} to {Math.min(currentPage * 10, dueInvoices.length)} of {dueInvoices.length} entries</div>
+              <div className="flex gap-1">
+                <Button size="sm" variant="outline" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={currentPage === 1}>Prev</Button>
+                <Button size="sm" variant="outline" onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages}>Next</Button>
+              </div>
+            </div>
+          )}
             </div>
           )}
         </CardContent>

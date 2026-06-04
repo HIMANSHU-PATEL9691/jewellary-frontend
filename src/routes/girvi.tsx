@@ -148,6 +148,7 @@ export default function GirviPage() {
   const [newCategory, setNewCategory] = useState("");
   const [imagePreview, setImagePreview] = useState("");
   const [forwardedImagePreview, setForwardedImagePreview] = useState("");
+  const [page, setPage] = useState(1);
 
   const totals = useMemo(() => {
     const active = girvis.filter((g) => g.status === "Active");
@@ -174,6 +175,10 @@ export default function GirviPage() {
     }
     return [...list].sort((a, b) => b.date.localeCompare(a.date));
   }, [girvis, filter, q]);
+
+  const totalPages = Math.ceil(filtered.length / 10) || 1;
+  const currentPage = Math.min(page, totalPages);
+  const paginated = filtered.slice((currentPage - 1) * 10, currentPage * 10);
 
   async function add(createInvoice = false) {
     if (!form.customerName || !form.loanAmount) return;
@@ -259,20 +264,56 @@ export default function GirviPage() {
   function handleImageChange(file?: File) {
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = () => {
-      const result = reader.result as string;
-      setForm((prev) => ({ ...prev, imageUrl: result }));
-      setImagePreview(result);
+    reader.onload = (e) => {
+      const img = new window.Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        const MAX_SIZE = 400; // Drastically reduce size for shorter Base64
+        let { width, height } = img;
+        if (width > height && width > MAX_SIZE) {
+          height *= MAX_SIZE / width;
+          width = MAX_SIZE;
+        } else if (height > MAX_SIZE) {
+          width *= MAX_SIZE / height;
+          height = MAX_SIZE;
+        }
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        ctx?.drawImage(img, 0, 0, width, height);
+        const compressedBase64 = canvas.toDataURL("image/webp", 0.5);
+        setForm((prev) => ({ ...prev, imageUrl: compressedBase64 }));
+        setImagePreview(compressedBase64);
+      };
+      img.src = e.target?.result as string;
     };
     reader.readAsDataURL(file);
   }
   function handleForwardedImageChange(file?: File) {
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = () => {
-      const result = reader.result as string;
-      setForm((prev) => ({ ...prev, forwardedImageUrl: result }));
-      setForwardedImagePreview(result);
+    reader.onload = (e) => {
+      const img = new window.Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        const MAX_SIZE = 400; // Drastically reduce size for shorter Base64
+        let { width, height } = img;
+        if (width > height && width > MAX_SIZE) {
+          height *= MAX_SIZE / width;
+          width = MAX_SIZE;
+        } else if (height > MAX_SIZE) {
+          width *= MAX_SIZE / height;
+          height = MAX_SIZE;
+        }
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        ctx?.drawImage(img, 0, 0, width, height);
+        const compressedBase64 = canvas.toDataURL("image/webp", 0.5);
+        setForm((prev) => ({ ...prev, forwardedImageUrl: compressedBase64 }));
+        setForwardedImagePreview(compressedBase64);
+      };
+      img.src = e.target?.result as string;
     };
     reader.readAsDataURL(file);
   }
@@ -694,7 +735,7 @@ export default function GirviPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {filtered.map((g) => {
+                {paginated.map((g) => {
                       const interestAmt = calculateInterest(g);
                       const statusColors = {
                         Active: "bg-amber-100 text-amber-800 border-amber-200",
@@ -768,6 +809,15 @@ export default function GirviPage() {
                     })}
                   </tbody>
                 </table>
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between px-4 py-3 border-t">
+                <div className="text-xs text-muted-foreground">Showing {(currentPage - 1) * 10 + 1} to {Math.min(currentPage * 10, filtered.length)} of {filtered.length} entries</div>
+                <div className="flex gap-1">
+                  <Button size="sm" variant="outline" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={currentPage === 1}>Prev</Button>
+                  <Button size="sm" variant="outline" onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages}>Next</Button>
+                </div>
+              </div>
+            )}
               </div>
             )}
           </CardContent>

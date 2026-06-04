@@ -30,6 +30,7 @@ export default function OrdersPage() {
   const [searchCust, setSearchCust] = useState("");
   const [searchKar, setSearchKar] = useState("");
   const [viewingReceipt, setViewingReceipt] = useState<Order | null>(null);
+  const [page, setPage] = useState(1);
   const empty: Order = {
     id: "",
     orderNo: "",
@@ -98,6 +99,10 @@ export default function OrdersPage() {
 
   const activeOrders = list.filter(r => r.status === "Pending" || r.status === "In Progress" || r.status === "Ready").length;
   const totalAdvance = list.reduce((s, r) => s + (r.advancePaid || 0), 0);
+
+  const totalPages = Math.ceil(list.length / 10) || 1;
+  const currentPage = Math.min(page, totalPages);
+  const paginated = list.slice((currentPage - 1) * 10, currentPage * 10);
 
   return (
     <Layout>
@@ -225,7 +230,7 @@ export default function OrdersPage() {
           {isLoading ? <p className="text-center text-muted-foreground py-12">Loading orders...</p> : list.length === 0 ? <p className="text-center text-muted-foreground py-12">No orders recorded yet.</p> :
           <div className="overflow-x-auto">
           <table className="w-full text-sm"><thead className="text-left text-muted-foreground border-b"><tr><th className="py-2">Order No</th><th>Customer</th><th>Item</th><th>Karigar</th><th>Est. Wt</th><th>Est. Total</th><th>Advance</th><th>Due</th><th>Status</th><th></th></tr></thead>
-            <tbody>{list.map(r => (<tr key={(r as any)._id || r.id} className="border-b last:border-0 hover:bg-muted/40">
+            <tbody>{paginated.map(r => (<tr key={(r as any)._id || r.id} className="border-b last:border-0 hover:bg-muted/40">
               <td className="py-2">
                 <div className="font-medium">{r.orderNo}</div>
                 <div className="text-xs text-muted-foreground">{formatDate(r.date)}</div>
@@ -248,6 +253,15 @@ export default function OrdersPage() {
                 <Button size="sm" variant="ghost" onClick={() => remove((r as any)._id || r.id)}><Trash2 className="w-4 h-4 text-muted-foreground hover:text-red-500"/></Button>
               </td>
             </tr>))}</tbody></table>
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between px-4 py-3 border-t">
+                <div className="text-xs text-muted-foreground">Showing {(currentPage - 1) * 10 + 1} to {Math.min(currentPage * 10, list.length)} of {list.length} entries</div>
+                <div className="flex gap-1">
+                  <Button size="sm" variant="outline" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={currentPage === 1}>Prev</Button>
+                  <Button size="sm" variant="outline" onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages}>Next</Button>
+                </div>
+              </div>
+            )}
             </div>}
         </CardContent>
       </Card>
@@ -322,7 +336,6 @@ function OrderInvoiceModal({ order, onClose }: { order: Order; onClose: () => vo
           {/* Calculations & Totals */}
           <div className="flex flex-col sm:flex-row justify-between items-start text-sm gap-6">
             <div className="w-full sm:w-1/2 sm:pr-8 order-2 sm:order-1">
-               <InvoiceTerms />
             </div>
             <div className="w-full sm:w-1/2 max-w-sm order-1 sm:order-2">
               <table className="w-full">
@@ -349,8 +362,8 @@ function OrderInvoiceModal({ order, onClose }: { order: Order; onClose: () => vo
           </div>
 
           {/* Signatures */}
-          <div className="mt-16 flex justify-between items-end text-xs font-bold text-slate-500 uppercase tracking-wider">
-            <div className="text-center">
+          <div className="mt-12 grid grid-cols-1 sm:grid-cols-3 gap-6 items-end text-xs font-bold text-slate-500 uppercase tracking-wider">
+            <div className="text-center order-2 sm:order-1">
               {order.customerSignature ? (
                 <img src={order.customerSignature} alt="Customer Signature" className="h-16 mx-auto mb-2 object-contain" />
               ) : (
@@ -358,7 +371,10 @@ function OrderInvoiceModal({ order, onClose }: { order: Order; onClose: () => vo
               )}
               Customer Signature
             </div>
-            <div className="text-center">
+            <div className="normal-case tracking-normal font-normal text-left text-slate-800 order-1 sm:order-2">
+              <InvoiceTerms compact />
+            </div>
+            <div className="text-center order-3 sm:order-3">
               {order.authorizedSignatory ? (
                 <img src={order.authorizedSignatory} alt="Authorized Signatory" className="h-16 mx-auto mb-2 object-contain" />
               ) : (

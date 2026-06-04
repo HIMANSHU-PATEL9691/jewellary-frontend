@@ -60,6 +60,7 @@ export default function EmployeesPage() {
   const [form, setForm] = useState<Employee>(empty);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [q, setQ] = useState("");
+  const [page, setPage] = useState(1);
 
   const save = async () => {
     if (!form.name || !form.role || !form.salary) {
@@ -130,6 +131,10 @@ export default function EmployeesPage() {
 
   const activeCount = list.filter((e) => e.status === "Active").length;
   const totalSalary = list.filter((e) => e.status === "Active").reduce((sum, e) => sum + e.salary, 0);
+
+  const totalPages = Math.ceil(filtered.length / 10) || 1;
+  const currentPage = Math.min(page, totalPages);
+  const paginated = filtered.slice((currentPage - 1) * 10, currentPage * 10);
 
   return (
     <Layout>
@@ -218,7 +223,7 @@ export default function EmployeesPage() {
             <thead className="text-left text-muted-foreground border-b bg-muted/20">
               <tr><th className="p-3 font-medium">Name</th><th className="font-medium">Role</th><th className="font-medium">Join Date</th><th className="font-medium">Salary/mo</th><th className="font-medium">Pending</th><th className="text-center font-medium">Status</th><th className="text-right pr-4 font-medium">Action</th></tr>
             </thead>
-            <tbody>{filtered.map((e) => {
+            <tbody>{paginated.map((e) => {
               const pending = (getCompletedMonths(e.joinDate) * e.salary) - (e.totalPaid || 0);
               return (
                 <tr key={e.id || (e as any)._id} className="border-b last:border-0 hover:bg-muted/40 transition-colors">
@@ -238,6 +243,15 @@ export default function EmployeesPage() {
               </tr>
             )})}</tbody>
           </table>
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between px-4 py-3 border-t">
+            <div className="text-xs text-muted-foreground">Showing {(currentPage - 1) * 10 + 1} to {Math.min(currentPage * 10, filtered.length)} of {filtered.length} entries</div>
+            <div className="flex gap-1">
+              <Button size="sm" variant="outline" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={currentPage === 1}>Prev</Button>
+              <Button size="sm" variant="outline" onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages}>Next</Button>
+            </div>
+          </div>
+        )}
           </div>}
         </CardContent>
       </Card>

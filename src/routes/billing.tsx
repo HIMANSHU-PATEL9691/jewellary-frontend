@@ -27,7 +27,7 @@ import {
 } from "@/lib/storage";
 import { formatDate } from "@/lib/utils";
 import { useApi, useApiMutation } from "@/hooks/useApi";
-import { invoicesAPI, inventoryAPI, customerAPI } from "@/lib/api";
+import { invoicesAPI, inventoryAPI, customerAPI, goldRatesAPI } from "@/lib/api";
 import { toast } from "sonner";
 import { PaymentQr } from "@/components/PaymentQr";
 import { InvoiceTerms, ShopHeader } from "@/components/InvoiceBranding";
@@ -36,6 +36,8 @@ export default function BillingPage() {
   const { data: invoices = [] } = useApi<any[]>(["invoices"], () => invoicesAPI.getAll());
   const { data: products = [] } = useApi<any[]>(["inventory"], () => inventoryAPI.getAll());
   const { data: customers = [] } = useApi<any[]>(["customers"], () => customerAPI.getAll());
+  const { data: ratesList = [] } = useApi<any[]>(["goldRates"], () => goldRatesAPI.getAll());
+  const latestRates = ratesList[0];
   
   const createMutation = useApiMutation((data: any) => invoicesAPI.create(data), ["invoices"]);
   const deleteMutation = useApiMutation((id: string) => invoicesAPI.delete(id), ["invoices"]);
@@ -58,6 +60,7 @@ export default function BillingPage() {
   const [onlineMode, setOnlineMode] = useState<string>("UPI");
   const [customerSignature, setCustomerSignature] = useState<string>("");
   const [authorizedSignatory, setAuthorizedSignatory] = useState<string>("");
+  const [pages, setPages] = useState<Record<number, number>>({});
 
   const isGst = type === "GST";
 
@@ -70,29 +73,47 @@ export default function BillingPage() {
       return;
     }
 
+    let currentRate = p.ratePerGram;
+    if (latestRates && p.category !== "Diamond" && p.category !== "Other") {
+      const purityUpper = (p.purity || "").toUpperCase();
+      if (purityUpper.includes("24K") && latestRates.gold24) currentRate = latestRates.gold24;
+      else if (purityUpper.includes("22K") && latestRates.gold22) currentRate = latestRates.gold22;
+      else if (purityUpper.includes("18K") && latestRates.gold18) currentRate = latestRates.gold18;
+      else if ((p.category === "Silver" || purityUpper.includes("SILVER") || purityUpper.includes("925")) && latestRates.silver) currentRate = latestRates.silver;
+    }
+
     let makingCharge = p.makingCharge || 0;
     let makingChargePct = p.makingChargePct || 0;
 
     if (makingChargePct > 0) {
-      makingCharge = (p.netWeight * p.ratePerGram * makingChargePct) / 100;
-    } else if (makingCharge > 0 && p.netWeight > 0 && p.ratePerGram > 0) {
-      makingChargePct = Number(((makingCharge / (p.netWeight * p.ratePerGram)) * 100).toFixed(2));
+      makingCharge = (p.netWeight * currentRate * makingChargePct) / 100;
+    } else if (makingCharge > 0 && p.netWeight > 0 && currentRate > 0) {
+      makingChargePct = Number(((makingCharge / (p.netWeight * currentRate)) * 100).toFixed(2));
+    }
+
+    let itemName = p.name;
+    if (p.huid) {
+      itemName += ` (HUID: ${p.huid})`;
+    } else if (p.barcode && !p.barcode.startsWith("AJ-") && !p.barcode.startsWith("CAT-")) {
+      itemName += ` (BC: ${p.barcode})`;
     }
 
     setItems((prev) => [
       ...prev,
       {
         productId: p.id || p._id,
-        name: p.name,
+        name: itemName,
         purity: p.purity,
         netWeight: p.netWeight,
-        ratePerGram: p.ratePerGram,
+        grossWeight: p.grossWeight !== undefined ? p.grossWeight : p.netWeight,
+        stoneWeight: p.stoneWeight || 0,
+        ratePerGram: currentRate,
         makingCharge: makingCharge,
         makingChargePct: makingChargePct,
         stoneCharge: 0,
         gstPct: p.gstPct,
         qty: 1,
-      },
+      } as any,
     ]);
   };
 
@@ -104,13 +125,15 @@ export default function BillingPage() {
         name: "",
         purity: "22K",
         netWeight: 0,
+        grossWeight: 0,
+        stoneWeight: 0,
         ratePerGram: 0,
         makingCharge: 0,
         makingChargePct: 0,
         stoneCharge: 0,
         gstPct: type === "GST" ? 3 : 0,
         qty: 1,
-      },
+      } as any,
     ]);
   };
 
@@ -158,7 +181,20 @@ export default function BillingPage() {
     setType(inv.type);
     setCustomerId(inv.customerId);
     setSearchCust(inv.customerName || "");
-    setItems(inv.items || []);
+    const parsedItems = (inv.items || []).map((it: any) => {
+      let pid = it.productId;
+      let gw = it.netWeight;
+      let sw = 0;
+      if (pid && typeof pid === "string" && pid.includes("__GW_")) {
+        const parts = pid.split("__GW_");
+        pid = parts[0];
+        const subParts = parts[1].split("__SW_");
+        gw = Number(subParts[0]);
+        sw = Number(subParts[1]);
+      }
+      return { ...it, productId: pid, grossWeight: gw, stoneWeight: sw };
+    });
+    setItems(parsedItems);
     setDiscount(inv.discount || "");
     setOldGoldAmount(inv.oldGoldAmount || "");
     
@@ -236,8 +272,10 @@ export default function BillingPage() {
 
     // Clean _id from subdocuments to avoid Mongoose immutable _id CastErrors on update
     const cleanItems = items.map((it: any) => {
-      const { _id, id, ...rest } = it;
-      return rest;
+      const { _id, id, grossWeight, stoneWeight, ...rest } = it;
+      const gw = grossWeight !== undefined ? grossWeight : rest.netWeight;
+      const sw = stoneWeight || 0;
+      return { ...rest, productId: `${rest.productId}__GW_${gw}__SW_${sw}` };
     });
 
     let cleanPayments = initialPayment;
@@ -248,8 +286,15 @@ export default function BillingPage() {
       cleanPayments = initialPayment;
     }
 
+    let newNumber = existingInv ? existingInv.number : "";
+    if (!existingInv) {
+      const typeInvoices = invoices.filter(i => i.type === type && !i.number?.startsWith("MAN-"));
+      const prefix = type === "GST" ? "GST-" : "INV-";
+      newNumber = prefix + (typeInvoices.length + 1).toString().padStart(4, "0");
+    }
+
     const inv: any = {
-      number: existingInv ? existingInv.number : "INV-" + (invoices.length + 1).toString().padStart(4, "0"),
+      number: newNumber,
       type,
       customerId: cust?._id || cust?.id,
       customerName: cust?.name,
@@ -278,7 +323,8 @@ export default function BillingPage() {
         
         // Deduct sold quantities from inventory stock
         for (const item of items) {
-          const p = products.find((x) => (x.id || x._id) === item.productId);
+          const actualPid = item.productId ? item.productId.split("__GW_")[0] : item.productId;
+          const p = products.find((x) => (x.id || x._id) === actualPid);
           if (p) {
             const newStock = Math.max(0, (p.stock || 0) - (item.qty || 1));
             await updateProductMutation.mutateAsync({ id: p._id || p.id, body: { ...p, stock: newStock } });
@@ -300,7 +346,8 @@ export default function BillingPage() {
       try {
         // Add stock back to inventory
         for (const item of invoice.items) {
-          const p = products.find((x) => (x.id || x._id) === item.productId);
+          const actualPid = item.productId ? item.productId.split("__GW_")[0] : item.productId;
+          const p = products.find((x) => (x.id || x._id) === actualPid);
           if (p) {
             const newStock = (p.stock || 0) + (item.qty || 1);
             await updateProductMutation.mutateAsync({ id: p._id || p.id, body: { ...p, stock: newStock } });
@@ -315,6 +362,9 @@ export default function BillingPage() {
   const today = new Date().toDateString();
   const todayInvoices = invoices.filter(i => new Date(i.createdAt).toDateString() === today);
   const todayRevenue = todayInvoices.reduce((s, i) => s + i.total, 0);
+
+  const gstInvoices = useMemo(() => invoices.filter((i) => i.type === "GST"), [invoices]);
+  const nonGstInvoices = useMemo(() => invoices.filter((i) => i.type === "NON-GST"), [invoices]);
 
   return (
     <Layout>
@@ -526,12 +576,14 @@ export default function BillingPage() {
                       <thead className="text-left text-muted-foreground border-b bg-muted/20">
                         <tr>
                           <th className="p-3 font-medium">Product</th>
-                          <th className="py-3 font-medium w-24">Qty</th>
-                          <th className="py-3 font-medium w-28">Net Wt (g)</th>
-                          <th className="py-3 font-medium w-28">Rate (₹/g)</th>
-                          <th className="py-3 font-medium w-28">Amount</th>
+                          <th className="py-3 font-medium w-16">Qty</th>
+                          <th className="py-3 font-medium w-20">Gross Wt</th>
+                          <th className="py-3 font-medium w-20">Stone Wt</th>
+                          <th className="py-3 font-medium w-20">Net Wt</th>
+                          <th className="py-3 font-medium w-24">Rate(₹/g)</th>
+                          <th className="py-3 font-medium w-24">Amount</th>
                           <th className="py-3 font-medium w-20">Making (%)</th>
-                          <th className="py-3 font-medium text-right pr-3 w-32">Total (₹)</th>
+                          <th className="py-3 font-medium text-right pr-3 w-28">Total (₹)</th>
                           <th className="w-12" />
                         </tr>
                       </thead>
@@ -546,17 +598,43 @@ export default function BillingPage() {
                                 <Input value={it.purity} onChange={(e) => updateItem(i, { purity: e.target.value })} className="h-7 text-xs" placeholder="Purity (e.g. 22K)" />
                               </td>
                               <td className="py-2">
-                                <NumI v={it.qty} on={(v) => updateItem(i, { qty: v })} className="w-16 h-8 bg-background" />
+                                <NumI v={it.qty} on={(v) => updateItem(i, { qty: v })} className="w-12 h-8 bg-background" />
+                              </td>
+                              <td className="py-2">
+                                <NumI
+                                  v={(it as any).grossWeight !== undefined ? (it as any).grossWeight : it.netWeight}
+                                  on={(v) => {
+                                    const stWt = (it as any).stoneWeight || 0;
+                                    const net = Math.max(0, v - stWt);
+                                    const patch: any = { grossWeight: v, netWeight: net };
+                                    if (it.makingChargePct) patch.makingCharge = (net * it.ratePerGram * it.makingChargePct) / 100;
+                                    updateItem(i, patch);
+                                  }}
+                                  className="w-16 h-8 bg-background"
+                                />
+                              </td>
+                              <td className="py-2">
+                                <NumI
+                                  v={(it as any).stoneWeight || 0}
+                                  on={(v) => {
+                                    const grWt = (it as any).grossWeight !== undefined ? (it as any).grossWeight : it.netWeight;
+                                    const net = Math.max(0, grWt - v);
+                                    const patch: any = { stoneWeight: v, netWeight: net };
+                                    if (it.makingChargePct) patch.makingCharge = (net * it.ratePerGram * it.makingChargePct) / 100;
+                                    updateItem(i, patch);
+                                  }}
+                                  className="w-16 h-8 bg-background"
+                                />
                               </td>
                               <td className="py-2">
                                 <NumI
                                   v={it.netWeight}
                                 on={(v) => {
-                                  const patch: any = { netWeight: v };
+                                  const patch: any = { netWeight: v, grossWeight: v + ((it as any).stoneWeight || 0) };
                                   if (it.makingChargePct) patch.makingCharge = (v * it.ratePerGram * it.makingChargePct) / 100;
                                   updateItem(i, patch);
                                 }}
-                                  className="w-20 h-8 bg-background"
+                                  className="w-16 h-8 bg-background"
                                 />
                               </td>
                               <td className="py-2">
@@ -631,8 +709,8 @@ export default function BillingPage() {
 
                     {isGst && (
                       <>
-                        <Row label="CGST" v={inr(totals.cgst)} />
-                        <Row label="SGST" v={inr(totals.sgst)} />
+                        <Row label="CGST @ 1.5%" v={inr(totals.cgst)} />
+                        <Row label="SGST @ 1.5%" v={inr(totals.sgst)} />
                       </>
                     )}
                     
@@ -726,51 +804,58 @@ export default function BillingPage() {
         <KPI label="Today's Revenue" value={inr(todayRevenue)} />
       </div>
 
-          <Card>
-        <CardHeader>
-          <CardTitle className="font-display flex items-center gap-2">
-            <Receipt className="w-5 h-5" /> Invoice History
-          </CardTitle>
-        </CardHeader>
-            <CardContent className="p-0">
-              {invoices.length === 0 ? (
-                <p className="text-sm text-muted-foreground py-12 text-center">No invoices yet.</p>
-              ) : (
-                <div className="overflow-x-auto">
+      {[
+        { title: "GST Invoice History", data: gstInvoices },
+        { title: "NON-GST Invoice History", data: nonGstInvoices }
+      ].map(({ title, data }, index) => {
+        const totalPages = Math.ceil(data.length / 10) || 1;
+        const currentPage = Math.min(pages[index] || 1, totalPages);
+        const paginated = data.slice((currentPage - 1) * 10, currentPage * 10);
+        
+        return (
+        <Card key={title} className={index === 0 ? "mb-6" : ""}>
+          <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <CardTitle className="font-display flex items-center gap-2">
+              <Receipt className="w-5 h-5" /> {title}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            {data.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-12 text-center">No invoices found.</p>
+            ) : (
+              <div className="overflow-x-auto">
                 <table className="w-full text-sm">
-              <thead className="text-left text-muted-foreground border-b bg-muted/20">
+                  <thead className="text-left text-muted-foreground border-b bg-muted/20">
                     <tr>
-                  <th className="p-3 font-medium">Invoice</th>
-                  <th className="font-medium">Date</th>
-                  <th className="font-medium">Customer</th>
-                  <th className="font-medium">Type</th>
-                  <th className="font-medium">Mode</th>
-                  <th className="text-right font-medium">Total</th>
-                  <th className="text-right font-medium">Due</th>
-                  <th className="text-center font-medium">Status</th>
+                      <th className="p-3 font-medium">Invoice</th>
+                      <th className="font-medium">Date</th>
+                      <th className="font-medium">Customer</th>
+                      <th className="font-medium">Mode</th>
+                      <th className="text-right font-medium">Total</th>
+                      <th className="text-right font-medium">Due</th>
+                      <th className="text-center font-medium">Status</th>
                       <th></th>
                     </tr>
                   </thead>
                   <tbody>
-                    {invoices.map((i) => (
+                    {paginated.map((i) => (
                       <tr key={i._id || i.id} className="border-b last:border-0 hover:bg-muted/40">
                         <td className="p-3 font-medium">{i.number}</td>
                         <td>{formatDate(i.createdAt)}</td>
                         <td>{i.customerName}</td>
-                        <td>{i.type}</td>
                         <td>{i.paymentMode}</td>
-                    <td className="text-right font-medium text-green-600">{inr(i.total)}</td>
-                    <td className="text-right font-medium text-rose-600">{inr(i.balanceDue || 0)}</td>
-                    <td className="text-center">
-                      {(i.balanceDue || 0) <= 0 ? (
-                        <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded text-[10px] font-semibold uppercase">Paid</span>
-                      ) : (
-                        <span className="bg-rose-100 text-rose-700 px-2 py-0.5 rounded text-[10px] font-semibold uppercase">Due</span>
-                      )}
-                    </td>
+                        <td className="text-right font-medium text-green-600">{inr(i.total)}</td>
+                        <td className="text-right font-medium text-rose-600">{inr(i.balanceDue || 0)}</td>
+                        <td className="text-center">
+                          {(i.balanceDue || 0) <= 0 ? (
+                            <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded text-[10px] font-semibold uppercase">Paid</span>
+                          ) : (
+                            <span className="bg-rose-100 text-rose-700 px-2 py-0.5 rounded text-[10px] font-semibold uppercase">Due</span>
+                          )}
+                        </td>
                         <td>
-                      <div className="flex justify-end gap-2 pr-3">
-                        <Button size="sm" variant="outline" onClick={() => setViewing(i)}>View</Button>
+                          <div className="flex justify-end gap-2 pr-3">
+                            <Button size="sm" variant="outline" onClick={() => setViewing(i)}>View</Button>
                             <Button size="icon" variant="ghost" onClick={() => editInvoice(i)}>
                               <Pencil className="w-4 h-4 text-muted-foreground hover:text-primary" />
                             </Button>
@@ -783,10 +868,20 @@ export default function BillingPage() {
                     ))}
                   </tbody>
                 </table>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+                {totalPages > 1 && (
+                  <div className="flex items-center justify-between px-4 py-3 border-t border-border">
+                    <div className="text-xs text-muted-foreground">Showing {(currentPage - 1) * 10 + 1} to {Math.min(currentPage * 10, data.length)} of {data.length} entries</div>
+                    <div className="flex gap-1">
+                      <Button size="sm" variant="outline" onClick={() => setPages(p => ({ ...p, [index]: Math.max(1, currentPage - 1) }))} disabled={currentPage === 1}>Prev</Button>
+                      <Button size="sm" variant="outline" onClick={() => setPages(p => ({ ...p, [index]: Math.min(totalPages, currentPage + 1) }))} disabled={currentPage === totalPages}>Next</Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )})}
 
       {viewing && <InvoiceModal inv={viewing} onClose={() => setViewing(null)} />}
     </Layout>
@@ -855,65 +950,77 @@ function InvoiceModal({ inv, onClose }: { inv: any; onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-50 bg-black/50 flex justify-center items-start p-2 sm:p-4 print:bg-white print:p-0 overflow-y-auto">
       <div className="bg-white w-full max-w-4xl rounded-lg shadow-xl print:shadow-none print:max-w-none text-slate-900 my-auto relative">
-        <div className="p-6 sm:p-10 print:p-0 border-2 border-transparent print:border-none m-2 print:m-0 bg-white">
+        <div className="p-4 sm:p-6 print:p-0 border-2 border-transparent print:border-none m-2 print:m-0 bg-white">
           
-          <ShopHeader documentLabel={inv.type === "GST" ? "Tax Invoice" : "Invoice"} />
+          <ShopHeader documentLabel={inv.type === "GST" ? "Tax Invoice" : "Invoice"} compact />
 
           {/* Invoice Meta & Customer Details */}
-          <div className="flex justify-between items-start mb-6 text-sm">
+          <div className="flex justify-between items-start mb-3 text-sm">
             <div>
-              <div className="font-bold text-xs text-slate-500 uppercase tracking-wider mb-1">Billed To:</div>
-              <div className="font-bold text-lg">{inv.customerName}</div>
-              <div className="text-slate-700">{inv.customerMobile}</div>
-              <div className="max-w-62.5 mt-1 text-slate-700">{inv.customerAddress || "Address not provided"}</div>
+              <div className="font-bold text-[10px] text-slate-500 uppercase tracking-wider mb-0.5">Billed To:</div>
+              <div className="font-bold text-base leading-tight">{inv.customerName}</div>
+              <div className="text-slate-700 text-xs">{inv.customerMobile}</div>
+              <div className="max-w-62.5 text-slate-700 text-xs">{inv.customerAddress || "Address not provided"}</div>
             </div>
             <div className="text-right">
-              <div className="text-2xl font-display font-bold mb-2 text-slate-900">{inv.type === "GST" ? "TAX INVOICE" : "INVOICE"}</div>
-              <table className="ml-auto text-left text-slate-700">
+              <div className="text-xl font-display font-bold mb-1 text-slate-900">{inv.type === "GST" ? "TAX INVOICE" : "INVOICE"}</div>
+              <table className="ml-auto text-left text-slate-700 text-xs">
                 <tbody>
-                  <tr><td className="pr-4 py-0.5 text-right font-medium text-slate-500">Invoice No:</td><td className="font-semibold text-slate-900">{inv.number}</td></tr>
-                  <tr><td className="pr-4 py-0.5 text-right font-medium text-slate-500">Date:</td><td className="font-semibold text-slate-900">{formatDate(inv.createdAt)}</td></tr>
+                  <tr><td className="pr-3 py-0.5 text-right font-medium text-slate-500">Invoice No:</td><td className="font-semibold text-slate-900">{inv.number}</td></tr>
+                  <tr><td className="pr-3 py-0.5 text-right font-medium text-slate-500">Date:</td><td className="font-semibold text-slate-900">{formatDate(inv.createdAt)}</td></tr>
                 </tbody>
               </table>
             </div>
           </div>
 
           {/* Items Table */}
-          <table className="w-full text-sm mb-6 border-collapse border border-slate-300">
+          <table className="w-full text-xs mb-3 border-collapse border border-slate-300">
             <thead className="bg-slate-100">
               <tr>
-                <th className="border border-slate-300 py-2 px-3 text-center w-12 text-slate-600">#</th>
-                <th className="border border-slate-300 py-2 px-3 text-left text-slate-600">Description of Goods</th>
-                <th className="border border-slate-300 py-2 px-3 text-right text-slate-600">Qty</th>
-                <th className="border border-slate-300 py-2 px-3 text-right text-slate-600">Net Wt</th>
-                <th className="border border-slate-300 py-2 px-3 text-right text-slate-600">Rate/g</th>
-                <th className="border border-slate-300 py-2 px-3 text-right text-slate-600">Amount</th>
-                <th className="border border-slate-300 py-2 px-3 text-right text-slate-600">Making (%)</th>
-                <th className="border border-slate-300 py-2 px-3 text-right text-slate-600">Total</th>
+                <th className="border border-slate-300 py-1 px-1.5 text-center w-8 text-slate-600">#</th>
+                <th className="border border-slate-300 py-1 px-1.5 text-left text-slate-600">Description of Goods</th>
+                <th className="border border-slate-300 py-1 px-1.5 text-right text-slate-600">Qty</th>
+                <th className="border border-slate-300 py-1 px-1.5 text-right text-slate-600">Gross Wt</th>
+                <th className="border border-slate-300 py-1 px-1.5 text-right text-slate-600">Stone Wt</th>
+                <th className="border border-slate-300 py-1 px-1.5 text-right text-slate-600">Net Wt</th>
+                <th className="border border-slate-300 py-1 px-1.5 text-right text-slate-600">Rate/g</th>
+                <th className="border border-slate-300 py-1 px-1.5 text-right text-slate-600">Amount</th>
+                <th className="border border-slate-300 py-1 px-1.5 text-right text-slate-600">Making (%)</th>
+                <th className="border border-slate-300 py-1 px-1.5 text-right text-slate-600">Total</th>
               </tr>
             </thead>
             <tbody>
               {inv.items.map((it: any, i: number) => {
+                let gw = it.grossWeight !== undefined ? it.grossWeight : it.netWeight;
+                let sw = it.stoneWeight || 0;
+                if (it.productId && typeof it.productId === 'string' && it.productId.includes("__GW_")) {
+                  const parts = it.productId.split("__GW_");
+                  const subParts = parts[1].split("__SW_");
+                  gw = Number(subParts[0]);
+                  sw = Number(subParts[1]);
+                }
                 const c = calcItem(it, inv.type === "GST");
                 const amount = it.netWeight * it.ratePerGram;
                 return (
                   <tr key={i} className="border-b border-slate-300 last:border-0">
-                    <td className="border border-slate-300 py-2 px-3 text-center text-slate-600">{i + 1}</td>
-                    <td className="border border-slate-300 py-2 px-3">
-                      <div className="font-semibold">{it.name}</div>
-                      <div className="text-xs text-slate-500">Purity: {it.purity}</div>
+                    <td className="border border-slate-300 py-1 px-1.5 text-center text-slate-600">{i + 1}</td>
+                    <td className="border border-slate-300 py-1 px-1.5">
+                      <div className="font-semibold leading-tight">{it.name}</div>
+                      <div className="text-[10px] text-slate-500">Purity: {it.purity}</div>
                     </td>
-                    <td className="border border-slate-300 py-2 px-3 text-right">{it.qty}</td>
-                    <td className="border border-slate-300 py-2 px-3 text-right">{it.netWeight} g</td>
-                    <td className="border border-slate-300 py-2 px-3 text-right">{inr(it.ratePerGram)}</td>
-                    <td className="border border-slate-300 py-2 px-3 text-right">{inr(amount)}</td>
-                    <td className="border border-slate-300 py-2 px-3 text-right">
+                    <td className="border border-slate-300 py-1 px-1.5 text-right">{it.qty}</td>
+                    <td className="border border-slate-300 py-1 px-1.5 text-right">{gw} g</td>
+                    <td className="border border-slate-300 py-1 px-1.5 text-right">{sw} g</td>
+                    <td className="border border-slate-300 py-1 px-1.5 text-right">{it.netWeight} g</td>
+                    <td className="border border-slate-300 py-1 px-1.5 text-right">{inr(it.ratePerGram)}</td>
+                    <td className="border border-slate-300 py-1 px-1.5 text-right">{inr(amount)}</td>
+                    <td className="border border-slate-300 py-1 px-1.5 text-right">
                       {(() => {
                         const pct = it.makingChargePct || (it.makingCharge > 0 && it.netWeight > 0 && it.ratePerGram > 0 ? (it.makingCharge / (it.netWeight * it.ratePerGram)) * 100 : 0);
                         return pct > 0 ? `${Number.isInteger(pct) ? pct : pct.toFixed(2)}%` : '0%';
                       })()}
                     </td>
-                    <td className="border border-slate-300 py-2 px-3 text-right font-bold">{inr(c.line)}</td>
+                    <td className="border border-slate-300 py-1 px-1.5 text-right font-bold">{inr(c.line)}</td>
                   </tr>
                 );
               })}
@@ -921,12 +1028,10 @@ function InvoiceModal({ inv, onClose }: { inv: any; onClose: () => void }) {
           </table>
 
           {/* Calculations & Totals */}
-          <div className="flex flex-col sm:flex-row justify-between items-start text-sm gap-6">
+          <div className="flex flex-col sm:flex-row justify-between items-start text-xs gap-4">
             <div className="w-full sm:w-1/2 sm:pr-8 order-2 sm:order-1">
-               <InvoiceTerms />
-               
               {((inv.balanceDue || 0) <= 0) && (
-                <div className="mt-4 p-2 bg-green-50 border border-green-200 text-green-800 text-center font-bold rounded tracking-widest text-lg">
+                <div className="p-1.5 bg-green-50 border border-green-200 text-green-800 text-center font-bold rounded tracking-widest text-base">
                   PAYMENT DONE
                 </div>
               )}
@@ -934,23 +1039,23 @@ function InvoiceModal({ inv, onClose }: { inv: any; onClose: () => void }) {
             <div className="w-full sm:w-1/2 max-w-sm order-1 sm:order-2">
               <table className="w-full">
                 <tbody>
-                  <tr><td className="py-1 text-slate-600">Subtotal</td><td className="py-1 text-right font-semibold">{inr(inv.subtotal)}</td></tr>
-                  {inv.discount > 0 && <tr><td className="py-1 text-slate-600">Discount</td><td className="py-1 text-right font-semibold text-green-600">- {inr(inv.discount)}</td></tr>}
-                  {inv.oldGoldAmount > 0 && <tr><td className="py-1 text-slate-600">Old Gold Exchange</td><td className="py-1 text-right font-semibold text-green-600">- {inr(inv.oldGoldAmount)}</td></tr>}
+                  <tr><td className="py-0.5 text-slate-600">Subtotal</td><td className="py-0.5 text-right font-semibold">{inr(inv.subtotal)}</td></tr>
+                  {inv.discount > 0 && <tr><td className="py-0.5 text-slate-600">Discount</td><td className="py-0.5 text-right font-semibold text-green-600">- {inr(inv.discount)}</td></tr>}
+                  {inv.oldGoldAmount > 0 && <tr><td className="py-0.5 text-slate-600">Old Gold Exchange</td><td className="py-0.5 text-right font-semibold text-green-600">- {inr(inv.oldGoldAmount)}</td></tr>}
                   {inv.type === "GST" && (
                     <>
-                      <tr><td className="py-1 text-slate-600">CGST</td><td className="py-1 text-right font-semibold">{inr(inv.gstAmount / 2)}</td></tr>
-                      <tr><td className="py-1 text-slate-600">SGST</td><td className="py-1 text-right font-semibold">{inr(inv.gstAmount / 2)}</td></tr>
+                      <tr><td className="py-0.5 text-slate-600">CGST @ 1.5%</td><td className="py-0.5 text-right font-semibold">{inr(inv.gstAmount / 2)}</td></tr>
+                      <tr><td className="py-0.5 text-slate-600">SGST @ 1.5%</td><td className="py-0.5 text-right font-semibold">{inr(inv.gstAmount / 2)}</td></tr>
                     </>
                   )}
                   {(() => {
                     const preRound = Math.round((inv.subtotal - inv.discount - inv.oldGoldAmount + (inv.type === "GST" ? inv.gstAmount : 0)) * 100) / 100;
                     const roundOff = Math.round((inv.total - preRound) * 100) / 100;
-                    return roundOff !== 0 ? <tr><td className="py-1 text-slate-600">Round Off</td><td className="py-1 text-right font-semibold">{inr(roundOff)}</td></tr> : null;
+                    return roundOff !== 0 ? <tr><td className="py-0.5 text-slate-600">Round Off</td><td className="py-0.5 text-right font-semibold">{inr(roundOff)}</td></tr> : null;
                   })()}
-                  <tr className="border-t-2 border-slate-300 text-lg">
-                    <td className="py-2 font-bold text-slate-900">Grand Total</td>
-                    <td className="py-2 text-right font-bold text-slate-900">{inr(inv.total)}</td>
+                  <tr className="border-t-2 border-slate-300 text-sm">
+                    <td className="py-1 font-bold text-slate-900">Grand Total</td>
+                    <td className="py-1 text-right font-bold text-slate-900">{inr(inv.total)}</td>
                   </tr>
                   {inv.amountPaid !== undefined && (
                     <>
@@ -961,36 +1066,36 @@ function InvoiceModal({ inv, onClose }: { inv: any; onClose: () => void }) {
                           return (
                             <>
                               {cashPaid > 0 && (
-                                <tr className="border-t border-slate-200">
-                                  <td className="py-1 text-slate-600">Paid (Cash)</td>
-                                  <td className="py-1 text-right font-medium text-green-700">{inr(cashPaid)}</td>
+                                <tr className="border-t border-slate-200 text-xs">
+                                  <td className="py-0.5 text-slate-600">Paid (Cash)</td>
+                                  <td className="py-0.5 text-right font-medium text-green-700">{inr(cashPaid)}</td>
                                 </tr>
                               )}
                               {onlinePaid > 0 && (
-                                <tr className={cashPaid > 0 ? "" : "border-t border-slate-200"}>
-                                  <td className="py-1 text-slate-600">Paid (Online)</td>
-                                  <td className="py-1 text-right font-medium text-green-700">{inr(onlinePaid)}</td>
+                                <tr className={cashPaid > 0 ? "text-xs" : "border-t border-slate-200 text-xs"}>
+                                  <td className="py-0.5 text-slate-600">Paid (Online)</td>
+                                  <td className="py-0.5 text-right font-medium text-green-700">{inr(onlinePaid)}</td>
                                 </tr>
                               )}
                               {cashPaid > 0 && onlinePaid > 0 && (
-                                <tr>
-                                  <td className="py-1.5 font-bold text-slate-800">Total Paid</td>
-                                  <td className="py-1.5 text-right font-bold text-green-700">{inr(inv.amountPaid)}</td>
+                                <tr className="text-xs">
+                                  <td className="py-0.5 font-bold text-slate-800">Total Paid</td>
+                                  <td className="py-0.5 text-right font-bold text-green-700">{inr(inv.amountPaid)}</td>
                                 </tr>
                               )}
                             </>
                           );
                         }
                         return (
-                          <tr className="border-t border-slate-200">
-                            <td className="py-1.5 text-slate-600">Amount Paid {inv.paymentMode && !inv.paymentMode.includes("+") ? `(${inv.paymentMode})` : ""}</td>
-                            <td className="py-1.5 text-right font-semibold text-green-700">{inr(inv.amountPaid)}</td>
+                          <tr className="border-t border-slate-200 text-xs">
+                            <td className="py-0.5 text-slate-600">Amount Paid {inv.paymentMode && !inv.paymentMode.includes("+") ? `(${inv.paymentMode})` : ""}</td>
+                            <td className="py-0.5 text-right font-semibold text-green-700">{inr(inv.amountPaid)}</td>
                           </tr>
                         );
                       })()}
                       <tr>
-                        <td className="py-1.5 font-bold">Balance Due</td>
-                        <td className="py-1.5 text-right font-bold text-rose-700">{inr(inv.balanceDue || 0)}</td>
+                        <td className="py-0.5 font-bold text-sm">Balance Due</td>
+                        <td className="py-0.5 text-right font-bold text-sm text-rose-700">{inr(inv.balanceDue || 0)}</td>
                       </tr>
                     </>
                   )}
@@ -999,25 +1104,28 @@ function InvoiceModal({ inv, onClose }: { inv: any; onClose: () => void }) {
             </div>
           </div>
 
-          <div className="mt-8 flex justify-center border-t border-slate-200 pt-5">
-            <PaymentQr amount={inv.balanceDue || 0} />
+          <div className="mt-4 flex justify-center border-t border-slate-200 pt-3">
+            <PaymentQr amount={inv.balanceDue || 0} compact />
           </div>
 
           {/* Signatures */}
-          <div className="mt-16 flex justify-between items-end text-xs font-bold text-slate-500 uppercase tracking-wider">
-            <div className="text-center">
+          <div className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-4 items-end text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+            <div className="text-center order-2 sm:order-1">
               {inv.customerSignature ? (
-                <img src={inv.customerSignature} alt="Customer Signature" className="h-16 mx-auto mb-2 object-contain" />
+                <img src={inv.customerSignature} alt="Customer Signature" className="h-10 mx-auto mb-1 object-contain" />
               ) : (
-                <div className="w-48 border-t-2 border-slate-300 mb-2 mx-auto"></div>
+                <div className="w-32 border-t border-slate-300 mb-1 mx-auto"></div>
               )}
               Customer Signature
             </div>
-            <div className="text-center">
+            <div className="normal-case tracking-normal font-normal text-left text-slate-800 order-1 sm:order-2">
+              <InvoiceTerms compact />
+            </div>
+            <div className="text-center order-3 sm:order-3">
               {inv.authorizedSignatory ? (
-                <img src={inv.authorizedSignatory} alt="Authorized Signatory" className="h-16 mx-auto mb-2 object-contain" />
+                <img src={inv.authorizedSignatory} alt="Authorized Signatory" className="h-10 mx-auto mb-1 object-contain" />
               ) : (
-                <div className="w-48 border-t-2 border-slate-300 mb-2 mx-auto"></div>
+                <div className="w-32 border-t border-slate-300 mb-1 mx-auto"></div>
               )}
               Authorized Signatory
             </div>

@@ -37,6 +37,7 @@ export default function SuppliersPage() {
   const [form, setForm] = useState<Supplier>(empty);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [q, setQ] = useState("");
+  const [page, setPage] = useState(1);
 
   const [categories, setCategories] = useLocalState<string[]>("ajms.supplierCategories", ["Wholesale", "Manufacturer", "Distributor"]);
   const [addCatOpen, setAddCatOpen] = useState(false);
@@ -88,6 +89,10 @@ export default function SuppliersPage() {
   );
 
   const isLoading_UI = isLoading || createMutation.isPending || updateMutation.isPending || deleteMutation.isPending;
+
+  const totalPages = Math.ceil(filtered.length / 10) || 1;
+  const currentPage = Math.min(page, totalPages);
+  const paginated = filtered.slice((currentPage - 1) * 10, currentPage * 10);
 
   return (
     <Layout>
@@ -168,12 +173,13 @@ export default function SuppliersPage() {
 
       <Card>
         <CardContent className="p-0">
-          {isLoading ? <p className="text-center text-muted-foreground py-12">Loading suppliers...</p> : error ? <p className="text-center text-red-500 py-12">Failed to load suppliers</p> : filtered.length === 0 ? <p className="text-center text-muted-foreground py-12">No suppliers yet.</p> :
-          <table className="w-full text-sm">
+          {isLoading ? <p className="text-center text-muted-foreground py-12">Loading suppliers...</p> : error ? <p className="text-center text-red-500 py-12">Failed to load suppliers</p> : filtered.length === 0 ? <p className="text-center text-muted-foreground py-12">No suppliers yet.</p> : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
             <thead className="text-left text-muted-foreground border-b">
               <tr><th className="p-3">Name</th><th>Mobile</th><th>Company No</th><th>Category</th><th>Address</th><th>GST No</th><th></th></tr>
             </thead>
-            <tbody>{filtered.map(s => (
+        <tbody>{paginated.map(s => (
               <tr key={s._id} className="border-b last:border-0 hover:bg-muted/40">
                 <td className="p-3 font-medium">{s.name}</td>
                 <td>{s.mobile}</td>
@@ -189,7 +195,18 @@ export default function SuppliersPage() {
                 </td>
               </tr>
             ))}</tbody>
-          </table>}
+          </table>
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between px-4 py-3 border-t">
+              <div className="text-xs text-muted-foreground">Showing {(currentPage - 1) * 10 + 1} to {Math.min(currentPage * 10, filtered.length)} of {filtered.length} entries</div>
+              <div className="flex gap-1">
+                <Button size="sm" variant="outline" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={currentPage === 1}>Prev</Button>
+                <Button size="sm" variant="outline" onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages}>Next</Button>
+              </div>
+            </div>
+          )}
+          </div>
+          )}
         </CardContent>
       </Card>
     </Layout>

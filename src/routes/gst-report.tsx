@@ -18,6 +18,7 @@ export default function GstReportPage() {
   const [reportType, setReportType] = useState<"Daily" | "Monthly">("Daily");
   const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().slice(0, 10));
   const [selectedMonth, setSelectedMonth] = useState<string>(new Date().toISOString().slice(0, 7)); // YYYY-MM
+  const [page, setPage] = useState(1);
 
   const gstInvoices = useMemo(() => {
     return invoices.filter((i) => i.type === "GST");
@@ -49,6 +50,10 @@ export default function GstReportPage() {
 
     return { taxable, cgst, sgst, tax, total, count: filteredInvoices.length };
   }, [filteredInvoices]);
+
+  const totalPages = Math.ceil(filteredInvoices.length / 10) || 1;
+  const currentPage = Math.min(page, totalPages);
+  const paginated = filteredInvoices.slice((currentPage - 1) * 10, currentPage * 10);
 
   const exportToExcel = () => {
     const periodLabel = reportType === "Daily" ? selectedDate : selectedMonth;
@@ -141,12 +146,21 @@ export default function GstReportPage() {
                   <tr><th className="py-3 px-4">Invoice No</th><th>Date</th><th>Customer</th><th className="text-right">Taxable Val</th><th className="text-right">CGST</th><th className="text-right">SGST</th><th className="text-right px-4">Total Amount</th></tr>
                 </thead>
                 <tbody>
-                  {filteredInvoices.map(i => {
+              {paginated.map(i => {
                     const invTaxable = i.subtotal - (i.discount || 0) - (i.oldGoldAmount || 0);
                     return (<tr key={i.id || i._id} className="border-b last:border-0 hover:bg-muted/40"><td className="py-3 px-4 font-medium">{i.number}</td><td>{formatDate(i.createdAt)}</td><td>{i.customerName}</td><td className="text-right">{inr(invTaxable)}</td><td className="text-right text-muted-foreground">{inr(i.gstAmount / 2)}</td><td className="text-right text-muted-foreground">{inr(i.gstAmount / 2)}</td><td className="text-right px-4 font-medium text-green-700">{inr(i.total)}</td></tr>);
                   })}
                 </tbody>
               </table>
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between px-4 py-3 border-t">
+              <div className="text-xs text-muted-foreground">Showing {(currentPage - 1) * 10 + 1} to {Math.min(currentPage * 10, filteredInvoices.length)} of {filteredInvoices.length} entries</div>
+              <div className="flex gap-1">
+                <Button size="sm" variant="outline" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={currentPage === 1}>Prev</Button>
+                <Button size="sm" variant="outline" onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages}>Next</Button>
+              </div>
+            </div>
+          )}
             </div>
           )}
         </CardContent>

@@ -20,13 +20,12 @@ import {
 } from "@/components/ui/select";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { useState, useRef } from "react";
+import { useState, useRef, useMemo } from "react";
 import { Textarea } from "@/components/ui/textarea";
-import { Plus, Trash2, Pencil, Search, Image as ImageIcon, Upload } from "lucide-react";
+import { Plus, Trash2, Pencil, Search, Image as ImageIcon, Upload, Filter } from "lucide-react";
 import { useLocalState, uid, type Product } from "@/lib/storage";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { inventoryAPI } from "@/lib/api";
-import * as XLSX from 'xlsx';
 import { toast } from "sonner";
 
 const empty: Product = {
@@ -47,10 +46,11 @@ const empty: Product = {
   stock: 1,
   barcode: "",
   imageUrl: "",
+  imageUrls: [],
 } as any;
 
 export default function InventoryPage() {
-  const { data: products = [], isLoading } = useApi<Product[]>(["inventory"], () => inventoryAPI.getAll());
+  const { data: allItems = [], isLoading } = useApi<Product[]>(["inventory"], () => inventoryAPI.getAll());
   const createMutation = useApiMutation((data: Product) => inventoryAPI.create(data), ["inventory"]);
   const updateMutation = useApiMutation((data: { id: string; body: Product }) => inventoryAPI.update(data.id, data.body), ["inventory"]);
   const bulkCreateMutation = useApiMutation(async (data: Product[]) => {
@@ -70,37 +70,48 @@ export default function InventoryPage() {
   const [newCat, setNewCat] = useState("");
   const [newSub, setNewSub] = useState("");
   const [q, setQ] = useState("");
-  const [imagePreview, setImagePreview] = useState("");
+  const [catFilter, setCatFilter] = useState("All");
+  const [page, setPage] = useState(1);
+  const [imagePreviews, setImagePreviews] = useState<string[]>([]);
   const [importOpen, setImportOpen] = useState(false);
   const [parsedProducts, setParsedProducts] = useState<Product[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const products = useMemo(() => (Array.isArray(allItems) ? allItems : []), [allItems]);
+
   const filtered = products.filter(
     (p) =>
-      p.name.toLowerCase().includes(q.toLowerCase()) ||
+      (catFilter === "All" || p.category === catFilter) &&
+      (p.name.toLowerCase().includes(q.toLowerCase()) ||
       p.barcode.toLowerCase().includes(q.toLowerCase()) ||
-      (p.huid || "").toLowerCase().includes(q.toLowerCase())
+      (p.huid || "").toLowerCase().includes(q.toLowerCase()))
   );
+
+  const totalPages = Math.ceil(filtered.length / 10) || 1;
+  const currentPage = Math.min(page, totalPages);
+  const paginated = filtered.slice((currentPage - 1) * 10, currentPage * 10);
 
   const startNew = () => {
     setEditingId(null);
     setDraft({ ...empty, id: uid(), barcode: "AJ-" + uid().toUpperCase() });
-    setImagePreview("");
+    setImagePreviews([]);
     setOpen(true);
   };
   const startEdit = (p: Product) => {
     setEditingId((p as any)._id || p.id);
     setDraft(p);
-    setImagePreview((p as any).imageUrl || "");
+    const urls = p.imageUrls?.length ? p.imageUrls : (p.imageUrl ? [p.imageUrl] : []);
+    setImagePreviews(urls);
     setOpen(true);
   };
   const save = async () => {
     if (!draft.name) return;
     try {
+      const payload = { ...draft, imageUrl: imagePreviews[0] || "", imageUrls: imagePreviews };
       if (editingId) {
-        await updateMutation.mutateAsync({ id: editingId, body: draft });
+        await updateMutation.mutateAsync({ id: editingId, body: payload });
       } else {
-        await createMutation.mutateAsync(draft);
+        await createMutation.mutateAsync(payload);
       }
       setOpen(false);
     } catch (error) {
@@ -114,21 +125,43 @@ export default function InventoryPage() {
   const set = <K extends keyof Product>(k: K, v: Product[K]) =>
     setDraft((d) => ({ ...d, [k]: v }));
 
-  const handleImageChange = (file?: File) => {
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = reader.result as string;
-      setDraft((prev) => ({ ...prev, imageUrl: result } as any));
-      setImagePreview(result);
-    };
-    reader.readAsDataURL(file);
+  const handleImageChange = (files?: FileList | null) => {
+    if (!files || files.length === 0) return;
+    Array.from(files).forEach((file) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new window.Image();
+        img.onload = () => {
+          const canvas = document.createElement("canvas");
+          const MAX_SIZE = 400; // Drastically reduce size for much shorter Base64 strings
+          let { width, height } = img;
+          
+          if (width > height && width > MAX_SIZE) {
+            height *= MAX_SIZE / width;
+            width = MAX_SIZE;
+          } else if (height > MAX_SIZE) {
+            width *= MAX_SIZE / height;
+            height = MAX_SIZE;
+          }
+          
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext("2d");
+          ctx?.drawImage(img, 0, 0, width, height);
+          const compressedBase64 = canvas.toDataURL("image/webp", 0.5); // Use WebP for massive size reduction
+          setImagePreviews((prev) => [...prev, compressedBase64]);
+        };
+        img.src = e.target?.result as string;
+      };
+      reader.readAsDataURL(file);
+    });
   };
 
   const handleFileImport = (file: File) => {
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
       try {
+        const XLSX = await import('xlsx');
         const data = new Uint8Array(e.target?.result as ArrayBuffer);
         const workbook = XLSX.read(data, { type: 'array' });
         const sheetName = workbook.SheetNames[0];
@@ -403,33 +436,34 @@ export default function InventoryPage() {
               </div>
 
               <div className="md:col-span-2 mt-2">
-                <Label className="text-xs mb-1.5 block">Product Image</Label>
-                <div className="flex items-center gap-4">
-                  <div className="flex-1">
+                <Label className="text-xs mb-1.5 block">Product Images</Label>
+                <div className="flex flex-col gap-4">
                     <div className="relative border-2 border-dashed border-border rounded-lg p-4 hover:bg-muted/50 transition-colors text-center cursor-pointer">
                       <Input 
                         type="file" 
                         accept="image/*" 
-                        onChange={(e) => handleImageChange(e.target.files?.[0])} 
+                        multiple
+                        onChange={(e) => handleImageChange(e.target.files)} 
                         className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                       />
                       <ImageIcon className="w-6 h-6 mx-auto text-muted-foreground mb-2" />
-                      <p className="text-sm font-medium text-muted-foreground">Click to pick from Gallery</p>
+                      <p className="text-sm font-medium text-muted-foreground">Click to pick images from Gallery</p>
                     </div>
-                  </div>
-                  {imagePreview && (
-                    <div className="w-24 h-24 shrink-0 rounded-lg border border-border overflow-hidden relative group">
-                      <img src={imagePreview} alt="Preview" className="w-full h-full object-cover" />
+                  <div className="flex flex-wrap gap-3">
+                  {imagePreviews.map((img, idx) => (
+                    <div key={idx} className="w-24 h-24 shrink-0 rounded-lg border border-border overflow-hidden relative group">
+                      <img src={img} alt="Preview" className="w-full h-full object-cover" />
                       <button 
                         type="button" 
-                        onClick={() => { setImagePreview(""); setDraft((prev: any) => ({...prev, imageUrl: ""})); }}
+                        onClick={() => setImagePreviews(p => p.filter((_, i) => i !== idx))}
                         className="absolute inset-0 bg-black/50 text-white opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity"
                         title="Remove Image"
                       >
                         <Trash2 className="w-5 h-5" />
                       </button>
                     </div>
-                  )}
+                  ))}
+                  </div>
                 </div>
               </div>
             </div>
@@ -442,9 +476,29 @@ export default function InventoryPage() {
         </div>
       </header>
 
-      <div className="relative mb-4 max-w-md">
-        <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-        <Input className="pl-9" placeholder="Search by name, HUID or barcode" value={q} onChange={(e) => setQ(e.target.value)} />
+      <div className="flex flex-col sm:flex-row gap-4 mb-4">
+        <div className="relative flex-1 max-w-md">
+          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <Input className="pl-9 bg-background" placeholder="Search by name, HUID or barcode" value={q} onChange={(e) => setQ(e.target.value)} />
+        </div>
+        <div className="w-full sm:w-48">
+          <Select value={catFilter} onValueChange={setCatFilter}>
+            <SelectTrigger className="bg-background">
+              <div className="flex items-center gap-2">
+                <Filter className="w-4 h-4" />
+                <SelectValue placeholder="Category" />
+              </div>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="All">All Categories</SelectItem>
+              <SelectItem value="Gold">Gold</SelectItem>
+              <SelectItem value="Silver">Silver</SelectItem>
+              {categories.filter(c => c !== "Gold" && c !== "Silver").map(c => (
+                <SelectItem key={c} value={c}>{c}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       <Card>
@@ -470,12 +524,12 @@ export default function InventoryPage() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((p) => (
+                {paginated.map((p) => (
                   <tr key={(p as any)._id || p.id} className="border-b last:border-0 hover:bg-muted/40">
                     <td className="p-3">
                       <div className="flex items-center gap-3">
-                        {(p as any).imageUrl ? (
-                          <img src={(p as any).imageUrl} alt={p.name} className="w-10 h-10 rounded object-cover border border-border shrink-0" />
+                        {(p.imageUrls?.[0] || p.imageUrl) ? (
+                          <img src={p.imageUrls?.[0] || p.imageUrl} alt={p.name} className="w-10 h-10 rounded object-cover border border-border shrink-0" />
                         ) : (
                           <div className="w-10 h-10 rounded bg-muted flex items-center justify-center border border-border shrink-0 text-[10px] text-muted-foreground">No img</div>
                         )}
@@ -504,6 +558,15 @@ export default function InventoryPage() {
                 ))}
               </tbody>
             </table>
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between px-4 py-3 border-t">
+                <div className="text-xs text-muted-foreground">Showing {(currentPage - 1) * 10 + 1} to {Math.min(currentPage * 10, filtered.length)} of {filtered.length} entries</div>
+                <div className="flex gap-1">
+                  <Button size="sm" variant="outline" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={currentPage === 1}>Prev</Button>
+                  <Button size="sm" variant="outline" onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages}>Next</Button>
+                </div>
+              </div>
+            )}
             </div>
           )}
         </CardContent>

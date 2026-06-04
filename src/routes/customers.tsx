@@ -68,6 +68,7 @@ export default function CustomersPage() {
   const [q, setQ] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [profileId, setProfileId] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
 
   // Fetch customers
   const { data: customers = [], isLoading, error } = useApi(
@@ -126,6 +127,10 @@ export default function CustomersPage() {
       c.phone.includes(q) ||
       (c.phone2 && c.phone2.includes(q))
   );
+
+  const totalPages = Math.ceil(filtered.length / 10) || 1;
+  const currentPage = Math.min(page, totalPages);
+  const paginated = filtered.slice((currentPage - 1) * 10, currentPage * 10);
 
   const startNew = () => {
     setEditingId(null);
@@ -447,7 +452,8 @@ export default function CustomersPage() {
           ) : filtered.length === 0 ? (
             <p className="text-sm text-muted-foreground py-12 text-center">No customers yet.</p>
           ) : (
-            <table className="w-full text-sm">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
               <thead className="text-left text-muted-foreground border-b">
                 <tr>
                   <th className="p-3">Name</th>
@@ -461,7 +467,7 @@ export default function CustomersPage() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((c: Customer) => {
+            {paginated.map((c: Customer) => {
                   const custDue = invoices
                     .filter((i) => i.customerId === c._id || i.customerMobile === c.phone)
                     .reduce((sum, i) => sum + (i.balanceDue || 0), 0);
@@ -515,6 +521,16 @@ export default function CustomersPage() {
                 })}
               </tbody>
             </table>
+              {totalPages > 1 && (
+                <div className="flex items-center justify-between px-4 py-3 border-t">
+                  <div className="text-xs text-muted-foreground">Showing {(currentPage - 1) * 10 + 1} to {Math.min(currentPage * 10, filtered.length)} of {filtered.length} entries</div>
+                  <div className="flex gap-1">
+                    <Button size="sm" variant="outline" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={currentPage === 1}>Prev</Button>
+                    <Button size="sm" variant="outline" onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages}>Next</Button>
+                  </div>
+                </div>
+              )}
+            </div>
           )}
         </CardContent>
       </Card>

@@ -26,6 +26,7 @@ import {
   Calculator,
   Briefcase,
   FileText,
+  LayoutGrid,
 } from "lucide-react";
 import { useEffect, useState, type ReactNode, useMemo } from "react";
 import { cn } from "@/lib/utils";
@@ -50,6 +51,7 @@ const adminGroups: { title: string; items: NavItem[] }[] = [
     { to: "/orders", label: "Orders", icon: ShoppingBag },
   ]},
   { title: "Inventory", items: [
+    { to: "/catalog", label: "Catalog", icon: LayoutGrid },
     { to: "/inventory", label: "Products", icon: Package },
     { to: "/gold-rates", label: "Gold Rates", icon: TrendingUp },
   ]},
