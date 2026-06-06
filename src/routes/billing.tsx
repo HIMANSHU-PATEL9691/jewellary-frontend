@@ -703,7 +703,7 @@ export default function BillingPage() {
                     </div>
                     
                     <div className="flex items-center justify-between gap-4">
-                      <Label className="text-muted-foreground font-normal">Old Gold (₹)</Label>
+                      <Label className="text-muted-foreground font-normal">Old Gold / Silver (₹)</Label>
                       <Input type="number" className="w-32 h-8 text-right bg-background" value={oldGoldAmount} onChange={(e) => setOldGoldAmount(e.target.value === "" ? "" : Number(e.target.value))} placeholder="0" />
                     </div>
 
@@ -1041,7 +1041,7 @@ function InvoiceModal({ inv, onClose }: { inv: any; onClose: () => void }) {
                 <tbody>
                   <tr><td className="py-0.5 text-slate-600">Subtotal</td><td className="py-0.5 text-right font-semibold">{inr(inv.subtotal)}</td></tr>
                   {inv.discount > 0 && <tr><td className="py-0.5 text-slate-600">Discount</td><td className="py-0.5 text-right font-semibold text-green-600">- {inr(inv.discount)}</td></tr>}
-                  {inv.oldGoldAmount > 0 && <tr><td className="py-0.5 text-slate-600">Old Gold Exchange</td><td className="py-0.5 text-right font-semibold text-green-600">- {inr(inv.oldGoldAmount)}</td></tr>}
+                  {inv.oldGoldAmount > 0 && <tr><td className="py-0.5 text-slate-600">Old Gold / Silver Exchange</td><td className="py-0.5 text-right font-semibold text-green-600">- {inr(inv.oldGoldAmount)}</td></tr>}
                   {inv.type === "GST" && (
                     <>
                       <tr><td className="py-0.5 text-slate-600">CGST @ 1.5%</td><td className="py-0.5 text-right font-semibold">{inr(inv.gstAmount / 2)}</td></tr>

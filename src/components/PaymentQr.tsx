@@ -26,22 +26,18 @@ function formatAmount(amount?: number) {
   }).format(amount);
 }
 
-function buildUpiUrl(amount?: number) {
+function buildUpiUrl() {
   const params = new URLSearchParams({
     pa: UPI_ID,
     pn: PAYEE_NAME,
     cu: "INR",
   });
 
-  if (amount && amount > 0) {
-    params.set("am", amount.toFixed(2));
-  }
-
   return `upi://pay?${params.toString()}`;
 }
 
 export function PaymentQr({ amount, compact = false }: { amount?: number; compact?: boolean }) {
-  const upiUrl = buildUpiUrl(amount);
+  const upiUrl = buildUpiUrl();
   const payableAmount = formatAmount(amount);
   const qrSize = compact ? 104 : 124;
   const qrSrc = `https://api.qrserver.com/v1/create-qr-code/?size=${qrSize}x${qrSize}&margin=8&data=${encodeURIComponent(upiUrl)}`;
