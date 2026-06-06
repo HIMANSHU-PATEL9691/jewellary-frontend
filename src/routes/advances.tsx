@@ -93,7 +93,7 @@ export default function AdvancePage() {
         <div>
           <h1 className="text-4xl">Advance Payments</h1>
           <p className="text-muted-foreground mt-1">
-            Lock today&apos;s rate when customer pays advance for future jewelry purchase.
+            Lock today&apos;s rate when customer pays advance for future Jewellery purchase.
           </p>
         </div>
 

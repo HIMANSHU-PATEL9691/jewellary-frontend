@@ -29,8 +29,11 @@ const apiCall = async (endpoint: string, options: RequestInit = {}) => {
 
   if (!response.ok) {
     const errorData = isJson ? await response.json() : await response.text();
-    console.error(`[Frontend API Error] ${url}:`, errorData);
-    const errorMessage = isJson ? (errorData.error || errorData.message || JSON.stringify(errorData)) : `API Error: Endpoint may not exist (${response.status})`;
+    const errorPayload = isJson ? errorData : { message: errorData };
+    console.error(`[Frontend API Error] ${url} ${response.status} ${response.statusText}:`, errorPayload);
+    const errorMessage = isJson
+      ? (errorData.error || errorData.message || JSON.stringify(errorData))
+      : `API Error: Endpoint may not exist (${response.status})`;
     toast.error(errorMessage);
     throw new Error(errorMessage);
   }

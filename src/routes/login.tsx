@@ -55,7 +55,7 @@ export default function LoginPage({ onLogin }: { onLogin: (user: any) => void })
           <div className="mx-auto w-14 h-14 bg-gradient-to-tr from-primary to-primary/70 text-primary-foreground rounded-2xl flex items-center justify-center mb-6 shadow-lg transform rotate-3 hover:rotate-0 transition-all duration-300">
             <Gem className="w-7 h-7" />
           </div>
-          <CardTitle className="text-3xl font-display tracking-tight">Cloudiefy</CardTitle>
+          <CardTitle className="text-3xl font-display tracking-tight">Arihent </CardTitle>
           <CardDescription className="text-base mt-2">Jewellery Management Software</CardDescription>
         </CardHeader>
         <CardContent className="pt-6">
@@ -99,7 +99,7 @@ export default function LoginPage({ onLogin }: { onLogin: (user: any) => void })
           </form>
         </CardContent>
         <div className="text-center pb-6 text-sm text-muted-foreground">
-          &copy; {new Date().getFullYear()} Cloudiefy. All rights reserved.
+          &copy; {new Date().getFullYear()} Arihent . All rights reserved.
         </div>
       </Card>
     </div>

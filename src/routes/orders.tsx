@@ -109,7 +109,7 @@ export default function OrdersPage() {
       <header className="flex flex-col sm:flex-row items-start sm:items-end justify-between gap-4 mb-6">
         <div>
           <h1 className="text-4xl">Customer Orders</h1>
-          <p className="text-muted-foreground mt-1">Manage custom jewelry orders and advances.</p>
+          <p className="text-muted-foreground mt-1">Manage custom Jewellery orders and advances.</p>
         </div>
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild><Button size="lg" className="w-full sm:w-auto" onClick={() => { setForm(empty); setEditingId(null); }}><Plus className="w-4 h-4 mr-2"/>New Order</Button></DialogTrigger>

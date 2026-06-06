@@ -1,5 +1,5 @@
 export const SHOP_DETAILS = {
-  name: "Arihant Jewellers",
+  name: "Arihent Jewellers",
   address: "224, Maheshwar Road, Barwaha (Dist. Khargone) M.P.",
   phones: ["9826049083", "9926702700"],
   gstNumber: "23AVHPB4250H1Z2",

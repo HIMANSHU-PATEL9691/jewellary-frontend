@@ -97,8 +97,8 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
             <Gem className="w-5 h-5" />
           </div>
           <div>
-            <div className="font-display text-lg leading-none">cloudiefy</div>
-            <div className="text-xs text-muted-foreground mt-0.5">Jewelry software</div>
+            <div className="font-display text-lg leading-none">Arihent </div>
+            <div className="text-xs text-muted-foreground mt-0.5">Jewellery software</div>
           </div>
         </div>
         {onNavigate && (
@@ -145,19 +145,10 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
             localStorage.removeItem("ajms.auth");
             window.location.reload();
           }}
-          className="w-full justify-start text-rose-500 hover:text-rose-600 hover:bg-rose-500/10 font-medium mb-4"
+          className="w-full justify-start text-rose-500 hover:text-rose-600 hover:bg-rose-500/10 font-medium"
         >
           <LogOut className="w-4 h-4 mr-2" /> Log out securely
         </Button>
-        <div>CLOUDIEFY @ 2026</div>
-        <a
-          href="https://www.cloudiefy.com/"
-          target="_blank"
-          rel="noreferrer"
-          className="mt-1 inline-block text-primary underline hover:text-primary-foreground"
-        >
-          Built with cloudiefy team
-        </a>
       </div>
     </>
   );

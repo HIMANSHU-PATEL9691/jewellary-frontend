@@ -473,7 +473,7 @@ export default function CustomersPage() {
                     .reduce((sum, i) => sum + (i.balanceDue || 0), 0);
 
                   return (
-                    <tr key={c._id} className="border-b last:border-0 hover:bg-muted/40">
+                    <tr key={c._id || c.id || c.phone} className="border-b last:border-0 hover:bg-muted/40">
                     <td className="p-3 font-medium">{c.name}</td>
                     <td>
                       <div>{c.phone}</div>
@@ -636,7 +636,7 @@ export default function CustomersPage() {
                         </thead>
                         <tbody>
                           {custInvoices.map((inv) => (
-                            <tr key={inv.id} className="border-b last:border-0 hover:bg-muted/40">
+                            <tr key={inv._id || inv.id || inv.number} className="border-b last:border-0 hover:bg-muted/40">
                               <td className="py-2 px-4 font-medium">{inv.number}</td>
                               <td>{formatDate(inv.createdAt)}</td>
                               <td>{inv.type === "NON-GST" && inv.number?.startsWith("MAN-") ? "Manual Due" : inv.type}</td>
@@ -690,7 +690,7 @@ export default function CustomersPage() {
                               </thead>
                               <tbody>
                                 {pmts.map((p, idx) => (
-                                  <tr key={idx} className="border-b border-border/50 last:border-0 hover:bg-muted/40">
+                                  <tr key={`${invNo}-${p.date}-${p.amount}-${p.mode}-${idx}`} className="border-b border-border/50 last:border-0 hover:bg-muted/40">
                                     <td className="py-2 px-4">{formatDate(p.date)}</td>
                                     <td>{p.mode}</td>
                                     <td className="text-muted-foreground">{p.note || "—"}</td>
@@ -732,7 +732,7 @@ export default function CustomersPage() {
                           {custOrders.map((o) => {
                             const due = (o.estimatedPrice || 0) - (o.advancePaid || 0);
                             return (
-                            <tr key={o.id} className="border-b last:border-0 hover:bg-muted/40">
+                            <tr key={o.id || o.orderNo} className="border-b last:border-0 hover:bg-muted/40">
                               <td className="py-2 px-4 font-medium">{o.orderNo}</td>
                               <td>{formatDate(o.date)}</td>
                               <td>
@@ -785,7 +785,7 @@ export default function CustomersPage() {
                           {custRepairs.map((r) => {
                             const due = (r.estimate || 0) - (r.advance || 0);
                             return (
-                            <tr key={r.id || r._id} className="border-b last:border-0 hover:bg-muted/40">
+                            <tr key={r.id || r._id || r.ticketNo} className="border-b last:border-0 hover:bg-muted/40">
                               <td className="py-2 px-4 font-medium">{r.ticketNo}</td>
                               <td>{formatDate(r.date)}</td>
                               <td>
@@ -833,7 +833,7 @@ export default function CustomersPage() {
                           </thead>
                           <tbody>
                             {custGirvis.map((g) => (
-                              <tr key={g.id} className="border-b last:border-0 hover:bg-muted/40">
+                              <tr key={g.id || g.loanNo} className="border-b last:border-0 hover:bg-muted/40">
                                 <td className="py-2 px-4 font-medium">{g.loanNo}</td>
                                 <td>{formatDate(g.date)}</td>
                                 <td>

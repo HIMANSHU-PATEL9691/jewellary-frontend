@@ -66,7 +66,7 @@ export default function CalculatorPage() {
     <Layout>
       <header className="flex flex-col sm:flex-row items-start sm:items-end justify-between mb-4 gap-4">
         <div>
-          <h1 className="text-3xl font-display tracking-tight text-primary">Jewelry Calculator</h1>
+          <h1 className="text-3xl font-display tracking-tight text-primary">Jewellery Calculator</h1>
           <p className="text-muted-foreground mt-1 text-sm">Quick, precise estimates for new purchases and exchanges.</p>
         </div>
         <Button variant="outline" onClick={reset} className="h-9 px-4 bg-background shadow-sm hover:bg-muted/50 w-full sm:w-auto">

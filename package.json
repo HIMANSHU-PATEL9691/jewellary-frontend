@@ -1,7 +1,7 @@
 {
-  "name": "cloudiefy-software-frontend",
+  "name": "Arihent -software-frontend",
   "version": "1.0.0",
-  "description": "React frontend for CLOUDIEFY SOFTWARE",
+  "description": "React frontend for Arihent  SOFTWARE",
   "private": true,
   "type": "module",
   "scripts": {
