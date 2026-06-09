@@ -43,7 +43,7 @@ export default function DuesPage() {
     // Default to Indian country code if standard 10 digits are provided
     if (phone.length === 10) phone = "91" + phone;
     
-    const message = `Hello ${inv.customerName},\n\nThis is a gentle reminder regarding your pending due of *${inr(inv.balanceDue || 0)}* for Invoice No: ${inv.number} dated ${formatDate(inv.createdAt)}.\n\nPlease clear the due amount at your earliest convenience.\n\nThank you!`;
+    const message = `*अरिहंत ज्वेलर्स*\n\nनमस्ते ${inv.customerName},\n\nयह आपके इनवॉइस नंबर: ${inv.number} (दिनांक ${formatDate(inv.createdAt)}) के लिए *${inr(inv.balanceDue || 0)}* की बकाया राशि के संबंध में एक रिमाइंडर है।\n\nकृपया जल्द से जल्द बकाया राशि का भुगतान करें।\n\nधन्यवाद!`;
     const encoded = encodeURIComponent(message);
     
     window.open(`https://wa.me/${phone}?text=${encoded}`, "_blank");

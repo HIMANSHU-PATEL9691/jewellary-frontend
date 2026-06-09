@@ -327,7 +327,10 @@ export default function BillingPage() {
           const p = products.find((x) => (x.id || x._id) === actualPid);
           if (p) {
             const newStock = Math.max(0, (p.stock || 0) - (item.qty || 1));
-            await updateProductMutation.mutateAsync({ id: p._id || p.id, body: { ...p, stock: newStock } });
+            const newNetWeight = Math.max(0, Number(((p.netWeight || 0) - (item.netWeight || 0)).toFixed(3)));
+            const itemGross = (item as any).grossWeight !== undefined ? (item as any).grossWeight : item.netWeight;
+            const newGrossWeight = Math.max(0, Number(((p.grossWeight || 0) - (itemGross || 0)).toFixed(3)));
+            await updateProductMutation.mutateAsync({ id: p._id || p.id, body: { ...p, stock: newStock, netWeight: newNetWeight, grossWeight: newGrossWeight } });
           }
         }
         
@@ -350,7 +353,10 @@ export default function BillingPage() {
           const p = products.find((x) => (x.id || x._id) === actualPid);
           if (p) {
             const newStock = (p.stock || 0) + (item.qty || 1);
-            await updateProductMutation.mutateAsync({ id: p._id || p.id, body: { ...p, stock: newStock } });
+            const newNetWeight = Number(((p.netWeight || 0) + (item.netWeight || 0)).toFixed(3));
+            const itemGross = (item as any).grossWeight !== undefined ? (item as any).grossWeight : item.netWeight;
+            const newGrossWeight = Number(((p.grossWeight || 0) + (itemGross || 0)).toFixed(3));
+            await updateProductMutation.mutateAsync({ id: p._id || p.id, body: { ...p, stock: newStock, netWeight: newNetWeight, grossWeight: newGrossWeight } });
           }
         }
         await deleteMutation.mutateAsync(invoice._id || invoice.id || "");
@@ -578,7 +584,7 @@ export default function BillingPage() {
                           <th className="p-3 font-medium">Product</th>
                           <th className="py-3 font-medium w-16">Qty</th>
                           <th className="py-3 font-medium w-20">Gross Wt</th>
-                          <th className="py-3 font-medium w-20">Stone Wt</th>
+                          <th className="py-3 font-medium w-20">less Wt</th>
                           <th className="py-3 font-medium w-20">Net Wt</th>
                           <th className="py-3 font-medium w-24">Rate(₹/g)</th>
                           <th className="py-3 font-medium w-24">Amount</th>
@@ -981,7 +987,7 @@ function InvoiceModal({ inv, onClose }: { inv: any; onClose: () => void }) {
                 <th className="border border-slate-300 py-1 px-1.5 text-left text-slate-600">Description of Goods</th>
                 <th className="border border-slate-300 py-1 px-1.5 text-right text-slate-600">Qty</th>
                 <th className="border border-slate-300 py-1 px-1.5 text-right text-slate-600">Gross Wt</th>
-                <th className="border border-slate-300 py-1 px-1.5 text-right text-slate-600">Stone Wt</th>
+                <th className="border border-slate-300 py-1 px-1.5 text-right text-slate-600">less Wt</th>
                 <th className="border border-slate-300 py-1 px-1.5 text-right text-slate-600">Net Wt</th>
                 <th className="border border-slate-300 py-1 px-1.5 text-right text-slate-600">Rate/g</th>
                 <th className="border border-slate-300 py-1 px-1.5 text-right text-slate-600">Amount</th>

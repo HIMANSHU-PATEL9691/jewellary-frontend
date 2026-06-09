@@ -279,7 +279,7 @@ export default function KarigarTasksPage() {
       <div className="min-h-screen bg-muted/10 flex flex-col">
         <div className="bg-card border-b px-6 py-4 flex items-center justify-between shadow-sm mb-6">
           <div className="font-display font-bold text-xl text-primary flex items-center gap-2">
-            <Hammer className="w-5 h-5" /> Arihent  Karigar
+            <Hammer className="w-5 h-5" /> Arihant  Karigar
           </div>
           <Button variant="outline" size="sm" onClick={() => {
             localStorage.removeItem("ajms.auth");

@@ -1,7 +1,7 @@
 {
-  "name": "Arihent -software-frontend",
+  "name": "Arihant -software-frontend",
   "version": "1.0.0",
-  "description": "React frontend for Arihent  SOFTWARE",
+  "description": "React frontend for Arihant  SOFTWARE",
   "private": true,
   "type": "module",
   "scripts": {

@@ -4,7 +4,6 @@ import {
   Package,
   Users,
   Receipt,
-  Gem,
   Wallet,
   HandCoins,
   Landmark,
@@ -93,11 +92,9 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
     <>
       <div className="px-6 py-6 border-b border-sidebar-border flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <div className="w-9 h-9 rounded-md bg-primary text-primary-foreground grid place-items-center">
-            <Gem className="w-5 h-5" />
-          </div>
+          <img src="/logo.png" alt="Arihant Logo" className="w-10 h-10 object-contain" />
           <div>
-            <div className="font-display text-lg leading-none">Arihent </div>
+            <div className="font-display text-lg leading-none">Arihant </div>
             <div className="text-xs text-muted-foreground mt-0.5">Jewellery software</div>
           </div>
         </div>

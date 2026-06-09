@@ -125,52 +125,58 @@ export default function NotificationsPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {displayReadyOrders.map(o => (
-                        <tr key={o.id || (o as any)._id} className="border-b border-border/50 last:border-0 hover:bg-muted/20 transition-colors">
-                          <td className="py-3 px-4">
-                            <div className="flex items-center gap-2">
-                              <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 shadow-none rounded-sm px-1.5 py-0">Order</Badge>
-                              <span className="font-medium text-foreground">{o.orderNo}</span>
-                            </div>
-                          </td>
-                          <td className="py-3 px-4">
-                            <div className="font-medium text-foreground">{o.customerName}</div>
-                            <div className="text-xs text-muted-foreground">{o.customerMobile}</div>
-                          </td>
-                          <td className="py-3 px-4 text-muted-foreground">{o.itemDescription}</td>
-                          <td className="py-3 px-4 text-right">
-                            <div className="flex items-center justify-end gap-2">
-                              <Button size="icon" variant="ghost" className="h-8 w-8 text-green-600 hover:text-green-700 hover:bg-green-50" onClick={() => sendWhatsApp(o.customerMobile, `Hello ${o.customerName},\n\nYour custom order (${o.orderNo}) for ${o.itemDescription} is now READY for delivery.\n\nPlease visit the shop to collect it.\n\nThank you!`)} title="Send WhatsApp Reminder">
-                                <MessageCircle className="w-4 h-4" />
-                              </Button>
-                              <Link to="/orders"><Button size="sm" variant="outline" className="h-8">View</Button></Link>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                      {displayReadyRepairs.map(r => (
-                        <tr key={r.id || (r as any)._id} className="border-b border-border/50 last:border-0 hover:bg-muted/20 transition-colors">
-                          <td className="py-3 px-4">
-                            <div className="flex items-center gap-2">
-                              <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200 shadow-none rounded-sm px-1.5 py-0">Repair</Badge>
-                              <span className="font-medium text-foreground">{r.ticketNo}</span>
-                            </div>
-                          </td>
-                          <td className="py-3 px-4">
-                            <div className="font-medium text-foreground">{r.customerName}</div>
-                            <div className="text-xs text-muted-foreground">{r.customerMobile}</div>
-                          </td>
-                          <td className="py-3 px-4 text-muted-foreground">{r.itemDescription}</td>
-                          <td className="py-3 px-4 text-right">
-                            <div className="flex items-center justify-end gap-2">
-                              <Button size="icon" variant="ghost" className="h-8 w-8 text-green-600 hover:text-green-700 hover:bg-green-50" onClick={() => sendWhatsApp(r.customerMobile, `Hello ${r.customerName},\n\nYour repair item (${r.ticketNo}) - ${r.itemDescription} is now READY for delivery.\n\nPlease visit the shop to collect it.\n\nThank you!`)} title="Send WhatsApp Reminder">
-                                <MessageCircle className="w-4 h-4" />
-                              </Button>
-                              <Link to="/repairs"><Button size="sm" variant="outline" className="h-8">View</Button></Link>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
+                      {displayReadyOrders.map(o => {
+                        const balanceDue = (o.estimatedPrice || 0) - (o.advancePaid || 0);
+                        return (
+                          <tr key={o.id || (o as any)._id} className="border-b border-border/50 last:border-0 hover:bg-muted/20 transition-colors">
+                            <td className="py-3 px-4">
+                              <div className="flex items-center gap-2">
+                                <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 shadow-none rounded-sm px-1.5 py-0">Order</Badge>
+                                <span className="font-medium text-foreground">{o.orderNo}</span>
+                              </div>
+                            </td>
+                            <td className="py-3 px-4">
+                              <div className="font-medium text-foreground">{o.customerName}</div>
+                              <div className="text-xs text-muted-foreground">{o.customerMobile}</div>
+                            </td>
+                            <td className="py-3 px-4 text-muted-foreground">{o.itemDescription}</td>
+                            <td className="py-3 px-4 text-right">
+                              <div className="flex items-center justify-end gap-2">
+                                <Button size="icon" variant="ghost" className="h-8 w-8 text-green-600 hover:text-green-700 hover:bg-green-50" onClick={() => sendWhatsApp(o.customerMobile, `*अरिहंत ज्वेलर्स*\n\nनमस्ते ${o.customerName},\n\nआपका कस्टम ऑर्डर (${o.orderNo}) - ${o.itemDescription} अब डिलीवरी के लिए तैयार है। ऑर्डर ${formatDate(o.date)} को दिया गया था। बकाया राशि ${inr(balanceDue)} है।\n\nकृपया इसे लेने के लिए दुकान पर आएं।\n\nधन्यवाद!`)} title="Send WhatsApp Reminder">
+                                  <MessageCircle className="w-4 h-4" />
+                                </Button>
+                                <Link to="/orders"><Button size="sm" variant="outline" className="h-8">View</Button></Link>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                      {displayReadyRepairs.map(r => {
+                        const balanceDue = (r.estimate || 0) - (r.advance || 0);
+                        return (
+                          <tr key={r.id || (r as any)._id} className="border-b border-border/50 last:border-0 hover:bg-muted/20 transition-colors">
+                            <td className="py-3 px-4">
+                              <div className="flex items-center gap-2">
+                                <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200 shadow-none rounded-sm px-1.5 py-0">Repair</Badge>
+                                <span className="font-medium text-foreground">{r.ticketNo}</span>
+                              </div>
+                            </td>
+                            <td className="py-3 px-4">
+                              <div className="font-medium text-foreground">{r.customerName}</div>
+                              <div className="text-xs text-muted-foreground">{r.customerMobile}</div>
+                            </td>
+                            <td className="py-3 px-4 text-muted-foreground">{r.itemDescription}</td>
+                            <td className="py-3 px-4 text-right">
+                              <div className="flex items-center justify-end gap-2">
+                                <Button size="icon" variant="ghost" className="h-8 w-8 text-green-600 hover:text-green-700 hover:bg-green-50" onClick={() => sendWhatsApp(r.customerMobile, `*अरिहंत ज्वेलर्स*\n\nनमस्ते ${r.customerName},\n\nआपका रिपेयर आइटम (${r.ticketNo}) - ${r.itemDescription} अब डिलीवरी के लिए तैयार है। आइटम ${formatDate(r.date)} को प्राप्त हुआ था। बकाया राशि ${inr(balanceDue)} है।\n\nकृपया इसे लेने के लिए दुकान पर आएं।\n\nधन्यवाद!`)} title="Send WhatsApp Reminder">
+                                  <MessageCircle className="w-4 h-4" />
+                                </Button>
+                                <Link to="/repairs"><Button size="sm" variant="outline" className="h-8">View</Button></Link>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -221,7 +227,7 @@ export default function NotificationsPage() {
                           </td>
                           <td className="py-3 px-4 text-right">
                             <div className="flex items-center justify-end gap-2">
-                              <Button size="icon" variant="ghost" className="h-8 w-8 text-green-600 hover:text-green-700 hover:bg-green-50" onClick={() => sendWhatsApp(o.customerMobile, `Hello ${o.customerName},\n\nThis is regarding your custom order (${o.orderNo}). The expected due date was ${o.dueDate ? formatDate(o.dueDate) : "—"}.\n\nPlease contact us or visit the shop for an update.\n\nThank you!`)} title="Send WhatsApp Reminder">
+                              <Button size="icon" variant="ghost" className="h-8 w-8 text-green-600 hover:text-green-700 hover:bg-green-50" onClick={() => sendWhatsApp(o.customerMobile, `*अरिहंत ज्वेलर्स*\n\nनमस्ते ${o.customerName},\n\nयह आपके कस्टम ऑर्डर (${o.orderNo}) के संबंध में एक रिमाइंडर है। अपेक्षित देय तिथि ${o.dueDate ? formatDate(o.dueDate) : "—"} थी।\n\nअपडेट के लिए कृपया हमसे संपर्क करें या दुकान पर आएं।\n\nधन्यवाद!`)} title="Send WhatsApp Reminder">
                                 <MessageCircle className="w-4 h-4" />
                               </Button>
                               <Link to="/orders"><Button size="sm" variant="outline" className="h-8">View</Button></Link>
@@ -246,7 +252,7 @@ export default function NotificationsPage() {
                           </td>
                           <td className="py-3 px-4 text-right">
                             <div className="flex items-center justify-end gap-2">
-                              <Button size="icon" variant="ghost" className="h-8 w-8 text-green-600 hover:text-green-700 hover:bg-green-50" onClick={() => sendWhatsApp(r.customerMobile, `Hello ${r.customerName},\n\nThis is regarding your repair item (${r.ticketNo}). The expected delivery date was ${r.deliveryDate ? formatDate(r.deliveryDate) : "—"}.\n\nPlease contact us or visit the shop for an update.\n\nThank you!`)} title="Send WhatsApp Reminder">
+                              <Button size="icon" variant="ghost" className="h-8 w-8 text-green-600 hover:text-green-700 hover:bg-green-50" onClick={() => sendWhatsApp(r.customerMobile, `*अरिहंत ज्वेलर्स*\n\nनमस्ते ${r.customerName},\n\nयह आपके रिपेयर आइटम (${r.ticketNo}) के संबंध में एक रिमाइंडर है। अपेक्षित डिलीवरी तिथि ${r.deliveryDate ? formatDate(r.deliveryDate) : "—"} थी।\n\nअपडेट के लिए कृपया हमसे संपर्क करें या दुकान पर आएं।\n\nधन्यवाद!`)} title="Send WhatsApp Reminder">
                                 <MessageCircle className="w-4 h-4" />
                               </Button>
                               <Link to="/repairs"><Button size="sm" variant="outline" className="h-8">View</Button></Link>
@@ -297,7 +303,7 @@ export default function NotificationsPage() {
                           <td className="py-3 px-4 text-right text-amber-600 font-semibold">{inr(i.balanceDue || 0)}</td>
                           <td className="py-3 px-4 text-right">
                             <div className="flex items-center justify-end gap-2">
-                              <Button size="icon" variant="ghost" className="h-8 w-8 text-green-600 hover:text-green-700 hover:bg-green-50" onClick={() => sendWhatsApp(i.customerMobile, `Hello ${i.customerName},\n\nThis is a gentle reminder regarding your pending due of *${inr(i.balanceDue || 0)}* for Invoice No: ${i.number} dated ${formatDate(i.createdAt)}.\n\nPlease clear the due amount at your earliest convenience.\n\nThank you!`)} title="Send WhatsApp Reminder">
+                              <Button size="icon" variant="ghost" className="h-8 w-8 text-green-600 hover:text-green-700 hover:bg-green-50" onClick={() => sendWhatsApp(i.customerMobile, `*अरिहंत ज्वेलर्स*\n\nनमस्ते ${i.customerName},\n\nयह आपके इनवॉइस नंबर: ${i.number} (दिनांक ${formatDate(i.createdAt)}) के लिए *${inr(i.balanceDue || 0)}* की बकाया राशि के संबंध में एक रिमाइंडर है।\n\nकृपया जल्द से जल्द बकाया राशि का भुगतान करें।\n\nधन्यवाद!`)} title="Send WhatsApp Reminder">
                                 <MessageCircle className="w-4 h-4" />
                               </Button>
                               <Link to="/dues"><Button size="sm" variant="outline" className="h-8">Collect</Button></Link>

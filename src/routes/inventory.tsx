@@ -202,7 +202,7 @@ export default function InventoryPage() {
             stock: parseInt(String(getVal(row, 'stock', 'qty', 'quantity', 'count'))) || 1,
             huid: String(getVal(row, 'huid', 'hallmark', 'serial') || ''),
             grossWeight: parseFloat(getVal(row, 'gross weight', 'gross wt')) || 0,
-            stoneWeight: parseFloat(getVal(row, 'stone weight', 'stone wt')) || 0,
+            stoneWeight: parseFloat(getVal(row, 'stone weight', 'less Wt')) || 0,
             note: String(getVal(row, 'note', 'remarks', 'description') || ''),
             imageUrl: "",
           } as Product;
@@ -424,7 +424,7 @@ export default function InventoryPage() {
                 <Field label="Net Wt (g)">
                   <NumIn v={draft.netWeight} on={(v) => set("netWeight", v)} />
                 </Field>
-                <Field label="Stone Wt (g)"><NumIn v={draft.stoneWeight} on={(v) => set("stoneWeight", v)} /></Field>
+                <Field label="less Wt (g)"><NumIn v={draft.stoneWeight} on={(v) => set("stoneWeight", v)} /></Field>
               </div>
 
               <Field label="Stock Qty"><NumIn v={draft.stock} on={(v) => set("stock", v)} /></Field>

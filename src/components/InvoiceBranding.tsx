@@ -1,5 +1,5 @@
 export const SHOP_DETAILS = {
-  name: "Arihent Jewellers",
+  name: "Arihant Jewellers",
   address: "224, Maheshwar Road, Barwaha (Dist. Khargone) M.P.",
   phones: ["9826049083", "9926702700"],
   gstNumber: "23AVHPB4250H1Z2",
@@ -14,6 +14,9 @@ const TERMS = [
 export function ShopHeader({ documentLabel, compact = false }: { documentLabel?: string; compact?: boolean }) {
   return (
     <div className={`text-center border-b-2 border-slate-300 ${compact ? "pb-3 mb-4" : "pb-5 mb-6"}`}>
+      <div className="flex justify-center mb-3">
+        <img src="/logo.png" alt="Shop Logo" className={`object-contain ${compact ? "h-16" : "h-20"}`} />
+      </div>
       <h2 className={`${compact ? "text-3xl" : "text-4xl"} font-display font-bold uppercase tracking-widest text-slate-900`}>
         {SHOP_DETAILS.name}
       </h2>

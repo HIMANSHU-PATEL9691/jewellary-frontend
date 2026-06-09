@@ -1,5 +1,5 @@
 const UPI_ID = "9826049083@ybl";
-const PAYEE_NAME = "Arihent Jewellers";
+const PAYEE_NAME = "Arihant Jewellers";
 const BANK_ACCOUNTS = [
   {
     name: "Sourabh Bhandari",
