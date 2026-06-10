@@ -4,22 +4,24 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { useApi } from "@/hooks/useApi";
 import { customerAPI, expensesAPI, invoicesAPI, ordersAPI, repairsAPI } from "@/lib/api";
-import { inr, type Customer, type Expense, type Invoice, type Order, type Repair } from "@/lib/storage";
+import { inr, type Customer, type Expense, type Invoice, type Order, type Repair, useLocalState } from "@/lib/storage";
 import { BookOpen, ArrowDownLeft, ArrowUpRight, Users, Wrench, ShoppingBag, Receipt, Wallet } from "lucide-react";
 import { DatePicker } from "@/components/ui/date-picker";
-import { Button } from "@/components/ui/button";
 
 export default function LedgerPage() {
+  const [authUser] = useLocalState<any>("ajms.auth", null);
   const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().slice(0, 10));
   const targetDateStr = useMemo(() => new Date(selectedDate).toDateString(), [selectedDate]);
-  const [page, setPage] = useState(1);
 
   // Fetch all related data
-  const { data: invoices = [], isLoading: loadingInvoices } = useApi<Invoice[]>(["invoices"], () => invoicesAPI.getAll());
+  const { data: allInvoices = [], isLoading: loadingInvoices } = useApi<Invoice[]>(["invoices"], () => invoicesAPI.getAll());
   const { data: expenses = [], isLoading: loadingExpenses } = useApi<Expense[]>(["expenses"], () => expensesAPI.getAll());
   const { data: orders = [], isLoading: loadingOrders } = useApi<Order[]>(["orders"], () => ordersAPI.getAll());
   const { data: repairs = [], isLoading: loadingRepairs } = useApi<Repair[]>(["repairs"], () => repairsAPI.getAll());
   const { data: customers = [], isLoading: loadingCustomers } = useApi<Customer[]>(["customers"], () => customerAPI.getAll());
+
+  const isOperator = authUser?.role === "operator";
+  const invoices = useMemo(() => allInvoices.filter(i => isOperator ? i.type === "GST" : i.type !== "GST"), [allInvoices, isOperator]);
 
   const isLoading = loadingInvoices || loadingExpenses || loadingOrders || loadingRepairs || loadingCustomers;
 
@@ -65,10 +67,6 @@ export default function LedgerPage() {
   const totalIn = entries.reduce((s, e) => s + e.in, 0);
   const totalOut = entries.reduce((s, e) => s + e.out, 0);
   const netBalance = totalIn - totalOut;
-
-  const totalPages = Math.ceil(entries.length / 10) || 1;
-  const currentPage = Math.min(page, totalPages);
-  const paginated = entries.slice((currentPage - 1) * 10, currentPage * 10);
 
   return (
     <Layout>
@@ -136,7 +134,7 @@ export default function LedgerPage() {
                   </tr>
                 </thead>
                 <tbody>
-              {paginated.map((e, idx) => {
+              {entries.map((e, idx) => {
                     const Icon = e.icon;
                     return (
                       <tr key={`${e.id}-${idx}`} className="border-b last:border-0 hover:bg-muted/40">
@@ -157,15 +155,6 @@ export default function LedgerPage() {
                   </tr>
                 </tfoot>
               </table>
-          {totalPages > 1 && (
-            <div className="flex items-center justify-between px-4 py-3 border-t">
-              <div className="text-xs text-muted-foreground">Showing {(currentPage - 1) * 10 + 1} to {Math.min(currentPage * 10, entries.length)} of {entries.length} entries</div>
-              <div className="flex gap-1">
-                <Button size="sm" variant="outline" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={currentPage === 1}>Prev</Button>
-                <Button size="sm" variant="outline" onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages}>Next</Button>
-              </div>
-            </div>
-          )}
             </div>
           )}
         </CardContent>

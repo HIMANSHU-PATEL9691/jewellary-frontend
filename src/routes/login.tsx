@@ -3,7 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Gem, Lock, User, UserCog, Hammer } from "lucide-react";
+import { Gem, Lock, User, UserCog, Hammer, Eye, EyeOff } from "lucide-react";
 import { toast } from "sonner";
 import { karigarsAPI } from "@/lib/api";
 
@@ -12,6 +12,7 @@ export default function LoginPage({ onLogin }: { onLogin: (user: any) => void })
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -19,12 +20,14 @@ export default function LoginPage({ onLogin }: { onLogin: (user: any) => void })
 
     try {
       if (loginType === "admin") {
-        // Default Credentials (you can change these!)
-        if (username === "admin" && password === "admin123") {
+        if (username === "arihantjewellrs" && password === "arihant@13") {
           toast.success("Welcome back Admin!");
           onLogin({ role: "admin" });
+        } else if (username === "arihantjewellrs" && password === "arihant@88") {
+          toast.success("Welcome GST Operator!");
+          onLogin({ role: "operator" });
         } else {
-          toast.error("Invalid admin credentials");
+          toast.error(`Invalid ${loginType} credentials`);
         }
       } else {
         const karigars = await karigarsAPI.getAll();
@@ -45,14 +48,14 @@ export default function LoginPage({ onLogin }: { onLogin: (user: any) => void })
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-muted/50 to-muted p-4 relative overflow-hidden">
+    <div className="min-h-screen flex items-center justify-center bg-linear-to-br from-background via-muted/50 to-muted p-4 relative overflow-hidden">
       {/* Decorative background blobs */}
       <div className="absolute top-[-10%] left-[-10%] w-96 h-96 bg-primary/10 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute bottom-[-10%] right-[-10%] w-96 h-96 bg-primary/10 rounded-full blur-3xl pointer-events-none" />
       
       <Card className="w-full max-w-md shadow-2xl border-border/50 relative z-10 backdrop-blur-sm bg-card/95">
         <CardHeader className="text-center pb-2">
-          <div className="mx-auto w-14 h-14 bg-gradient-to-tr from-primary to-primary/70 text-primary-foreground rounded-2xl flex items-center justify-center mb-6 shadow-lg transform rotate-3 hover:rotate-0 transition-all duration-300">
+          <div className="mx-auto w-14 h-14 bg-linear-to-tr from-primary to-primary/70 text-primary-foreground rounded-2xl flex items-center justify-center mb-6 shadow-lg transform rotate-3 hover:rotate-0 transition-all duration-300">
             <Gem className="w-7 h-7" />
           </div>
           <CardTitle className="text-3xl font-display tracking-tight">Arihant </CardTitle>
@@ -90,11 +93,14 @@ export default function LoginPage({ onLogin }: { onLogin: (user: any) => void })
               <Label htmlFor="password">Password</Label>
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input id="password" type="password" placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)} required className="h-12 pl-10 bg-background/50 focus:bg-background transition-colors" />
+                <Input id="password" type={showPassword ? "text" : "password"} placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)} required className="h-12 pl-10 pr-10 bg-background/50 focus:bg-background transition-colors" />
+                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors" aria-label="Toggle password visibility">
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
               </div>
             </div>
             <Button type="submit" className="w-full h-12 text-base font-semibold shadow-md hover:shadow-lg transition-all duration-200 mt-4" disabled={isLoading}>
-              {isLoading ? "Authenticating..." : `Sign In as ${loginType === "admin" ? "Admin" : "Karigar"}`}
+              {isLoading ? "Authenticating..." : `Sign In as ${loginType.charAt(0).toUpperCase() + loginType.slice(1)}`}
             </Button>
           </form>
         </CardContent>

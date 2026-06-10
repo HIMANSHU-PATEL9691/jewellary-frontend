@@ -420,11 +420,15 @@ export default function InventoryPage() {
               <Field label="Purity"><Input value={draft.purity} onChange={(e) => set("purity", e.target.value)} /></Field>
               
               <div className="md:col-span-2 grid grid-cols-3 gap-3 bg-muted/30 p-3 rounded-lg border border-border">
-                <Field label="Gross Wt (g)"><NumIn v={draft.grossWeight} on={(v) => set("grossWeight", v)} /></Field>
-                <Field label="Net Wt (g)">
-                  <NumIn v={draft.netWeight} on={(v) => set("netWeight", v)} />
+                <Field label="Gross Wt (g)">
+                  <NumIn v={draft.grossWeight} on={(v) => setDraft(d => ({ ...d, grossWeight: v, netWeight: Math.max(0, Number((v - d.stoneWeight).toFixed(3))) }))} />
                 </Field>
-                <Field label="less Wt (g)"><NumIn v={draft.stoneWeight} on={(v) => set("stoneWeight", v)} /></Field>
+                <Field label="less Wt (g)">
+                  <NumIn v={draft.stoneWeight} on={(v) => setDraft(d => ({ ...d, stoneWeight: v, netWeight: Math.max(0, Number((d.grossWeight - v).toFixed(3))) }))} />
+                </Field>
+                <Field label="Net Wt (g)">
+                  <NumIn v={draft.netWeight} on={(v) => setDraft(d => ({ ...d, netWeight: v, grossWeight: Number((v + d.stoneWeight).toFixed(3)) }))} />
+                </Field>
               </div>
 
               <Field label="Stock Qty"><NumIn v={draft.stock} on={(v) => set("stock", v)} /></Field>

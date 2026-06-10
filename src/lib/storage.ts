@@ -242,6 +242,7 @@ export type Order = {
   purity: string;
   estimatedWeight?: number;
   estimatedPrice?: number;
+  fixedPrice?: number;
   advancePaid: number;
   karigarId?: string;
   dueDate?: string;

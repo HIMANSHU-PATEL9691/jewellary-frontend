@@ -5,7 +5,6 @@ import {
   Users,
   Receipt,
   Wallet,
-  HandCoins,
   Landmark,
   Truck,
   Hammer,
@@ -68,11 +67,9 @@ const adminGroups: { title: string; items: NavItem[] }[] = [
     { to: "/purchases", label: "Purchases", icon: ShoppingBag },
     { to: "/expenses", label: "Expenses", icon: Wallet },
     { to: "/dues", label: "Customer Dues", icon: AlertCircle },
-    { to: "/advances", label: "Advance", icon: HandCoins },
     { to: "/girvi", label: "Girvi (Loans)", icon: Landmark },
     { to: "/forwarded-shops", label: "Forwarded Shops", icon: Store },
     { to: "/reports", label: "Reports", icon: BarChart3 },
-    { to: "/gst-report", label: "GST Report", icon: FileText },
     { to: "/ledger", label: "Daily Ledger", icon: BookOpen },
   ]},
 ];
@@ -81,12 +78,24 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
   const authRaw = localStorage.getItem("ajms.auth");
   const authUser = authRaw ? JSON.parse(authRaw) : null;
   const isKarigar = authUser?.role === "karigar";
+  const isOperator = authUser?.role === "operator";
 
   const groups = isKarigar ? [
     { title: "My Workspace", items: [
       { to: "/karigar-tasks", label: "My Tasks", icon: ClipboardList }
     ]}
-  ] : adminGroups;
+  ] : adminGroups.map(group => {
+    if (group.title === "Finance" && isOperator) {
+      return {
+        ...group,
+        items: [
+          ...group.items,
+          { to: "/gst-report", label: "GST Report", icon: FileText as any }
+        ]
+      };
+    }
+    return group;
+  });
 
   return (
     <>

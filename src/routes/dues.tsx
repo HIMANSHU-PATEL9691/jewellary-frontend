@@ -3,7 +3,7 @@ import { Layout } from "@/components/Layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { inr, type Invoice } from "@/lib/storage";
+import { inr, type Invoice, useLocalState } from "@/lib/storage";
 import { formatDate } from "@/lib/utils";
 import { useApi } from "@/hooks/useApi";
 import { invoicesAPI } from "@/lib/api";
@@ -11,10 +11,14 @@ import { Search, AlertCircle, MessageCircle } from "lucide-react";
 import { DatePicker } from "@/components/ui/date-picker";
 
 export default function DuesPage() {
-  const { data: invoices = [], isLoading } = useApi<Invoice[]>(["invoices"], () => invoicesAPI.getAll());
+  const [authUser] = useLocalState<any>("ajms.auth", null);
+  const { data: allInvoices = [], isLoading } = useApi<Invoice[]>(["invoices"], () => invoicesAPI.getAll());
   const [q, setQ] = useState("");
   const [dateFilter, setDateFilter] = useState<string>("");
   const [page, setPage] = useState(1);
+
+  const isOperator = authUser?.role === "operator";
+  const invoices = useMemo(() => allInvoices.filter(i => isOperator ? i.type === "GST" : i.type !== "GST"), [allInvoices, isOperator]);
 
   const dueInvoices = useMemo(() => {
     return invoices

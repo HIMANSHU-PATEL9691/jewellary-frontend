@@ -856,9 +856,9 @@ function GirviModal({ girvi, onClose }: { girvi: Girvi; onClose: () => void }) {
   const displayNote = girvi.note?.replace(/\[(IntPeriod|FwdIntPeriod):.*?\]/g, '').trim();
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/50 flex justify-center items-start p-2 sm:p-4 print:bg-white print:p-0 overflow-y-auto">
-      <div className="bg-white w-full max-w-3xl rounded-lg shadow-xl print:shadow-none print:max-w-none text-slate-900 my-auto relative">
-        <div className="p-5 border-2 border-slate-800 m-2 print:m-0 rounded-sm bg-white">
+    <div className="fixed inset-0 z-100 bg-black/50 flex justify-center items-start p-2 sm:p-4 print:bg-white print:p-0 overflow-y-auto pointer-events-auto">
+      <div className="bg-white w-full max-w-3xl rounded-lg shadow-xl print:shadow-none print:max-w-none text-slate-900 my-auto relative flex flex-col max-h-[95vh] print:max-h-none print:block">
+        <div className="p-5 border-2 border-slate-800 m-2 print:m-0 rounded-sm bg-white overflow-y-auto flex-1 print:overflow-visible">
           <ShopHeader documentLabel="Girvi / Pawn Ticket" compact />
           
           {/* Meta Info */}
@@ -902,8 +902,9 @@ function GirviModal({ girvi, onClose }: { girvi: Girvi; onClose: () => void }) {
           {/* Item Details Table */}
           <div className="mb-4">
             <h3 className="font-bold text-xs uppercase text-slate-500 mb-3 tracking-wider">Pledged Item Details</h3>
-            <table className="w-full text-xs border-collapse border border-slate-300">
-              <thead className="bg-slate-50">
+            <div className="overflow-x-auto w-full">
+              <table className="w-full text-xs border-collapse border border-slate-300 min-w-125">
+                <thead className="bg-slate-50">
                 <tr>
                   <th className="border border-slate-300 p-1.5 text-left font-semibold">Description</th>
                   <th className="border border-slate-300 p-1.5 text-left font-semibold">Type</th>
@@ -922,6 +923,7 @@ function GirviModal({ girvi, onClose }: { girvi: Girvi; onClose: () => void }) {
                 </tr>
               </tbody>
             </table>
+            </div>
           </div>
 
           {/* Financials Box */}
@@ -1052,7 +1054,7 @@ function GirviModal({ girvi, onClose }: { girvi: Girvi; onClose: () => void }) {
         </div>
 
         {/* Action Buttons */}
-        <div className="sticky bottom-0 bg-slate-100 p-4 border-t border-slate-200 rounded-b-lg flex justify-end gap-3 print:hidden">
+        <div className="shrink-0 bg-slate-100 p-4 border-t border-slate-200 rounded-b-lg flex justify-end gap-3 print:hidden">
           <Button variant="outline" onClick={onClose}>Close</Button>
           <Button onClick={() => window.print()}>
             <Printer className="w-4 h-4 mr-2" /> Print Receipt

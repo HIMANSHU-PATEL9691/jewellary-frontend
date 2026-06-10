@@ -10,7 +10,7 @@ const BANK_ACCOUNTS = [
   },
   {
     name: "Arihant Jewellers",
-    accountNo: "31480425663",
+    accountNo: "31420425663",
     bank: "SBI",
     ifsc: "SBIN0030029",
     branch: "Barwaha",

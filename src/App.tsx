@@ -5,7 +5,6 @@ import { Loader2 } from "lucide-react";
 
 const Dashboard = React.lazy(() => import("./routes/index"));
 const BillingPage = React.lazy(() => import("./routes/billing"));
-const AdvancePage = React.lazy(() => import("./routes/advances"));
 const CustomersPage = React.lazy(() => import("./routes/customers"));
 const ExpensesPage = React.lazy(() => import("./routes/expenses"));
 const GirviPage = React.lazy(() => import("./routes/girvi"));
@@ -59,7 +58,6 @@ export default function App() {
       <Routes>
         <Route path="/" element={<Dashboard />} />
         <Route path="/billing" element={<BillingPage />} />
-        <Route path="/advances" element={<AdvancePage />} />
         <Route path="/customers" element={<CustomersPage />} />
         <Route path="/expenses" element={<ExpensesPage />} />
         <Route path="/girvi" element={<GirviPage />} />
@@ -74,13 +72,13 @@ export default function App() {
         <Route path="/orders" element={<OrdersPage />} />
         <Route path="/ledger" element={<LedgerPage />} />
         <Route path="/dues" element={<DuesPage />} />
-        <Route path="/gst-report" element={<GstReportPage />} />
         <Route path="/forwarded-shops" element={<ForwardedShopsPage />} />
         <Route path="/karigar-tasks" element={<KarigarTasksPage />} />
         <Route path="/catalog" element={<CatalogPage />} />
         <Route path="/notifications" element={<NotificationsPage />} />
         <Route path="/employees" element={<EmployeesPage />} />
         <Route path="/calculator" element={<CalculatorPage />} />
+        <Route path="/gst-report" element={<GstReportPage />} />
         <Route path="*" element={<div className="flex min-h-screen items-center justify-center text-2xl font-bold text-muted-foreground">404 - Page Not Found</div>} />
       </Routes>
       </Suspense>

@@ -4,7 +4,7 @@ import { Layout } from "@/components/Layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { inr, type Invoice } from "@/lib/storage";
+import { inr, type Invoice, useLocalState } from "@/lib/storage";
 import { formatDate } from "@/lib/utils";
 import { Receipt, Trash2, TrendingUp } from "lucide-react";
 import { useApi, useApiMutation } from "@/hooks/useApi";
@@ -13,10 +13,14 @@ import { toast } from "sonner";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer } from "recharts";
 
 export default function SalesPage() {
-  const { data: invoices = [] } = useApi<Invoice[]>(["invoices"], () => invoicesAPI.getAll());
+  const [authUser] = useLocalState<any>("ajms.auth", null);
+  const { data: allInvoices = [] } = useApi<Invoice[]>(["invoices"], () => invoicesAPI.getAll());
   const { data: products = [] } = useApi<any[]>(["inventory"], () => inventoryAPI.getAll());
   const deleteMutation = useApiMutation((id: string) => invoicesAPI.delete(id), ["invoices"]);
   const updateProductMutation = useApiMutation((data: { id: string; body: any }) => inventoryAPI.update(data.id, data.body), ["inventory"]);
+
+  const isOperator = authUser?.role === "operator";
+  const invoices = useMemo(() => allInvoices.filter(i => isOperator ? i.type === "GST" : i.type !== "GST"), [allInvoices, isOperator]);
 
   const [q, setQ] = useState("");
   const [pages, setPages] = useState<Record<number, number>>({});
@@ -97,41 +101,58 @@ export default function SalesPage() {
       </div>
 
       {[
-        { title: "GST Invoice History", data: filtered.filter(i => i.type === "GST") },
-        { title: "NON-GST Invoice History", data: filtered.filter(i => i.type === "NON-GST") }
+        { title: isOperator ? "GST Invoice History" : "NON-GST Invoice History", data: filtered }
       ].map((table, index) => {
         const totalPages = Math.ceil(table.data.length / 10) || 1;
         const currentPage = Math.min(pages[index] || 1, totalPages);
         const paginated = table.data.slice((currentPage - 1) * 10, currentPage * 10);
 
         return (
-        <Card key={table.title} className={index === 0 ? "mb-6" : ""}>
-          <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-            <CardTitle className="font-display flex items-center gap-2"><Receipt className="w-5 h-5"/>{table.title}</CardTitle>
+        <Card key={table.title} className="shadow-sm border-border overflow-hidden flex flex-col">
+          <CardHeader className="bg-muted/20 border-b border-border pb-3 pt-4">
+            <CardTitle className="text-base font-semibold font-display flex items-center gap-2">
+              <Receipt className="w-5 h-5 text-primary" /> {table.title}
+            </CardTitle>
           </CardHeader>
-          <CardContent>
-            {table.data.length === 0 ? <p className="text-center text-muted-foreground py-12">No invoices match.</p> :
+          <CardContent className="p-0">
+            {table.data.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
+                <Receipt className="w-10 h-10 mb-3 opacity-20" />
+                <p>No invoices match your search.</p>
+              </div>
+            ) : (
             <div className="overflow-x-auto">
-            <table className="w-full text-sm"><thead className="text-left text-muted-foreground border-b bg-muted/20"><tr><th className="py-2 px-4">Invoice</th><th>Date</th><th>Customer</th><th>Mode</th><th>Items</th><th className="text-right">Total</th><th className="text-center px-4">Status</th><th></th></tr></thead>
-              <tbody>{[...paginated].sort((a,b) => b.createdAt.localeCompare(a.createdAt)).map(i => (<tr key={i._id || i.id} className="border-b last:border-0 hover:bg-muted/40">
-                <td className="py-2 px-4 font-medium">{i.number}</td>
-                <td>{formatDate(i.createdAt)}</td>
-                <td>{i.customerName}<div className="text-xs text-muted-foreground">{i.customerMobile}</div></td>
-                <td>{i.paymentMode}</td><td>{i.items.length}</td>
-                <td className="text-right">{inr(i.total)}</td>
-                <td className="text-center px-4">
-                  {(i.balanceDue || 0) <= 0 ? (
-                    <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded text-[10px] font-semibold uppercase">Paid</span>
-                  ) : (
-                    <span className="bg-rose-100 text-rose-700 px-2 py-0.5 rounded text-[10px] font-semibold uppercase">Due</span>
-                  )}
-                </td>
-                <td className="text-right px-4">
-                  <Button size="sm" variant="ghost" onClick={() => removeInvoice(i)}>
-                    <Trash2 className="w-4 h-4 text-red-500 hover:text-red-600" />
-                  </Button>
-                </td>
-              </tr>))}</tbody></table>
+              <table className="w-full text-sm text-left border-collapse">
+                <thead className="bg-muted/40 text-muted-foreground text-[11px] uppercase tracking-wider border-b border-border">
+                  <tr>
+                    <th className="py-3 px-4 font-semibold">Invoice</th>
+                    <th className="py-3 px-4 font-semibold">Date</th>
+                    <th className="py-3 px-4 font-semibold">Customer</th>
+                    <th className="py-3 px-4 font-semibold">Mode</th>
+                    <th className="py-3 px-4 font-semibold">Items</th>
+                    <th className="py-3 px-4 font-semibold text-right">Total</th>
+                    <th className="py-3 px-4 font-semibold text-center">Status</th>
+                    <th className="py-3 px-4 font-semibold text-right">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[...paginated].sort((a,b) => b.createdAt.localeCompare(a.createdAt)).map(i => (
+                    <tr key={i._id || i.id} className="border-b border-border/50 last:border-0 hover:bg-muted/20 transition-colors">
+                      <td className="py-3 px-4 font-medium text-foreground">{i.number}</td>
+                      <td className="py-3 px-4">{formatDate(i.createdAt)}</td>
+                      <td className="py-3 px-4">{i.customerName}<div className="text-xs text-muted-foreground">{i.customerMobile}</div></td>
+                      <td className="py-3 px-4">{i.paymentMode}</td><td className="py-3 px-4">{i.items.length}</td>
+                      <td className="py-3 px-4 text-right font-medium">{inr(i.total)}</td>
+                      <td className="py-3 px-4 text-center">
+                        {(i.balanceDue || 0) <= 0 ? <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded text-[10px] font-semibold uppercase">Paid</span> : <span className="bg-rose-100 text-rose-700 px-2 py-0.5 rounded text-[10px] font-semibold uppercase">Due</span>}
+                      </td>
+                      <td className="py-3 px-4 text-right">
+                        <Button size="sm" variant="ghost" className="h-8 w-8 p-0" onClick={() => removeInvoice(i)} title="Delete Invoice"><Trash2 className="w-4 h-4 text-red-500 hover:text-red-600" /></Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
               {totalPages > 1 && (
                 <div className="flex items-center justify-between px-4 py-3 border-t border-border">
                   <div className="text-xs text-muted-foreground">Showing {(currentPage - 1) * 10 + 1} to {Math.min(currentPage * 10, table.data.length)} of {table.data.length} entries</div>
@@ -141,7 +162,7 @@ export default function SalesPage() {
                   </div>
                 </div>
               )}
-              </div>}
+            </div>)}
           </CardContent>
         </Card>
       )})}

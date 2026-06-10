@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Layout } from "@/components/Layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -10,7 +10,7 @@ import { inr, type Order, type Karigar } from "@/lib/storage";
 import { formatDate } from "@/lib/utils";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { ordersAPI, customerAPI, karigarsAPI } from "@/lib/api";
-import { Plus, Trash2, ShoppingBag, Pencil, Printer } from "lucide-react";
+import { Plus, Trash2, ShoppingBag, Pencil, Printer, Search } from "lucide-react";
 import { toast } from "sonner";
 import { DatePicker } from "@/components/ui/date-picker";
 import { InvoiceTerms, ShopHeader } from "@/components/InvoiceBranding";
@@ -30,6 +30,8 @@ export default function OrdersPage() {
   const [searchKar, setSearchKar] = useState("");
   const [viewingReceipt, setViewingReceipt] = useState<Order | null>(null);
   const [page, setPage] = useState(1);
+  const [q, setQ] = useState("");
+  const [filter, setFilter] = useState<"All" | Order["status"]>("All");
   const empty: Order = {
     id: "",
     orderNo: "",
@@ -40,6 +42,7 @@ export default function OrdersPage() {
     itemDescription: "",
     metal: "Gold",
     purity: "22K",
+    fixedPrice: 0,
     advancePaid: 0,
     karigarId: "",
     dueDate: "",
@@ -97,9 +100,23 @@ export default function OrdersPage() {
   const activeOrders = list.filter(r => r.status === "Pending" || r.status === "In Progress" || r.status === "Ready").length;
   const totalAdvance = list.reduce((s, r) => s + (r.advancePaid || 0), 0);
 
-  const totalPages = Math.ceil(list.length / 10) || 1;
+  const filtered = useMemo(() => {
+    let result = filter === "All" ? list : list.filter(o => o.status === filter);
+    if (q.trim()) {
+      const lowerQ = q.toLowerCase().trim();
+      result = result.filter(o => 
+        o.customerName.toLowerCase().includes(lowerQ) ||
+        o.orderNo.toLowerCase().includes(lowerQ) ||
+        o.customerMobile.includes(lowerQ) ||
+        o.itemDescription.toLowerCase().includes(lowerQ)
+      );
+    }
+    return [...result].sort((a, b) => b.date.localeCompare(a.date));
+  }, [list, q, filter]);
+
+  const totalPages = Math.ceil(filtered.length / 10) || 1;
   const currentPage = Math.min(page, totalPages);
-  const paginated = list.slice((currentPage - 1) * 10, currentPage * 10);
+  const paginated = filtered.slice((currentPage - 1) * 10, currentPage * 10);
 
   return (
     <Layout>
@@ -152,6 +169,7 @@ export default function OrdersPage() {
                 </select>
               </div>
               <Field label="Purity" v={form.purity} on={v => setForm({...form, purity: v})} />
+              <Field label="Fixed Rate ₹ (Optional)" type="number" v={String(form.fixedPrice || "")} on={v => setForm({...form, fixedPrice: +v})} />
               <Field label="Advance Paid ₹" type="number" v={String(form.advancePaid || "")} on={v => setForm({...form, advancePaid: +v})} />
               <Field label="Date" type="date" v={form.date} on={v => setForm({...form, date: v})} />
               <Field label="Due Date" type="date" v={form.dueDate || ""} on={v => setForm({...form, dueDate: v})} />
@@ -219,48 +237,142 @@ export default function OrdersPage() {
         <Stat label="Total Advances Collected" value={inr(totalAdvance)} />
       </div>
 
-      <Card>
-        <CardHeader><CardTitle className="font-display flex items-center gap-2"><ShoppingBag className="w-5 h-5"/>All Orders</CardTitle></CardHeader>
-        <CardContent>
-          {isLoading ? <p className="text-center text-muted-foreground py-12">Loading orders...</p> : list.length === 0 ? <p className="text-center text-muted-foreground py-12">No orders recorded yet.</p> :
-          <div className="overflow-x-auto">
-          <table className="w-full text-sm"><thead className="text-left text-muted-foreground border-b"><tr><th className="py-2">Order No</th><th>Customer</th><th>Item</th><th>Karigar</th><th>Advance</th><th>Due Date</th><th>Status</th><th></th></tr></thead>
-            <tbody>{paginated.map(r => (<tr key={(r as any)._id || r.id} className="border-b last:border-0 hover:bg-muted/40">
-              <td className="py-2">
-                <div className="font-medium">{r.orderNo}</div>
-                <div className="text-xs text-muted-foreground">{formatDate(r.date)}</div>
-              </td>
-              <td><div>{r.customerName}</div><div className="text-xs text-muted-foreground">{r.customerMobile}</div></td>
-              <td><div>{r.itemDescription}</div><div className="text-xs text-muted-foreground">{r.metal} {r.purity}</div></td>
-              <td>{karigars.find(k => k._id === r.karigarId || k.id === r.karigarId)?.name || r.note?.match(/\[Assigned:\s*(.*?)\]/)?.[1] || "—"}</td>
-              <td className="text-green-600 font-medium">
-                <div>{inr(r.advancePaid)}</div>
-                {r.status === "Delivered" && (r.advancePaid || 0) > 0 && (
-                  <span className="inline-block mt-0.5 bg-green-100 text-green-800 px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase">Settled</span>
-                )}
-              </td>
-              <td>{r.dueDate ? formatDate(r.dueDate) : "—"}</td>
-              <td><select className={`border rounded px-2 py-1 text-xs ${r.status === 'Ready' ? 'bg-green-50 text-green-700 border-green-200 font-medium' : r.status === 'Delivered' ? 'bg-slate-100 text-slate-500' : 'bg-background'}`} value={r.status} onChange={e => setStatus((r as any)._id || r.id, e.target.value as Order["status"])} disabled={r.status === 'Delivered'}>
-                {["Pending","In Progress","Ready","Delivered","Cancelled"].filter(s => s !== "Delivered" || r.status === "Delivered").map(s => <option key={s}>{s}</option>)}
-              </select></td>
-              <td className="text-right">
-                <Button size="sm" variant="ghost" onClick={() => setViewingReceipt(r)}>
-                  <Printer className="w-4 h-4 text-muted-foreground hover:text-primary" />
-                </Button>
-                <Button size="sm" variant="ghost" onClick={() => { setForm(r); setEditingId((r as any)._id || r.id || null); setOpen(true); }}><Pencil className="w-4 h-4 text-muted-foreground hover:text-primary"/></Button>
-                <Button size="sm" variant="ghost" onClick={() => remove((r as any)._id || r.id)}><Trash2 className="w-4 h-4 text-muted-foreground hover:text-red-500"/></Button>
-              </td>
-            </tr>))}</tbody></table>
-            {totalPages > 1 && (
-              <div className="flex items-center justify-between px-4 py-3 border-t">
-                <div className="text-xs text-muted-foreground">Showing {(currentPage - 1) * 10 + 1} to {Math.min(currentPage * 10, list.length)} of {list.length} entries</div>
-                <div className="flex gap-1">
-                  <Button size="sm" variant="outline" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={currentPage === 1}>Prev</Button>
-                  <Button size="sm" variant="outline" onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages}>Next</Button>
-                </div>
+      <Card className="shadow-sm border-border overflow-hidden flex flex-col">
+        <CardHeader className="bg-muted/20 border-b border-border pb-3 pt-4">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <CardTitle className="text-base font-semibold font-display flex items-center gap-2">
+              <ShoppingBag className="w-5 h-5 text-primary" /> All Orders
+            </CardTitle>
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              <div className="relative flex-1 sm:w-64">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search order or customer..."
+                  value={q}
+                  onChange={e => setQ(e.target.value)}
+                  className="pl-9 h-8 bg-background text-xs border-border shadow-sm"
+                />
               </div>
-            )}
-            </div>}
+              <Select value={filter} onValueChange={(v) => setFilter(v as typeof filter)}>
+                <SelectTrigger className="w-32 h-8 bg-background text-xs font-medium border-border shadow-sm">
+                  <SelectValue placeholder="Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="All">All Status</SelectItem>
+                  <SelectItem value="Pending">Pending</SelectItem>
+                  <SelectItem value="In Progress">In Progress</SelectItem>
+                  <SelectItem value="Ready">Ready</SelectItem>
+                  <SelectItem value="Delivered">Delivered</SelectItem>
+                  <SelectItem value="Cancelled">Cancelled</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="p-0">
+          {isLoading ? (
+            <p className="text-center text-muted-foreground py-12">Loading orders...</p>
+          ) : filtered.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
+              <Search className="w-10 h-10 mb-3 opacity-20" />
+              <p>No orders found.</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm text-left border-collapse">
+                <thead className="bg-muted/40 text-muted-foreground text-[11px] uppercase tracking-wider border-b border-border">
+                  <tr>
+                    <th className="py-3 px-4 font-semibold">Order No</th>
+                    <th className="py-3 px-4 font-semibold">Customer</th>
+                    <th className="py-3 px-4 font-semibold">Item</th>
+                    <th className="py-3 px-4 font-semibold">Karigar</th>
+                    <th className="py-3 px-4 font-semibold text-right">Fixed Rate</th>
+                    <th className="py-3 px-4 font-semibold text-right">Advance</th>
+                    <th className="py-3 px-4 font-semibold">Due Date</th>
+                    <th className="py-3 px-4 font-semibold text-center">Status</th>
+                    <th className="py-3 px-4 font-semibold text-right">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {paginated.map(r => {
+                    const statusColors: any = {
+                      "Pending": "bg-slate-100 text-slate-700",
+                      "In Progress": "bg-blue-50 text-blue-700 border-blue-200",
+                      "Ready": "bg-green-50 text-green-700 border-green-200",
+                      "Delivered": "bg-slate-100 text-slate-500",
+                      "Cancelled": "bg-rose-50 text-rose-700 border-rose-200"
+                    };
+                    
+                    return (
+                      <tr key={(r as any)._id || r.id} className="border-b border-border/50 last:border-0 hover:bg-muted/20 transition-colors">
+                        <td className="py-3 px-4">
+                          <div className="font-medium text-foreground">{r.orderNo}</div>
+                          <div className="text-[11px] text-muted-foreground">{formatDate(r.date)}</div>
+                        </td>
+                        <td className="py-3 px-4">
+                          <div className="font-medium text-foreground">{r.customerName}</div>
+                          <div className="text-xs text-muted-foreground">{r.customerMobile}</div>
+                        </td>
+                        <td className="py-3 px-4">
+                          <div className="font-medium text-foreground">{r.itemDescription}</div>
+                          <div className="text-xs text-muted-foreground">{r.metal} {r.purity}</div>
+                        </td>
+                        <td className="py-3 px-4">
+                          {karigars.find(k => k._id === r.karigarId || k.id === r.karigarId)?.name || r.note?.match(/\[Assigned:\s*(.*?)\]/)?.[1] || "—"}
+                        </td>
+                        <td className="py-3 px-4 text-right font-medium text-foreground">
+                          {r.fixedPrice ? inr(r.fixedPrice) : "—"}
+                        </td>
+                        <td className="py-3 px-4 text-right text-green-600 font-medium">
+                          <div>{inr(r.advancePaid)}</div>
+                          {r.status === "Delivered" && (r.advancePaid || 0) > 0 && (
+                            <span className="inline-block mt-0.5 bg-green-100 text-green-800 px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase">Settled</span>
+                          )}
+                        </td>
+                        <td className="py-3 px-4 font-medium">
+                          {r.dueDate ? formatDate(r.dueDate) : "—"}
+                        </td>
+                        <td className="py-3 px-4 text-center">
+                          <Select value={r.status} onValueChange={(v) => setStatus((r as any)._id || r.id, v as Order["status"])} disabled={r.status === 'Delivered'}>
+                            <SelectTrigger className={`mx-auto h-7 w-28 text-[10px] font-bold uppercase tracking-wider shadow-none border-transparent ${statusColors[r.status] || ""}`}>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {["Pending","In Progress","Ready","Delivered","Cancelled"].filter(s => s !== "Delivered" || r.status === "Delivered").map(s => (
+                                <SelectItem key={s} value={s}>{s}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </td>
+                        <td className="py-3 px-4 text-right whitespace-nowrap">
+                          <div className="flex justify-end gap-1">
+                            <Button size="sm" variant="ghost" className="h-8 w-8 p-0" onClick={() => setViewingReceipt(r)} title="Print Receipt">
+                              <Printer className="w-4 h-4 text-muted-foreground hover:text-primary" />
+                            </Button>
+                            <Button size="sm" variant="ghost" className="h-8 w-8 p-0" onClick={() => { setForm(r); setEditingId((r as any)._id || r.id || null); setOpen(true); }} title="Edit Order">
+                              <Pencil className="w-4 h-4 text-muted-foreground hover:text-primary" />
+                            </Button>
+                            <Button size="sm" variant="ghost" className="h-8 w-8 p-0" onClick={() => remove((r as any)._id || r.id)} title="Delete Order">
+                              <Trash2 className="w-4 h-4 text-rose-500 hover:text-rose-600" />
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              {totalPages > 1 && (
+                <div className="flex items-center justify-between px-4 py-3 border-t border-border">
+                  <div className="text-xs text-muted-foreground">Showing {(currentPage - 1) * 10 + 1} to {Math.min(currentPage * 10, filtered.length)} of {filtered.length} entries</div>
+                  <div className="flex gap-1">
+                    <Button size="sm" variant="outline" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={currentPage === 1}>Prev</Button>
+                    <Button size="sm" variant="outline" onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages}>Next</Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -281,9 +393,9 @@ function Stat({ label, value }: { label: string; value: string | number }) {
 
 function OrderInvoiceModal({ order, onClose }: { order: Order; onClose: () => void }) {
   return (
-    <div className="fixed inset-0 z-50 bg-black/50 flex justify-center items-start p-2 sm:p-4 print:bg-white print:p-0 overflow-y-auto">
-      <div className="bg-white w-full max-w-4xl rounded-lg shadow-xl print:shadow-none print:max-w-none text-slate-900 my-auto relative">
-        <div className="p-6 sm:p-10 print:p-0 border-2 border-transparent print:border-none m-2 print:m-0 bg-white">
+    <div className="fixed inset-0 z-100 bg-black/50 flex justify-center items-start p-2 sm:p-4 print:bg-white print:p-0 overflow-y-auto pointer-events-auto">
+      <div className="bg-white w-full max-w-4xl rounded-lg shadow-xl print:shadow-none print:max-w-none text-slate-900 my-auto relative flex flex-col max-h-[95vh] print:max-h-none print:block">
+        <div className="p-6 sm:p-10 print:p-0 border-2 border-transparent print:border-none m-2 print:m-0 bg-white overflow-y-auto flex-1 print:overflow-visible">
           
           <ShopHeader documentLabel="Custom Order Receipt" />
 
@@ -308,8 +420,9 @@ function OrderInvoiceModal({ order, onClose }: { order: Order; onClose: () => vo
           </div>
 
           {/* Items Table */}
-          <table className="w-full text-sm mb-6 border-collapse border border-slate-300">
-            <thead className="bg-slate-100">
+          <div className="overflow-x-auto w-full mb-6">
+            <table className="w-full text-sm border-collapse border border-slate-300 min-w-100">
+              <thead className="bg-slate-100">
               <tr>
                 <th className="border border-slate-300 py-2 px-3 text-center w-12 text-slate-600">#</th>
                 <th className="border border-slate-300 py-2 px-3 text-left text-slate-600">Item Description</th>
@@ -324,6 +437,7 @@ function OrderInvoiceModal({ order, onClose }: { order: Order; onClose: () => vo
               </tr>
             </tbody>
           </table>
+          </div>
 
           {/* Calculations & Totals */}
           <div className="flex flex-col sm:flex-row justify-between items-start text-sm gap-6">
@@ -332,13 +446,33 @@ function OrderInvoiceModal({ order, onClose }: { order: Order; onClose: () => vo
             <div className="w-full sm:w-1/2 max-w-sm order-1 sm:order-2">
               <table className="w-full">
                 <tbody>
-                  <tr className="border-t-2 border-slate-300 text-lg">
-                    <td className="py-2 font-bold text-slate-900">
-                      Advance Paid
-                      {order.status === "Delivered" && (order.advancePaid || 0) > 0 && <span className="ml-2 text-xs font-semibold text-green-700 uppercase tracking-wider bg-green-100 px-2 py-0.5 rounded">Settled</span>}
-                    </td>
-                    <td className="py-2 text-right font-bold text-green-700">{inr(order.advancePaid)}</td>
-                  </tr>
+                  {order.fixedPrice ? (
+                    <>
+                      <tr className="border-t-2 border-slate-300 text-lg">
+                        <td className="py-2 font-bold text-slate-900">Fixed Rate</td>
+                        <td className="py-2 text-right font-bold text-slate-900">{inr(order.fixedPrice)}</td>
+                      </tr>
+                      <tr className="border-t border-slate-200">
+                        <td className="py-1.5 text-slate-600">
+                          Advance Paid
+                          {order.status === "Delivered" && (order.advancePaid || 0) > 0 && <span className="ml-2 text-xs font-semibold text-green-700 uppercase tracking-wider bg-green-100 px-2 py-0.5 rounded">Settled</span>}
+                        </td>
+                        <td className="py-1.5 text-right font-semibold text-green-700">{inr(order.advancePaid)}</td>
+                      </tr>
+                      <tr className="border-t border-slate-200 text-lg">
+                        <td className="py-1.5 font-bold text-slate-900">Balance Due</td>
+                        <td className="py-1.5 text-right font-bold text-rose-700">{inr(order.fixedPrice - (order.advancePaid || 0))}</td>
+                      </tr>
+                    </>
+                  ) : (
+                    <tr className="border-t-2 border-slate-300 text-lg">
+                      <td className="py-2 font-bold text-slate-900">
+                        Advance Paid
+                        {order.status === "Delivered" && (order.advancePaid || 0) > 0 && <span className="ml-2 text-xs font-semibold text-green-700 uppercase tracking-wider bg-green-100 px-2 py-0.5 rounded">Settled</span>}
+                      </td>
+                      <td className="py-2 text-right font-bold text-green-700">{inr(order.advancePaid)}</td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
@@ -369,7 +503,7 @@ function OrderInvoiceModal({ order, onClose }: { order: Order; onClose: () => vo
         </div>
         
         {/* Action Buttons */}
-        <div className="sticky bottom-0 bg-slate-100 p-4 border-t border-slate-200 rounded-b-lg flex justify-end gap-3 print:hidden">
+        <div className="shrink-0 bg-slate-100 p-4 border-t border-slate-200 rounded-b-lg flex justify-end gap-3 print:hidden">
           <Button variant="outline" onClick={onClose}>Close</Button>
           <Button onClick={() => window.print()}>
             <Printer className="w-4 h-4 mr-2" /> Print Receipt

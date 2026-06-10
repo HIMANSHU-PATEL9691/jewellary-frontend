@@ -1,6 +1,6 @@
 import { Layout } from "@/components/Layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { inr } from "@/lib/storage";
+import { inr, useLocalState } from "@/lib/storage";
 import { formatDate } from "@/lib/utils";
 import { TrendingUp, Wallet, AlertTriangle, Download, PieChart as PieChartIcon } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -12,9 +12,13 @@ import { invoicesAPI, expensesAPI, supplierAPI } from "@/lib/api";
 import { DatePicker } from "@/components/ui/date-picker";
 
 export default function ReportsPage() {
-  const { data: invoices = [] } = useApi<any[]>(["invoices"], () => invoicesAPI.getAll());
+  const [authUser] = useLocalState<any>("ajms.auth", null);
+  const { data: allInvoices = [] } = useApi<any[]>(["invoices"], () => invoicesAPI.getAll());
   const { data: expenses = [] } = useApi<any[]>(["expenses"], () => expensesAPI.getAll());
   const { data: suppliers = [] } = useApi<any[]>(["suppliers"], () => supplierAPI.getAll());
+
+  const isOperator = authUser?.role === "operator";
+  const invoices = useMemo(() => allInvoices.filter(i => isOperator ? i.type === "GST" : i.type !== "GST"), [allInvoices, isOperator]);
 
   const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().slice(0, 10));
 
@@ -23,22 +27,44 @@ export default function ReportsPage() {
   const dailyInvoices = useMemo(() => invoices.filter((i) => new Date(i.createdAt).toDateString() === targetDateStr), [invoices, targetDateStr]);
   const dailyExpenses = useMemo(() => expenses.filter((e) => new Date(e.date).toDateString() === targetDateStr), [expenses, targetDateStr]);
 
+  const monthKey = useMemo(() => {
+    const d = new Date(selectedDate);
+    return `${d.getFullYear()}-${d.getMonth()}`;
+  }, [selectedDate]);
+
+  const monthlyInvoices = useMemo(() => invoices.filter((i) => {
+    const d = new Date(i.createdAt);
+    return `${d.getFullYear()}-${d.getMonth()}` === monthKey;
+  }), [invoices, monthKey]);
+
+  const monthlyExpenses = useMemo(() => expenses.filter((e) => {
+    const d = new Date(e.date);
+    return `${d.getFullYear()}-${d.getMonth()}` === monthKey;
+  }), [expenses, monthKey]);
+
   const suppliersWithDue = useMemo(() => suppliers.filter((s) => (s.outstanding || 0) > 0), [suppliers]);
 
   const stats = useMemo(() => {
     const dailyIncome = dailyInvoices.reduce((s, i) => s + i.total, 0);
     const dailyExpenseTotal = dailyExpenses.reduce((s, e) => s + e.amount, 0);
     const totalDue = suppliers.reduce((s, sup) => s + (sup.outstanding || 0), 0);
+    const monthlyIncome = monthlyInvoices.reduce((s, i) => s + i.total, 0);
+    const monthlyExpenseTotal = monthlyExpenses.reduce((s, e) => s + e.amount, 0);
     
     return {
       dailyIncome,
       dailyExpenseTotal,
       totalDue,
+      monthlyIncome,
+      monthlyExpenseTotal,
       net: dailyIncome - dailyExpenseTotal,
+      monthlyNet: monthlyIncome - monthlyExpenseTotal,
       invoicesCount: dailyInvoices.length,
-      expensesCount: dailyExpenses.length
+      expensesCount: dailyExpenses.length,
+      monthlyInvoicesCount: monthlyInvoices.length,
+      monthlyExpensesCount: monthlyExpenses.length
     };
-  }, [dailyInvoices, dailyExpenses, suppliers]);
+  }, [dailyInvoices, dailyExpenses, suppliers, monthlyInvoices, monthlyExpenses]);
 
   const trendData = useMemo(() => {
     const arr = [];
@@ -174,14 +200,62 @@ export default function ReportsPage() {
           </CardContent>
         </Card>
       </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-6">
+        <Card className="border-border hover:shadow-lg transition-shadow">
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-sm text-muted-foreground">Monthly Income</div>
+                <div className="text-2xl font-display mt-1 text-green-600">{inr(stats.monthlyIncome)}</div>
+                <div className="text-xs text-muted-foreground mt-1">{stats.monthlyInvoicesCount} invoices</div>
+              </div>
+              <div className="w-10 h-10 rounded-md bg-green-100 text-green-700 grid place-items-center">
+                <TrendingUp className="w-5 h-5" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-border hover:shadow-lg transition-shadow">
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-sm text-muted-foreground">Monthly Expenses</div>
+                <div className="text-2xl font-display mt-1 text-rose-600">{inr(stats.monthlyExpenseTotal)}</div>
+                <div className="text-xs text-muted-foreground mt-1">{stats.monthlyExpensesCount} expenses</div>
+              </div>
+              <div className="w-10 h-10 rounded-md bg-rose-100 text-rose-700 grid place-items-center">
+                <Wallet className="w-5 h-5" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-border hover:shadow-lg transition-shadow">
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-sm text-muted-foreground">Monthly Net Revenue</div>
+                <div className={`text-2xl font-display mt-1 ${stats.monthlyNet >= 0 ? "text-green-600" : "text-rose-600"}`}>{inr(stats.monthlyNet)}</div>
+                <div className="text-xs text-muted-foreground mt-1">This month</div>
+              </div>
+              <div className={`w-10 h-10 rounded-md grid place-items-center ${stats.monthlyNet >= 0 ? "bg-green-100 text-green-700" : "bg-rose-100 text-rose-700"}`}>
+                <TrendingUp className="w-5 h-5" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
       
       <Card className="mb-6 bg-sidebar text-sidebar-foreground border-sidebar-border">
         <CardHeader>
-           <CardTitle className="font-display">Daily Summary</CardTitle>
+           <CardTitle className="font-display">Summary for {formatDate(selectedDate)}</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="text-sm">
-             On <strong>{formatDate(selectedDate)}</strong>, you have a net revenue of <strong className={stats.net >= 0 ? "text-green-500" : "text-rose-500"}>{inr(stats.net)}</strong> after deducting your daily expenses from your daily sales.
+          <div className="text-sm space-y-2">
+             <p>On <strong>{formatDate(selectedDate)}</strong>, you have a daily net revenue of <strong className={stats.net >= 0 ? "text-green-500" : "text-rose-500"}>{inr(stats.net)}</strong> after deducting daily expenses from daily sales.</p>
+             <p>For the month of <strong>{new Date(selectedDate).toLocaleString('default', { month: 'long', year: 'numeric' })}</strong>, your monthly net revenue is <strong className={stats.monthlyNet >= 0 ? "text-green-500" : "text-rose-500"}>{inr(stats.monthlyNet)}</strong>.</p>
           </div>
         </CardContent>
       </Card>

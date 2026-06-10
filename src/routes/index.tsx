@@ -3,6 +3,7 @@ import { Layout } from "@/components/Layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   inr,
+  useLocalState,
 } from "@/lib/storage";
 import {
   Package,
@@ -40,15 +41,19 @@ const LOYAL_THRESHOLD = 3;
 const defaultRates: any = { updatedAt: new Date().toISOString(), gold24: 7850, gold22: 7200, gold18: 5890, silver: 98 };
 
 export default function Dashboard() {
+  const [authUser] = useLocalState<any>("ajms.auth", null);
   const { data: products = [] } = useApi<any[]>(["inventory"], () => inventoryAPI.getAll());
   const { data: customers = [] } = useApi<any[]>(["customers"], () => customerAPI.getAll());
-  const { data: invoices = [] } = useApi<any[]>(["invoices"], () => invoicesAPI.getAll());
+  const { data: allInvoices = [] } = useApi<any[]>(["invoices"], () => invoicesAPI.getAll());
   const { data: expenses = [] } = useApi<any[]>(["expenses"], () => expensesAPI.getAll());
   const { data: repairs = [] } = useApi<any[]>(["repairs"], () => repairsAPI.getAll());
   const { data: purchases = [] } = useApi<any[]>(["purchases"], () => purchasesAPI.getAll());
   const { data: suppliers = [] } = useApi<any[]>(["suppliers"], () => supplierAPI.getAll());
   const { data: ratesList = [] } = useApi<any[]>(["goldRates"], () => goldRatesAPI.getAll());
   const { data: orders = [] } = useApi<any[]>(["orders"], () => ordersAPI.getAll());
+
+  const isOperator = authUser?.role === "operator";
+  const invoices = useMemo(() => allInvoices.filter(i => isOperator ? i.type === "GST" : i.type !== "GST"), [allInvoices, isOperator]);
 
   const rates = ratesList[0] || defaultRates;
 

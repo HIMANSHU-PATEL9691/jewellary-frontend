@@ -18,12 +18,13 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { useEffect, useMemo, useState } from "react";
-import { Plus, Trash2, Printer, Receipt, Pencil } from "lucide-react";
+import { Plus, Trash2, Printer, Receipt, Pencil, Search } from "lucide-react";
 import {
   inr,
   calcItem,
   type Invoice,
   type InvoiceItem,
+  useLocalState,
 } from "@/lib/storage";
 import { formatDate } from "@/lib/utils";
 import { useApi, useApiMutation } from "@/hooks/useApi";
@@ -33,6 +34,7 @@ import { PaymentQr } from "@/components/PaymentQr";
 import { InvoiceTerms, ShopHeader } from "@/components/InvoiceBranding";
 
 export default function BillingPage() {
+  const [authUser] = useLocalState<any>("ajms.auth", null);
   const { data: invoices = [] } = useApi<any[]>(["invoices"], () => invoicesAPI.getAll());
   const { data: products = [] } = useApi<any[]>(["inventory"], () => inventoryAPI.getAll());
   const { data: customers = [] } = useApi<any[]>(["customers"], () => customerAPI.getAll());
@@ -67,7 +69,9 @@ export default function BillingPage() {
   const [pages, setPages] = useState<Record<number, number>>({});
   const [linkedOrderId, setLinkedOrderId] = useState<string>("");
   const [nonGstFilter, setNonGstFilter] = useState<"All" | "INV" | "MAN">("All");
+  const [searchQuery, setSearchQuery] = useState("");
 
+  const isOperator = authUser?.role === 'operator';
   const isGst = type === "GST";
 
   const addProduct = (pid: string) => {
@@ -199,6 +203,14 @@ export default function BillingPage() {
     setAuthorizedSignatory("");
     setLinkedOrderId("");
   };
+
+  useEffect(() => {
+    if (isOperator) {
+      setType("GST");
+    } else {
+      setType("NON-GST");
+    }
+  }, [isOperator]);
 
   const editInvoice = (inv: any) => {
     setEditingId(inv._id || inv.id);
@@ -417,11 +429,27 @@ export default function BillingPage() {
   };
 
   const today = new Date().toDateString();
-  const todayInvoices = invoices.filter(i => new Date(i.createdAt).toDateString() === today);
+  const roleInvoices = invoices.filter(i => i.type === type);
+  const todayInvoices = roleInvoices.filter(i => new Date(i.createdAt).toDateString() === today);
   const todayRevenue = todayInvoices.reduce((s, i) => s + i.total, 0);
 
-  const gstInvoices = useMemo(() => invoices.filter((i) => i.type === "GST"), [invoices]);
-  const nonGstInvoices = useMemo(() => invoices.filter((i) => i.type === "NON-GST"), [invoices]);
+  const gstInvoices = useMemo(() => {
+    let list = invoices.filter((i) => i.type === "GST");
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase().trim();
+      list = list.filter((i) => (i.number || "").toLowerCase().includes(q) || (i.customerName || "").toLowerCase().includes(q) || (i.customerMobile || "").includes(q));
+    }
+    return list;
+  }, [invoices, searchQuery]);
+
+  const nonGstInvoices = useMemo(() => {
+    let list = invoices.filter((i) => i.type === "NON-GST");
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase().trim();
+      list = list.filter((i) => (i.number || "").toLowerCase().includes(q) || (i.customerName || "").toLowerCase().includes(q) || (i.customerMobile || "").includes(q));
+    }
+    return list;
+  }, [invoices, searchQuery]);
 
   return (
     <Layout>
@@ -448,20 +476,7 @@ export default function BillingPage() {
                   <span className="w-5 h-5 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs">1</span>
                   Invoice Details
                 </h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
-                  <div className="space-y-1.5">
-                    <Label className="text-xs">Invoice Type</Label>
-                    <Select value={type} onValueChange={(v) => setType(v as typeof type)}>
-                      <SelectTrigger className="bg-background">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="GST">GST Invoice</SelectItem>
-                        <SelectItem value="NON-GST">Non-GST Invoice</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
                   <div className="space-y-1.5">
                     <Label className="text-xs">Search Customer</Label>
                     <Input
@@ -978,15 +993,19 @@ export default function BillingPage() {
       </header>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-        <KPI label="Total Invoices" value={invoices.length} />
+        <KPI label="Total Invoices" value={roleInvoices.length} />
         <KPI label="Today's Invoices" value={todayInvoices.length} />
         <KPI label="Today's Revenue" value={inr(todayRevenue)} />
       </div>
 
-      {[
-        { title: "GST Invoice History", data: gstInvoices },
+      <div className="relative mb-4 w-full sm:max-w-md">
+        <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+        <Input className="pl-9 w-full bg-background border-border shadow-sm" placeholder="Search by invoice no, name or mobile..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
+      </div>
+
+      {(isOperator ? [{ title: "GST Invoice History", data: gstInvoices }] : [
         { title: "NON-GST Invoice History", data: nonGstInvoices }
-      ].map(({ title, data }, index) => {
+      ]).map(({ title, data }, index) => {
         let tableData = data;
         if (title === "NON-GST Invoice History") {
           if (nonGstFilter === "INV") {
@@ -1153,9 +1172,9 @@ function KPI({ label, value }: { label: string; value: string | number }) {
 
 function InvoiceModal({ inv, onClose }: { inv: any; onClose: () => void }) {
   return (
-    <div className="fixed inset-0 z-50 bg-black/50 flex justify-center items-start p-2 sm:p-4 print:bg-white print:p-0 overflow-y-auto">
-      <div className="bg-white w-full max-w-4xl rounded-lg shadow-xl print:shadow-none print:max-w-none text-slate-900 my-auto relative">
-        <div className="p-4 sm:p-6 print:p-0 border-2 border-transparent print:border-none m-2 print:m-0 bg-white">
+    <div className="fixed inset-0 z-100 bg-black/50 flex justify-center items-start p-2 sm:p-4 print:bg-white print:p-0 overflow-y-auto pointer-events-auto">
+      <div className="bg-white w-full max-w-4xl rounded-lg shadow-xl print:shadow-none print:max-w-none text-slate-900 my-auto relative flex flex-col max-h-[95vh] print:max-h-none print:block">
+        <div className="p-4 sm:p-6 print:p-0 border-2 border-transparent print:border-none m-2 print:m-0 bg-white overflow-y-auto flex-1 print:overflow-visible">
           
           <ShopHeader documentLabel={inv.type === "GST" ? "Tax Invoice" : "Invoice"} compact />
 
@@ -1179,8 +1198,9 @@ function InvoiceModal({ inv, onClose }: { inv: any; onClose: () => void }) {
           </div>
 
           {/* Items Table */}
-          <table className="w-full text-xs mb-3 border-collapse border border-slate-300">
-            <thead className="bg-slate-100">
+          <div className="overflow-x-auto w-full mb-3">
+            <table className="w-full text-xs border-collapse border border-slate-300 min-w-150">
+              <thead className="bg-slate-100">
               <tr>
                 <th className="border border-slate-300 py-1 px-1.5 text-center w-8 text-slate-600">#</th>
                 <th className="border border-slate-300 py-1 px-1.5 text-left text-slate-600">Description of Goods</th>
@@ -1231,6 +1251,7 @@ function InvoiceModal({ inv, onClose }: { inv: any; onClose: () => void }) {
               })}
             </tbody>
           </table>
+          </div>
 
           {/* Calculations & Totals */}
           <div className="flex flex-col sm:flex-row justify-between items-start text-xs gap-4">
@@ -1345,7 +1366,7 @@ function InvoiceModal({ inv, onClose }: { inv: any; onClose: () => void }) {
         </div>
         
         {/* Action Buttons */}
-        <div className="sticky bottom-0 bg-slate-100 p-4 border-t border-slate-200 rounded-b-lg flex justify-end gap-3 print:hidden">
+        <div className="shrink-0 bg-slate-100 p-4 border-t border-slate-200 rounded-b-lg flex justify-end gap-3 print:hidden">
           <Button variant="outline" onClick={onClose}>Close</Button>
           <Button onClick={() => window.print()}>
             <Printer className="w-4 h-4 mr-2" /> Print Bill

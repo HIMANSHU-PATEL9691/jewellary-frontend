@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Layout } from "@/components/Layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -10,7 +10,7 @@ import { inr, type Repair, type Karigar } from "@/lib/storage";
 import { formatDate } from "@/lib/utils";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { repairsAPI, karigarsAPI, customerAPI } from "@/lib/api";
-import { Plus, Trash2, Wrench, Pencil, Printer } from "lucide-react";
+import { Plus, Trash2, Wrench, Pencil, Printer, Search } from "lucide-react";
 import { DatePicker } from "@/components/ui/date-picker";
 import { InvoiceTerms, ShopHeader } from "@/components/InvoiceBranding";
 
@@ -23,6 +23,8 @@ export default function RepairsPage() {
   const [form, setForm] = useState<Repair>(empty);
   const [viewingReceipt, setViewingReceipt] = useState<Repair | null>(null);
   const [page, setPage] = useState(1);
+  const [q, setQ] = useState("");
+  const [filter, setFilter] = useState<"All" | Repair["status"]>("All");
 
   const { data = [], isLoading, error } = useApi<Repair[]>(["repairs"], () => repairsAPI.getAll());
   const { data: karigars = [] } = useApi<Karigar[]>(["karigars"], () => karigarsAPI.getAll());
@@ -90,9 +92,23 @@ export default function RepairsPage() {
   const pending = list.filter((r) => r.status !== "Delivered").length;
   const totalAdvance = list.filter((r) => r.status !== "Delivered").reduce((s, r) => s + (r.advance || 0), 0);
 
-  const totalPages = Math.ceil(list.length / 10) || 1;
+  const filtered = useMemo(() => {
+    let result = filter === "All" ? list : list.filter(o => o.status === filter);
+    if (q.trim()) {
+      const lowerQ = q.toLowerCase().trim();
+      result = result.filter(o => 
+        o.customerName.toLowerCase().includes(lowerQ) ||
+        o.ticketNo.toLowerCase().includes(lowerQ) ||
+        o.customerMobile.includes(lowerQ) ||
+        o.itemDescription.toLowerCase().includes(lowerQ)
+      );
+    }
+    return [...result].sort((a, b) => b.date.localeCompare(a.date));
+  }, [list, q, filter]);
+
+  const totalPages = Math.ceil(filtered.length / 10) || 1;
   const currentPage = Math.min(page, totalPages);
-  const paginated = list.slice((currentPage - 1) * 10, currentPage * 10);
+  const paginated = filtered.slice((currentPage - 1) * 10, currentPage * 10);
 
   return (
     <Layout>
@@ -219,86 +235,131 @@ export default function RepairsPage() {
         <Stat label="Total Advances Collected" value={inr(totalAdvance)} />
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="font-display flex items-center gap-2">
-            <Wrench className="w-5 h-5" />Tickets
-          </CardTitle>
+      <Card className="shadow-sm border-border overflow-hidden flex flex-col">
+        <CardHeader className="bg-muted/20 border-b border-border pb-3 pt-4">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <CardTitle className="text-base font-semibold font-display flex items-center gap-2">
+              <Wrench className="w-5 h-5 text-primary" /> All Repair Tickets
+            </CardTitle>
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              <div className="relative flex-1 sm:w-64">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search ticket or customer..."
+                  value={q}
+                  onChange={e => setQ(e.target.value)}
+                  className="pl-9 h-8 bg-background text-xs border-border shadow-sm"
+                />
+              </div>
+              <Select value={filter} onValueChange={(v) => setFilter(v as typeof filter)}>
+                <SelectTrigger className="w-32 h-8 bg-background text-xs font-medium border-border shadow-sm">
+                  <SelectValue placeholder="Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="All">All Status</SelectItem>
+                  <SelectItem value="Received">Received</SelectItem>
+                  <SelectItem value="In Progress">In Progress</SelectItem>
+                  <SelectItem value="Ready">Ready</SelectItem>
+                  <SelectItem value="Delivered">Delivered</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-0">
           {isLoading ? (
             <p className="text-center text-muted-foreground py-12">Loading repairs...</p>
           ) : error ? (
             <p className="text-center text-red-500 py-12">Failed to load repairs.</p>
-          ) : list.length === 0 ? (
-            <p className="text-center text-muted-foreground py-12">No repair tickets yet.</p>
+          ) : filtered.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
+              <Search className="w-10 h-10 mb-3 opacity-20" />
+              <p>No repair tickets found.</p>
+            </div>
           ) : (
             <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="text-left text-muted-foreground border-b">
-                <tr>
-                  <th className="py-2">Ticket</th>
-                  <th>Date</th>
-                  <th>Customer</th>
-                  <th>Item</th>
-                  <th>Karigar</th>
-                  <th>Advance</th>
-                  <th>Status</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-            {paginated.map((r) => (
-                  <tr key={r.id} className="border-b last:border-0">
-                    <td className="py-2 font-medium">{r.ticketNo}</td>
-                    <td>{formatDate(r.date)}</td>
-                    <td>{r.customerName}</td>
-                    <td>{r.itemDescription}</td>
-                    <td>{karigars.find((k) => k._id === r.karigarId || k.id === r.karigarId)?.name || r.note?.match(/\[Assigned:\s*(.*?)\]/)?.[1] || "—"}</td>
-                    <td className="text-green-600 font-medium">
-                      <div>{inr(r.advance)}</div>
-                      {r.status === "Delivered" && (r.advance || 0) > 0 && (
-                        <span className="inline-block mt-0.5 bg-green-100 text-green-800 px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase">Settled</span>
-                      )}
-                    </td>
-                    <td>
-                      <select
-                        className={`border rounded px-2 py-1 text-xs ${r.status === 'Ready' ? 'bg-green-50 text-green-700 border-green-200 font-medium' : r.status === 'Delivered' ? 'bg-slate-100 text-slate-500' : 'bg-background'}`}
-                        value={r.status}
-                        onChange={(e) => setStatus(r.id || r._id || '', e.target.value as Repair['status'])}
-                        disabled={r.status === 'Delivered'}
-                      >
-                        {['Received', 'In Progress', 'Ready', 'Delivered'].filter(s => s !== "Delivered" || r.status === "Delivered").map((s) => (
-                          <option key={s} value={s}>
-                            {s}
-                          </option>
-                        ))}
-                      </select>
-                    </td>
-                    <td className="text-right">
-                      <Button size="sm" variant="ghost" onClick={() => setViewingReceipt(r)}>
-                        <Printer className="w-4 h-4 text-muted-foreground hover:text-primary" />
-                      </Button>
-                      <Button size="sm" variant="ghost" onClick={() => { setForm(r); setEditingId(r.id || r._id || null); setOpen(true); }}>
-                        <Pencil className="w-4 h-4" />
-                      </Button>
-                      <Button size="sm" variant="ghost" onClick={() => remove(r.id || r._id || '')}>
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
-                    </td>
+              <table className="w-full text-sm text-left border-collapse">
+                <thead className="bg-muted/40 text-muted-foreground text-[11px] uppercase tracking-wider border-b border-border">
+                  <tr>
+                    <th className="py-3 px-4 font-semibold">Ticket</th>
+                    <th className="py-3 px-4 font-semibold">Customer</th>
+                    <th className="py-3 px-4 font-semibold">Item</th>
+                    <th className="py-3 px-4 font-semibold">Karigar</th>
+                    <th className="py-3 px-4 font-semibold text-right">Advance</th>
+                    <th className="py-3 px-4 font-semibold text-center">Status</th>
+                    <th className="py-3 px-4 font-semibold text-right">Action</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-        {totalPages > 1 && (
-          <div className="flex items-center justify-between px-4 py-3 border-t">
-            <div className="text-xs text-muted-foreground">Showing {(currentPage - 1) * 10 + 1} to {Math.min(currentPage * 10, list.length)} of {list.length} entries</div>
-            <div className="flex gap-1">
-              <Button size="sm" variant="outline" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={currentPage === 1}>Prev</Button>
-              <Button size="sm" variant="outline" onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages}>Next</Button>
-            </div>
-          </div>
-        )}
+                </thead>
+                <tbody>
+                  {paginated.map((r) => {
+                    const statusColors: any = {
+                      "Received": "bg-slate-100 text-slate-700",
+                      "In Progress": "bg-blue-50 text-blue-700 border-blue-200",
+                      "Ready": "bg-green-50 text-green-700 border-green-200",
+                      "Delivered": "bg-slate-100 text-slate-500",
+                    };
+                    return (
+                      <tr key={r.id} className="border-b border-border/50 last:border-0 hover:bg-muted/20 transition-colors">
+                        <td className="py-3 px-4">
+                          <div className="font-medium text-foreground">{r.ticketNo}</div>
+                          <div className="text-[11px] text-muted-foreground">{formatDate(r.date)}</div>
+                        </td>
+                        <td className="py-3 px-4">
+                          <div className="font-medium text-foreground">{r.customerName}</div>
+                          <div className="text-xs text-muted-foreground">{r.customerMobile}</div>
+                        </td>
+                        <td className="py-3 px-4">
+                          <div className="font-medium text-foreground">{r.itemDescription}</div>
+                          <div className="text-xs text-rose-500">{r.problem}</div>
+                        </td>
+                        <td className="py-3 px-4">
+                          {karigars.find((k) => k._id === r.karigarId || k.id === r.karigarId)?.name || r.note?.match(/\[Assigned:\s*(.*?)\]/)?.[1] || "—"}
+                        </td>
+                        <td className="py-3 px-4 text-right text-green-600 font-medium">
+                          <div>{inr(r.advance)}</div>
+                          {r.status === "Delivered" && (r.advance || 0) > 0 && (
+                            <span className="inline-block mt-0.5 bg-green-100 text-green-800 px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase">Settled</span>
+                          )}
+                        </td>
+                        <td className="py-3 px-4 text-center">
+                          <Select value={r.status} onValueChange={(v) => setStatus(r.id || r._id || '', v as Repair['status'])} disabled={r.status === 'Delivered'}>
+                            <SelectTrigger className={`mx-auto h-7 w-28 text-[10px] font-bold uppercase tracking-wider shadow-none border-transparent ${statusColors[r.status] || ""}`}>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {['Received', 'In Progress', 'Ready', 'Delivered'].filter(s => s !== "Delivered" || r.status === "Delivered").map((s) => (
+                                <SelectItem key={s} value={s}>{s}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </td>
+                        <td className="py-3 px-4 text-right whitespace-nowrap">
+                          <div className="flex justify-end gap-1">
+                            <Button size="sm" variant="ghost" className="h-8 w-8 p-0" onClick={() => setViewingReceipt(r)} title="Print Receipt">
+                              <Printer className="w-4 h-4 text-muted-foreground hover:text-primary" />
+                            </Button>
+                            <Button size="sm" variant="ghost" className="h-8 w-8 p-0" onClick={() => { setForm(r); setEditingId(r.id || r._id || null); setOpen(true); }} title="Edit Repair">
+                              <Pencil className="w-4 h-4 text-muted-foreground hover:text-primary" />
+                            </Button>
+                            <Button size="sm" variant="ghost" className="h-8 w-8 p-0" onClick={() => remove(r.id || r._id || '')} title="Delete Repair">
+                              <Trash2 className="w-4 h-4 text-rose-500 hover:text-rose-600" />
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              {totalPages > 1 && (
+                <div className="flex items-center justify-between px-4 py-3 border-t border-border">
+                  <div className="text-xs text-muted-foreground">Showing {(currentPage - 1) * 10 + 1} to {Math.min(currentPage * 10, filtered.length)} of {filtered.length} entries</div>
+                  <div className="flex gap-1">
+                    <Button size="sm" variant="outline" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={currentPage === 1}>Prev</Button>
+                    <Button size="sm" variant="outline" onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages}>Next</Button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </CardContent>
@@ -321,9 +382,9 @@ function Stat({ label, value }: { label: string; value: string | number }) {
 
 function RepairInvoiceModal({ repair, onClose }: { repair: Repair; onClose: () => void }) {
   return (
-    <div className="fixed inset-0 z-50 bg-black/50 flex justify-center items-start p-2 sm:p-4 print:bg-white print:p-0 overflow-y-auto">
-      <div className="bg-white w-full max-w-4xl rounded-lg shadow-xl print:shadow-none print:max-w-none text-slate-900 my-auto relative">
-        <div className="p-6 sm:p-10 print:p-0 border-2 border-transparent print:border-none m-2 print:m-0 bg-white">
+    <div className="fixed inset-0 z-100 bg-black/50 flex justify-center items-start p-2 sm:p-4 print:bg-white print:p-0 overflow-y-auto pointer-events-auto">
+      <div className="bg-white w-full max-w-4xl rounded-lg shadow-xl print:shadow-none print:max-w-none text-slate-900 my-auto relative flex flex-col max-h-[95vh] print:max-h-none print:block">
+        <div className="p-6 sm:p-10 print:p-0 border-2 border-transparent print:border-none m-2 print:m-0 bg-white overflow-y-auto flex-1 print:overflow-visible">
           
           <ShopHeader documentLabel="Repair Receipt" />
 
@@ -348,8 +409,9 @@ function RepairInvoiceModal({ repair, onClose }: { repair: Repair; onClose: () =
           </div>
 
           {/* Items Table */}
-          <table className="w-full text-sm mb-6 border-collapse border border-slate-300">
-            <thead className="bg-slate-100">
+          <div className="overflow-x-auto w-full mb-6">
+            <table className="w-full text-sm border-collapse border border-slate-300 min-w-100">
+              <thead className="bg-slate-100">
               <tr>
                 <th className="border border-slate-300 py-2 px-3 text-center w-12 text-slate-600">#</th>
                 <th className="border border-slate-300 py-2 px-3 text-left text-slate-600">Item Description</th>
@@ -366,6 +428,7 @@ function RepairInvoiceModal({ repair, onClose }: { repair: Repair; onClose: () =
               </tr>
             </tbody>
           </table>
+          </div>
 
           {/* Calculations & Totals */}
           <div className="flex flex-col sm:flex-row justify-between items-start text-sm gap-6">
@@ -410,7 +473,7 @@ function RepairInvoiceModal({ repair, onClose }: { repair: Repair; onClose: () =
         </div>
         
         {/* Action Buttons */}
-        <div className="sticky bottom-0 bg-slate-100 p-4 border-t border-slate-200 rounded-b-lg flex justify-end gap-3 print:hidden">
+        <div className="shrink-0 bg-slate-100 p-4 border-t border-slate-200 rounded-b-lg flex justify-end gap-3 print:hidden">
           <Button variant="outline" onClick={onClose}>Close</Button>
           <Button onClick={() => window.print()}>
             <Printer className="w-4 h-4 mr-2" /> Print Receipt

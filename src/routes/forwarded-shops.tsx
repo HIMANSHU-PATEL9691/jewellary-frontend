@@ -449,9 +449,9 @@ export default function ForwardedShopsPage() {
 function ForwardingReceiptModal({ data, onClose }: { data: any, onClose: () => void }) {
   const { girvi, principal, interest, total, date } = data;
   return (
-    <div className="fixed inset-0 z-50 bg-black/50 flex justify-center items-start p-2 sm:p-4 print:bg-white print:p-0 overflow-y-auto">
-      <div className="bg-white w-full max-w-3xl rounded-lg shadow-xl print:shadow-none print:max-w-none text-slate-900 my-auto relative">
-        <div className="p-8 print:p-0 bg-white">
+    <div className="fixed inset-0 z-100 bg-black/50 flex justify-center items-start p-2 sm:p-4 print:bg-white print:p-0 overflow-y-auto pointer-events-auto">
+      <div className="bg-white w-full max-w-3xl rounded-lg shadow-xl print:shadow-none print:max-w-none text-slate-900 my-auto relative flex flex-col max-h-[95vh] print:max-h-none print:block">
+        <div className="p-8 print:p-0 bg-white overflow-y-auto flex-1 print:overflow-visible">
           <ShopHeader documentLabel="Forwarding Settlement" />
           
           {/* Meta */}
@@ -474,8 +474,9 @@ function ForwardingReceiptModal({ data, onClose }: { data: any, onClose: () => v
           </div>
 
           {/* Details */}
-          <table className="w-full text-sm mb-6 border-collapse border border-slate-300">
-            <thead className="bg-slate-100">
+          <div className="overflow-x-auto w-full mb-6">
+            <table className="w-full text-sm border-collapse border border-slate-300 min-w-125">
+              <thead className="bg-slate-100">
               <tr>
                 <th className="border border-slate-300 py-2 px-3 text-left text-slate-600">Item Description</th>
                 <th className="border border-slate-300 py-2 px-3 text-right text-slate-600">Net Wt</th>
@@ -494,6 +495,7 @@ function ForwardingReceiptModal({ data, onClose }: { data: any, onClose: () => v
               </tr>
             </tbody>
           </table>
+          </div>
           
           <div className="flex justify-end">
              <div className="w-full max-w-sm">
@@ -523,7 +525,7 @@ function ForwardingReceiptModal({ data, onClose }: { data: any, onClose: () => v
           </div>
        </div>
        {/* Action Buttons */}
-       <div className="sticky bottom-0 bg-slate-100 p-4 border-t border-slate-200 rounded-b-lg flex justify-end gap-3 print:hidden">
+       <div className="shrink-0 bg-slate-100 p-4 border-t border-slate-200 rounded-b-lg flex justify-end gap-3 print:hidden">
          <Button variant="outline" onClick={onClose}>Close</Button>
          <Button onClick={() => window.print()}>
            <Printer className="w-4 h-4 mr-2" /> Print Bill
