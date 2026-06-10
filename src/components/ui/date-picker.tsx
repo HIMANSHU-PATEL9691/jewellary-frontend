@@ -1,4 +1,5 @@
 
+import { useState } from "react";
 import { Calendar as CalendarIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -20,10 +21,11 @@ export function DatePicker({
   onChange: (d: string) => void;
   className?: string;
 }) {
+  const [isOpen, setIsOpen] = useState(false);
   const parsedDate = value ? new Date(value) : undefined;
 
   return (
-    <Popover>
+    <Popover open={isOpen} onOpenChange={setIsOpen}>
       <PopoverTrigger asChild>
         <Button
           variant={"outline"}
@@ -49,6 +51,7 @@ export function DatePicker({
             } else {
               onChange("");
             }
+            setIsOpen(false);
           }}
           initialFocus
         />

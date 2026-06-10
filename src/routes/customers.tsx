@@ -721,34 +721,31 @@ export default function CustomersPage() {
                             <th className="py-2 px-4">Order No</th>
                             <th>Date</th>
                             <th>Item Details</th>
-                            <th className="text-right">Est. Total</th>
                             <th className="text-right">Paid</th>
-                            <th className="text-right">Due</th>
                             <th className="text-center px-4">Status</th>
                             <th className="text-right px-4">Action</th>
                           </tr>
                         </thead>
                         <tbody>
                           {custOrders.map((o) => {
-                            const due = (o.estimatedPrice || 0) - (o.advancePaid || 0);
                             return (
                             <tr key={o.id || o.orderNo} className="border-b last:border-0 hover:bg-muted/40">
                               <td className="py-2 px-4 font-medium">{o.orderNo}</td>
                               <td>{formatDate(o.date)}</td>
                               <td>
                                 <div className="font-medium">{o.itemDescription}</div>
-                                <div className="text-xs text-muted-foreground">{o.metal} {o.purity} • {o.estimatedWeight}g</div>
+                                <div className="text-xs text-muted-foreground">{o.metal} {o.purity}</div>
                               </td>
-                              <td className="text-right">{inr(o.estimatedPrice)}</td>
-                              <td className="text-right text-green-600">{inr(o.advancePaid)}</td>
-                              <td className="text-right text-rose-600 font-medium">{due > 0 ? inr(due) : "—"}</td>
+                              <td className="text-right text-green-600">
+                                <div>{inr(o.advancePaid)}</div>
+                                {o.status === "Delivered" && (o.advancePaid || 0) > 0 && (
+                                  <span className="inline-block mt-0.5 bg-green-100 text-green-800 px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase">Settled</span>
+                                )}
+                              </td>
                               <td className="text-center px-4">
                                 <span className="inline-block px-2 py-1 bg-muted rounded-full text-xs">{o.status}</span>
                               </td>
                               <td className="text-right px-4">
-                                {due > 0 && o.status !== "Delivered" && o.status !== "Cancelled" && (
-                                  <Button size="sm" variant="outline" onClick={() => openPayModal('order', o, due)}>Pay Due</Button>
-                                )}
                               </td>
                             </tr>
                           )})}
@@ -774,17 +771,13 @@ export default function CustomersPage() {
                             <th>Date</th>
                             <th>Item Details</th>
                             <th>Problem</th>
-                            <th className="text-right">Estimate</th>
                             <th className="text-right">Paid</th>
-                            <th className="text-right">Due</th>
                             <th className="text-center px-4">Status</th>
                             <th className="text-right px-4">Action</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {custRepairs.map((r) => {
-                            const due = (r.estimate || 0) - (r.advance || 0);
-                            return (
+                          {custRepairs.map((r) => (
                             <tr key={r.id || r._id || r.ticketNo} className="border-b last:border-0 hover:bg-muted/40">
                               <td className="py-2 px-4 font-medium">{r.ticketNo}</td>
                               <td>{formatDate(r.date)}</td>
@@ -793,19 +786,19 @@ export default function CustomersPage() {
                                 <div className="text-xs text-muted-foreground">{r.itemWeight}g</div>
                               </td>
                               <td className="text-rose-500 max-w-37.5 truncate" title={r.problem}>{r.problem}</td>
-                              <td className="text-right">{inr(r.estimate)}</td>
-                              <td className="text-right text-green-600">{inr(r.advance)}</td>
-                              <td className="text-right text-rose-600 font-medium">{due > 0 ? inr(due) : "—"}</td>
+                              <td className="text-right text-green-600">
+                                <div>{inr(r.advance)}</div>
+                                {r.status === "Delivered" && (r.advance || 0) > 0 && (
+                                  <span className="inline-block mt-0.5 bg-green-100 text-green-800 px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase">Settled</span>
+                                )}
+                              </td>
                               <td className="text-center px-4">
                                 <span className="inline-block px-2 py-1 bg-muted rounded-full text-xs">{r.status}</span>
                               </td>
                               <td className="text-right px-4">
-                                {due > 0 && r.status !== "Delivered" && (
-                                  <Button size="sm" variant="outline" onClick={() => openPayModal('repair', r, due)}>Pay Due</Button>
-                                )}
                               </td>
                             </tr>
-                          )})}
+                          ))}
                         </tbody>
                       </table>
                     )}

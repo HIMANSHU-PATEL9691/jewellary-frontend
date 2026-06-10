@@ -126,7 +126,6 @@ export default function NotificationsPage() {
                     </thead>
                     <tbody>
                       {displayReadyOrders.map(o => {
-                        const balanceDue = (o.estimatedPrice || 0) - (o.advancePaid || 0);
                         return (
                           <tr key={o.id || (o as any)._id} className="border-b border-border/50 last:border-0 hover:bg-muted/20 transition-colors">
                             <td className="py-3 px-4">
@@ -142,7 +141,7 @@ export default function NotificationsPage() {
                             <td className="py-3 px-4 text-muted-foreground">{o.itemDescription}</td>
                             <td className="py-3 px-4 text-right">
                               <div className="flex items-center justify-end gap-2">
-                                <Button size="icon" variant="ghost" className="h-8 w-8 text-green-600 hover:text-green-700 hover:bg-green-50" onClick={() => sendWhatsApp(o.customerMobile, `*अरिहंत ज्वेलर्स*\n\nनमस्ते ${o.customerName},\n\nआपका कस्टम ऑर्डर (${o.orderNo}) - ${o.itemDescription} अब डिलीवरी के लिए तैयार है। ऑर्डर ${formatDate(o.date)} को दिया गया था। बकाया राशि ${inr(balanceDue)} है।\n\nकृपया इसे लेने के लिए दुकान पर आएं।\n\nधन्यवाद!`)} title="Send WhatsApp Reminder">
+                                <Button size="icon" variant="ghost" className="h-8 w-8 text-green-600 hover:text-green-700 hover:bg-green-50" onClick={() => sendWhatsApp(o.customerMobile, `*अरिहंत ज्वेलर्स*\n\nनमस्ते ${o.customerName},\n\nआपका कस्टम ऑर्डर (${o.orderNo}) - ${o.itemDescription} अब डिलीवरी के लिए तैयार है। ऑर्डर ${formatDate(o.date)} को दिया गया था।\n\nकृपया इसे लेने के लिए दुकान पर आएं।\n\nधन्यवाद!`)} title="Send WhatsApp Reminder">
                                   <MessageCircle className="w-4 h-4" />
                                 </Button>
                                 <Link to="/orders"><Button size="sm" variant="outline" className="h-8">View</Button></Link>

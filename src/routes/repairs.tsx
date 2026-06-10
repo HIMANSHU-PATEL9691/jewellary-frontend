@@ -12,7 +12,6 @@ import { useApi, useApiMutation } from "@/hooks/useApi";
 import { repairsAPI, karigarsAPI, customerAPI } from "@/lib/api";
 import { Plus, Trash2, Wrench, Pencil, Printer } from "lucide-react";
 import { DatePicker } from "@/components/ui/date-picker";
-import { PaymentQr } from "@/components/PaymentQr";
 import { InvoiceTerms, ShopHeader } from "@/components/InvoiceBranding";
 
 export default function RepairsPage() {
@@ -20,7 +19,7 @@ export default function RepairsPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [searchCust, setSearchCust] = useState("");
   const [searchKar, setSearchKar] = useState("");
-  const empty: Repair = { ticketNo: "", date: new Date().toISOString().slice(0,10), customerName: "", customerMobile: "", customerAddress: "", itemDescription: "", itemWeight: 0, problem: "", estimate: 0, advance: 0, deliveryDate: "", karigarId: "", status: "Received", note: "", customerSignature: "", authorizedSignatory: "" };
+  const empty: Repair = { ticketNo: "", date: new Date().toISOString().slice(0,10), customerName: "", customerMobile: "", customerAddress: "", itemDescription: "", itemWeight: 0, problem: "", advance: 0, deliveryDate: "", karigarId: "", status: "Received", note: "", customerSignature: "", authorizedSignatory: "" };
   const [form, setForm] = useState<Repair>(empty);
   const [viewingReceipt, setViewingReceipt] = useState<Repair | null>(null);
   const [page, setPage] = useState(1);
@@ -89,7 +88,7 @@ export default function RepairsPage() {
   };
 
   const pending = list.filter((r) => r.status !== "Delivered").length;
-  const totalEstimate = list.filter((r) => r.status !== "Delivered").reduce((s, r) => s + (r.estimate || 0), 0);
+  const totalAdvance = list.filter((r) => r.status !== "Delivered").reduce((s, r) => s + (r.advance || 0), 0);
 
   const totalPages = Math.ceil(list.length / 10) || 1;
   const currentPage = Math.min(page, totalPages);
@@ -149,7 +148,6 @@ export default function RepairsPage() {
               </div>
               <Field label="Item Weight (g)" type="number" v={String(form.itemWeight)} on={(v) => setForm({ ...form, itemWeight: +v })} />
               <Field label="Problem" v={form.problem} on={(v) => setForm({ ...form, problem: v })} />
-              <Field label="Estimate ₹" type="number" v={String(form.estimate)} on={(v) => setForm({ ...form, estimate: +v })} />
               <Field label="Advance ₹" type="number" v={String(form.advance)} on={(v) => setForm({ ...form, advance: +v })} />
               <Field label="Date" type="date" v={form.date} on={(v) => setForm({ ...form, date: v })} />
               <Field label="Delivery Date" type="date" v={form.deliveryDate || ""} on={(v) => setForm({ ...form, deliveryDate: v })} />
@@ -218,7 +216,7 @@ export default function RepairsPage() {
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
         <Stat label="Total Tickets" value={list.length} />
         <Stat label="Pending" value={pending} />
-        <Stat label="Pending Estimates" value={inr(totalEstimate)} />
+        <Stat label="Total Advances Collected" value={inr(totalAdvance)} />
       </div>
 
       <Card>
@@ -244,7 +242,7 @@ export default function RepairsPage() {
                   <th>Customer</th>
                   <th>Item</th>
                   <th>Karigar</th>
-                  <th>Estimate</th>
+                  <th>Advance</th>
                   <th>Status</th>
                   <th></th>
                 </tr>
@@ -257,14 +255,20 @@ export default function RepairsPage() {
                     <td>{r.customerName}</td>
                     <td>{r.itemDescription}</td>
                     <td>{karigars.find((k) => k._id === r.karigarId || k.id === r.karigarId)?.name || r.note?.match(/\[Assigned:\s*(.*?)\]/)?.[1] || "—"}</td>
-                    <td>{inr(r.estimate)}</td>
+                    <td className="text-green-600 font-medium">
+                      <div>{inr(r.advance)}</div>
+                      {r.status === "Delivered" && (r.advance || 0) > 0 && (
+                        <span className="inline-block mt-0.5 bg-green-100 text-green-800 px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase">Settled</span>
+                      )}
+                    </td>
                     <td>
                       <select
-                        className={`border rounded px-2 py-1 text-xs ${r.status === 'Ready' ? 'bg-green-50 text-green-700 border-green-200 font-medium' : 'bg-background'}`}
+                        className={`border rounded px-2 py-1 text-xs ${r.status === 'Ready' ? 'bg-green-50 text-green-700 border-green-200 font-medium' : r.status === 'Delivered' ? 'bg-slate-100 text-slate-500' : 'bg-background'}`}
                         value={r.status}
                         onChange={(e) => setStatus(r.id || r._id || '', e.target.value as Repair['status'])}
+                        disabled={r.status === 'Delivered'}
                       >
-                        {['Received', 'In Progress', 'Ready', 'Delivered'].map((s) => (
+                        {['Received', 'In Progress', 'Ready', 'Delivered'].filter(s => s !== "Delivered" || r.status === "Delivered").map((s) => (
                           <option key={s} value={s}>
                             {s}
                           </option>
@@ -316,8 +320,6 @@ function Stat({ label, value }: { label: string; value: string | number }) {
 }
 
 function RepairInvoiceModal({ repair, onClose }: { repair: Repair; onClose: () => void }) {
-  const balanceDue = (repair.estimate || 0) - (repair.advance || 0);
-
   return (
     <div className="fixed inset-0 z-50 bg-black/50 flex justify-center items-start p-2 sm:p-4 print:bg-white print:p-0 overflow-y-auto">
       <div className="bg-white w-full max-w-4xl rounded-lg shadow-xl print:shadow-none print:max-w-none text-slate-900 my-auto relative">
@@ -353,7 +355,6 @@ function RepairInvoiceModal({ repair, onClose }: { repair: Repair; onClose: () =
                 <th className="border border-slate-300 py-2 px-3 text-left text-slate-600">Item Description</th>
                 <th className="border border-slate-300 py-2 px-3 text-left text-slate-600">Problem / Work Done</th>
                 <th className="border border-slate-300 py-2 px-3 text-right text-slate-600">Weight (g)</th>
-                <th className="border border-slate-300 py-2 px-3 text-right text-slate-600">Charges</th>
               </tr>
             </thead>
             <tbody>
@@ -362,42 +363,26 @@ function RepairInvoiceModal({ repair, onClose }: { repair: Repair; onClose: () =
                 <td className="border border-slate-300 py-2 px-3 font-semibold">{repair.itemDescription}</td>
                 <td className="border border-slate-300 py-2 px-3 text-rose-600">{repair.problem}</td>
                 <td className="border border-slate-300 py-2 px-3 text-right">{repair.itemWeight} g</td>
-                <td className="border border-slate-300 py-2 px-3 text-right font-bold">{inr(repair.estimate)}</td>
               </tr>
             </tbody>
           </table>
 
           {/* Calculations & Totals */}
           <div className="flex flex-col sm:flex-row justify-between items-start text-sm gap-6">
-            <div className="w-full sm:w-1/2 sm:pr-8 order-2 sm:order-1">
-              {balanceDue <= 0 && (
-                <div className="p-2 bg-green-50 border border-green-200 text-green-800 text-center font-bold rounded tracking-widest text-lg">
-                  PAYMENT DONE
-                </div>
-              )}
-            </div>
+            <div className="w-full sm:w-1/2 sm:pr-8 order-2 sm:order-1"></div>
             <div className="w-full sm:w-1/2 max-w-sm order-1 sm:order-2">
               <table className="w-full">
                 <tbody>
                   <tr className="border-t-2 border-slate-300 text-lg">
-                    <td className="py-2 font-bold text-slate-900">Total Charges</td>
-                    <td className="py-2 text-right font-bold text-slate-900">{inr(repair.estimate)}</td>
-                  </tr>
-                  <tr className="border-t border-slate-200">
-                    <td className="py-1.5 text-slate-600">Advance Paid</td>
-                    <td className="py-1.5 text-right font-semibold text-green-700">{inr(repair.advance)}</td>
-                  </tr>
-                  <tr>
-                    <td className="py-1.5 font-bold">Balance Due</td>
-                    <td className="py-1.5 text-right font-bold text-rose-700">{inr(balanceDue)}</td>
+                    <td className="py-2 font-bold text-slate-900">
+                      Advance Paid
+                      {repair.status === "Delivered" && (repair.advance || 0) > 0 && <span className="ml-2 text-xs font-semibold text-green-700 uppercase tracking-wider bg-green-100 px-2 py-0.5 rounded">Settled</span>}
+                    </td>
+                    <td className="py-2 text-right font-bold text-green-700">{inr(repair.advance)}</td>
                   </tr>
                 </tbody>
               </table>
             </div>
-          </div>
-
-          <div className="mt-8 flex justify-center border-t border-slate-200 pt-5">
-            <PaymentQr amount={balanceDue} />
           </div>
 
           {/* Signatures */}

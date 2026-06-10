@@ -27,7 +27,7 @@ import {
 } from "@/lib/storage";
 import { formatDate } from "@/lib/utils";
 import { useApi, useApiMutation } from "@/hooks/useApi";
-import { invoicesAPI, inventoryAPI, customerAPI, goldRatesAPI } from "@/lib/api";
+import { invoicesAPI, inventoryAPI, customerAPI, goldRatesAPI, ordersAPI, repairsAPI } from "@/lib/api";
 import { toast } from "sonner";
 import { PaymentQr } from "@/components/PaymentQr";
 import { InvoiceTerms, ShopHeader } from "@/components/InvoiceBranding";
@@ -37,12 +37,16 @@ export default function BillingPage() {
   const { data: products = [] } = useApi<any[]>(["inventory"], () => inventoryAPI.getAll());
   const { data: customers = [] } = useApi<any[]>(["customers"], () => customerAPI.getAll());
   const { data: ratesList = [] } = useApi<any[]>(["goldRates"], () => goldRatesAPI.getAll());
+  const { data: orders = [] } = useApi<any[]>(["orders"], () => ordersAPI.getAll());
+  const { data: repairs = [] } = useApi<any[]>(["repairs"], () => repairsAPI.getAll());
   const latestRates = ratesList[0];
   
   const createMutation = useApiMutation((data: any) => invoicesAPI.create(data), ["invoices"]);
   const deleteMutation = useApiMutation((id: string) => invoicesAPI.delete(id), ["invoices"]);
   const updateProductMutation = useApiMutation((data: { id: string; body: any }) => inventoryAPI.update(data.id, data.body), ["inventory"]);
   const updateMutation = useApiMutation((data: { id: string; body: any }) => invoicesAPI.update(data.id, data.body), ["invoices"]);
+  const updateOrderMutation = useApiMutation((data: { id: string; body: any }) => ordersAPI.update(data.id, data.body), ["orders"]);
+  const updateRepairMutation = useApiMutation((data: { id: string; body: any }) => repairsAPI.update(data.id, data.body), ["repairs"]);
 
   const [viewing, setViewing] = useState<Invoice | null>(null);
   const [open, setOpen] = useState(false);
@@ -61,6 +65,8 @@ export default function BillingPage() {
   const [customerSignature, setCustomerSignature] = useState<string>("");
   const [authorizedSignatory, setAuthorizedSignatory] = useState<string>("");
   const [pages, setPages] = useState<Record<number, number>>({});
+  const [linkedOrderId, setLinkedOrderId] = useState<string>("");
+  const [nonGstFilter, setNonGstFilter] = useState<"All" | "INV" | "MAN">("All");
 
   const isGst = type === "GST";
 
@@ -163,6 +169,23 @@ export default function BillingPage() {
     return { subtotal, gst, cgst, sgst, preRound, roundOff, gTotal };
   }, [items, discount, oldGoldAmount, isGst]);
 
+  const selectedCust = useMemo(() => customers.find((c) => (c._id || c.id) === customerId), [customers, customerId]);
+  const customerOrdersAndRepairs = useMemo(() => {
+    if (!selectedCust) return [];
+    const o = orders.filter(o => 
+      (o.customerMobile === selectedCust.mobile || (selectedCust.phone && o.customerMobile === selectedCust.phone)) && 
+      o.status !== "Delivered" && 
+      o.status !== "Cancelled"
+    ).map(o => ({ type: 'order', id: `order_${o._id || o.id}`, originalId: o._id || o.id, desc: `${o.orderNo} - ${o.itemDescription}`, advance: o.advancePaid || 0, item: o }));
+
+    const r = repairs.filter(r => 
+      (r.customerMobile === selectedCust.mobile || (selectedCust.phone && r.customerMobile === selectedCust.phone)) && 
+      r.status !== "Delivered"
+    ).map(r => ({ type: 'repair', id: `repair_${r._id || r.id}`, originalId: r._id || r.id, desc: `${r.ticketNo} - ${r.itemDescription}`, advance: r.advance || 0, item: r }));
+
+    return [...o, ...r];
+  }, [orders, repairs, selectedCust]);
+
   const reset = () => {
     setEditingId(null);
     setItems([]);
@@ -174,6 +197,7 @@ export default function BillingPage() {
     setOnlineMode("UPI");
     setCustomerSignature("");
     setAuthorizedSignatory("");
+    setLinkedOrderId("");
   };
 
   const editInvoice = (inv: any) => {
@@ -205,7 +229,9 @@ export default function BillingPage() {
     if (inv.payments && inv.payments.length > 0) {
       inv.payments.forEach((p: any) => {
         if (p.mode === "Cash") cAmt += p.amount;
-        else { oAmt += p.amount; oMode = p.mode; }
+        else if (p.mode === "Advance" || p.mode === "Order Advance") {
+           // Do not bleed advance amounts into general online amount inputs
+        } else { oAmt += p.amount; oMode = p.mode; }
       });
     } else {
       const paid = inv.amountPaid !== undefined ? inv.amountPaid : inv.total;
@@ -224,6 +250,7 @@ export default function BillingPage() {
     
     setCustomerSignature(inv.customerSignature || "");
     setAuthorizedSignatory(inv.authorizedSignatory || "");
+    setLinkedOrderId(inv.linkedOrderId || "");
     setOpen(true);
   };
 
@@ -245,12 +272,16 @@ export default function BillingPage() {
     const isOnlineEmpty = onlineAmount === "";
     const cAmt = Number(cashAmount) || 0;
     const oAmt = Number(onlineAmount) || 0;
+    const linkedOrder = orders.find(o => (o._id || o.id) === linkedOrderId || `order_${o._id || o.id}` === linkedOrderId);
+    const linkedRepair = repairs.find(r => `repair_${r._id || r.id}` === linkedOrderId);
+    const orderAdvanceAmount = linkedOrder ? (linkedOrder.advancePaid || 0) : linkedRepair ? (linkedRepair.advance || 0) : 0;
+    const advanceNote = linkedOrder ? `Order ${linkedOrder.orderNo} Advance` : linkedRepair ? `Repair ${linkedRepair.ticketNo} Advance` : "Advance";
  
     let safeActualPaid = 0;
     let finalPaymentMode = "Cash";
     const initialPayment: any[] = [];
  
-    if (isCashEmpty && isOnlineEmpty) {
+    if (isCashEmpty && isOnlineEmpty && orderAdvanceAmount === 0) {
       if (editingId) {
         safeActualPaid = 0;
         finalPaymentMode = "Cash";
@@ -262,13 +293,14 @@ export default function BillingPage() {
         }
       }
     } else {
-      safeActualPaid = cAmt + oAmt;
-      finalPaymentMode = oAmt > cAmt ? onlineMode : "Cash";
+      safeActualPaid = cAmt + oAmt + orderAdvanceAmount;
+      finalPaymentMode = oAmt > (cAmt + orderAdvanceAmount) ? onlineMode : "Cash";
  
+      if (orderAdvanceAmount > 0) initialPayment.push({ date: new Date().toISOString(), amount: orderAdvanceAmount, mode: "Advance", note: advanceNote });
       if (cAmt > 0) initialPayment.push({ date: new Date().toISOString(), amount: cAmt, mode: "Cash", note: "Initial Cash Payment" });
       if (oAmt > 0) initialPayment.push({ date: new Date().toISOString(), amount: oAmt, mode: onlineMode, note: `Initial ${onlineMode} Payment` });
     }
-    const balanceDue = totals.gTotal - safeActualPaid;
+    const balanceDue = Math.max(0, totals.gTotal - safeActualPaid);
 
     // Clean _id from subdocuments to avoid Mongoose immutable _id CastErrors on update
     const cleanItems = items.map((it: any) => {
@@ -279,11 +311,15 @@ export default function BillingPage() {
     });
 
     let cleanPayments = initialPayment;
-    if (existingInv && Array.isArray(existingInv.payments) && existingInv.payments.length > 0) {
-      // Re-sync historical date but overwrite amounts based on current edit form to guarantee accuracy
-      const oldFirstDate = existingInv.payments[0].date || existingInv.createdAt;
-      initialPayment.forEach(p => p.date = oldFirstDate);
-      cleanPayments = initialPayment;
+    const oldPaid = existingInv?.amountPaid || 0;
+    if (existingInv) {
+      if (safeActualPaid === oldPaid) {
+        cleanPayments = existingInv.payments || [];
+      } else if (Array.isArray(existingInv.payments) && existingInv.payments.length > 0) {
+        const oldFirstDate = existingInv.payments[0].date || existingInv.createdAt;
+        initialPayment.forEach(p => p.date = oldFirstDate);
+        cleanPayments = initialPayment;
+      }
     }
 
     let newNumber = existingInv ? existingInv.number : "";
@@ -312,6 +348,7 @@ export default function BillingPage() {
       payments: cleanPayments,
       customerSignature,
       authorizedSignatory,
+      linkedOrderId: linkedOrderId || undefined,
     };
 
     try {
@@ -320,6 +357,20 @@ export default function BillingPage() {
         toast.success("Invoice updated successfully");
       } else {
         const saved = await createMutation.mutateAsync(inv);
+        
+        if (linkedOrderId) {
+          if (linkedOrder) {
+            await updateOrderMutation.mutateAsync({
+              id: linkedOrder._id || linkedOrder.id,
+              body: { ...linkedOrder, status: "Delivered" }
+            });
+          } else if (linkedRepair) {
+            await updateRepairMutation.mutateAsync({
+              id: linkedRepair._id || linkedRepair.id,
+              body: { ...linkedRepair, status: "Delivered" }
+            });
+          }
+        }
         
         // Deduct sold quantities from inventory stock
         for (const item of items) {
@@ -426,7 +477,10 @@ export default function BillingPage() {
                             c.phone === v ||
                             c.name.toLowerCase() === v.toLowerCase()
                         );
-                        if (match) setCustomerId(match._id || match.id);
+                        if (match) {
+                          setCustomerId(match._id || match.id);
+                          if (match._id !== customerId && match.id !== customerId) setLinkedOrderId("");
+                        }
                       }}
                       onKeyDown={(e) => {
                         if (e.key === "Enter") {
@@ -436,7 +490,10 @@ export default function BillingPage() {
                             const match = customers.find(
                               (c) => c.name.toLowerCase().includes(v) || (c.mobile || c.phone || "").includes(v)
                             );
-                            if (match) setCustomerId(match._id || match.id);
+                            if (match) {
+                              setCustomerId(match._id || match.id);
+                              if (match._id !== customerId && match.id !== customerId) setLinkedOrderId("");
+                            }
                           }
                         }
                       }}
@@ -446,7 +503,10 @@ export default function BillingPage() {
                   <div className="space-y-3">
                     <div className="space-y-1.5">
                       <Label className="text-xs">Customer</Label>
-                      <Select value={customerId} onValueChange={setCustomerId}>
+                      <Select value={customerId} onValueChange={(val) => {
+                        setCustomerId(val);
+                        setLinkedOrderId("");
+                      }}>
                         <SelectTrigger className="bg-background">
                           <SelectValue placeholder="Select customer" />
                         </SelectTrigger>
@@ -469,24 +529,102 @@ export default function BillingPage() {
                     {customerId && (
                       <div className="p-3 rounded-md bg-background border border-border text-sm">
                         {(() => {
-                          const c = customers.find((x) => (x._id || x.id) === customerId);
-                          if (!c) return null;
+                          if (!selectedCust) return null;
                           return (
                             <div className="grid grid-cols-2 gap-2 text-muted-foreground">
                               <div>
-                                <strong className="text-foreground">Name:</strong> {c.name}
+                                <strong className="text-foreground">Name:</strong> {selectedCust.name}
                               </div>
                               <div>
                                 <strong className="text-foreground">Mobile:</strong>{" "}
-                                {c.mobile || c.phone}
+                                {selectedCust.mobile || selectedCust.phone}
                               </div>
                               <div className="col-span-2">
                                 <strong className="text-foreground">Address:</strong>{" "}
-                                {c.address || "—"}
+                                {selectedCust.address || "—"}
                               </div>
                             </div>
                           );
                         })()}
+                      </div>
+                    )}
+                    {customerId && customerOrdersAndRepairs.length > 0 && !editingId && (
+                      <div className="mt-2 space-y-1.5 p-3 rounded-md bg-primary/5 border border-primary/20">
+                        <Label className="text-xs text-primary font-semibold">Link Active Order / Repair (Apply Advance)</Label>
+                        <Select value={linkedOrderId || "none"} onValueChange={(v) => {
+                          const newLinkedId = v === "none" ? "" : v;
+                          const oldLinkedId = linkedOrderId;
+                          setLinkedOrderId(newLinkedId);
+                          
+                          setItems(prev => {
+                            let updated = [...prev];
+                            if (oldLinkedId) {
+                               updated = updated.filter(it => it.productId !== `linked-${oldLinkedId}`);
+                            }
+                            
+                            if (newLinkedId) {
+                              const isOrder = newLinkedId.startsWith("order_") || orders.find(o => (o._id || o.id) === newLinkedId);
+                              if (isOrder) {
+                                const linkedOrder = orders.find(o => `order_${o._id || o.id}` === newLinkedId || (o._id || o.id) === newLinkedId);
+                                if (linkedOrder) {
+                                  let currentRate = 0;
+                                  if (latestRates && linkedOrder.metal !== "Diamond" && linkedOrder.metal !== "Other") {
+                                    const purityUpper = (linkedOrder.purity || "").toUpperCase();
+                                    if (purityUpper.includes("24K") && latestRates.gold24) currentRate = latestRates.gold24;
+                                    else if (purityUpper.includes("22K") && latestRates.gold22) currentRate = latestRates.gold22;
+                                    else if (purityUpper.includes("18K") && latestRates.gold18) currentRate = latestRates.gold18;
+                                    else if ((linkedOrder.metal === "Silver" || purityUpper.includes("SILVER") || purityUpper.includes("925")) && latestRates.silver) currentRate = latestRates.silver;
+                                  }
+                                  updated.push({
+                                    productId: `linked-${newLinkedId}`,
+                                    name: linkedOrder.itemDescription,
+                                    purity: linkedOrder.purity || "22K",
+                                    netWeight: 0,
+                                    grossWeight: 0,
+                                    stoneWeight: 0,
+                                    ratePerGram: currentRate,
+                                    makingCharge: 0,
+                                    makingChargePct: 0,
+                                    stoneCharge: 0,
+                                    gstPct: type === "GST" ? 3 : 0,
+                                    qty: 1,
+                                  } as any);
+                                }
+                              } else {
+                                const linkedRepair = repairs.find(r => `repair_${r._id || r.id}` === newLinkedId);
+                                if (linkedRepair) {
+                                  updated.push({
+                                    productId: `linked-${newLinkedId}`,
+                                    name: `Repair: ${linkedRepair.itemDescription}`,
+                                    purity: "-",
+                                    netWeight: 0,
+                                    grossWeight: 0,
+                                    stoneWeight: 0,
+                                    ratePerGram: 0,
+                                    makingCharge: 0,
+                                    makingChargePct: 0,
+                                    stoneCharge: 0,
+                                    gstPct: type === "GST" ? 3 : 0,
+                                    qty: 1,
+                                  } as any);
+                                }
+                              }
+                            }
+                            return updated;
+                          });
+                        }}>
+                          <SelectTrigger className="bg-background">
+                            <SelectValue placeholder="Select an order or repair" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="none">None</SelectItem>
+                            {customerOrdersAndRepairs.map((item) => (
+                              <SelectItem key={item.id} value={item.id}>
+                                {item.desc} (Advance: {inr(item.advance)})
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                       </div>
                     )}
                   </div>
@@ -728,6 +866,33 @@ export default function BillingPage() {
                     </div>
 
                     <div className="bg-muted/40 p-4 rounded-lg border border-border space-y-4 mt-4">
+                      {(linkedOrderId && (() => {
+                        const linkedOrder = orders.find(o => (o._id || o.id) === linkedOrderId || `order_${o._id || o.id}` === linkedOrderId);
+                        const linkedRepair = repairs.find(r => `repair_${r._id || r.id}` === linkedOrderId);
+                        return (linkedOrder && (linkedOrder.advancePaid || 0) > 0) || (linkedRepair && (linkedRepair.advance || 0) > 0);
+                      })()) && (
+                        <Row 
+                          label={
+                            (() => {
+                              const linkedOrder = orders.find(o => (o._id || o.id) === linkedOrderId || `order_${o._id || o.id}` === linkedOrderId);
+                              if (linkedOrder) return `Order Advance (${linkedOrder.orderNo})`;
+                              const linkedRepair = repairs.find(r => `repair_${r._id || r.id}` === linkedOrderId);
+                              if (linkedRepair) return `Repair Advance (${linkedRepair.ticketNo})`;
+                              return "Advance";
+                            })()
+                          }
+                          v={`- ${inr(
+                            (() => {
+                              const linkedOrder = orders.find(o => (o._id || o.id) === linkedOrderId || `order_${o._id || o.id}` === linkedOrderId);
+                              if (linkedOrder) return linkedOrder.advancePaid || 0;
+                              const linkedRepair = repairs.find(r => `repair_${r._id || r.id}` === linkedOrderId);
+                              if (linkedRepair) return linkedRepair.advance || 0;
+                              return 0;
+                            })()
+                          )}`} 
+                          valueClassName="text-green-600" 
+                        />
+                      )}
                       <div className="flex items-center justify-between gap-4">
                         <Label className="text-muted-foreground font-normal">Cash Amount</Label>
                         <Input type="number" className="w-32 h-8 text-right bg-background" value={cashAmount} onChange={(e) => setCashAmount(e.target.value === "" ? "" : parseFloat(e.target.value) || 0)} placeholder={editingId ? "0" : `${totals.gTotal}`} />
@@ -751,8 +916,16 @@ export default function BillingPage() {
                       </div>
 
                       {(() => {
-                        const currentPaid = (cashAmount === "" && onlineAmount === "") ? totals.gTotal : (Number(cashAmount) || 0) + (Number(onlineAmount) || 0);
-                        const currentDue = totals.gTotal - currentPaid;
+                        let currentPaid = 0;
+                        const linkedOrder = orders.find(o => (o._id || o.id) === linkedOrderId || `order_${o._id || o.id}` === linkedOrderId);
+                        const linkedRepair = repairs.find(r => `repair_${r._id || r.id}` === linkedOrderId);
+                        const orderAdv = linkedOrder ? (linkedOrder.advancePaid || 0) : linkedRepair ? (linkedRepair.advance || 0) : 0;
+                        if (cashAmount === "" && onlineAmount === "" && orderAdv === 0 && !editingId) {
+                          currentPaid = totals.gTotal;
+                        } else {
+                          currentPaid = (Number(cashAmount) || 0) + (Number(onlineAmount) || 0) + orderAdv;
+                        }
+                        const currentDue = Math.max(0, totals.gTotal - currentPaid);
                         return (
                           <Row 
                             label="Balance Due" 
@@ -814,9 +987,18 @@ export default function BillingPage() {
         { title: "GST Invoice History", data: gstInvoices },
         { title: "NON-GST Invoice History", data: nonGstInvoices }
       ].map(({ title, data }, index) => {
-        const totalPages = Math.ceil(data.length / 10) || 1;
+        let tableData = data;
+        if (title === "NON-GST Invoice History") {
+          if (nonGstFilter === "INV") {
+            tableData = tableData.filter((i) => !i.number?.startsWith("MAN-"));
+          } else if (nonGstFilter === "MAN") {
+            tableData = tableData.filter((i) => i.number?.startsWith("MAN-"));
+          }
+        }
+
+        const totalPages = Math.ceil(tableData.length / 10) || 1;
         const currentPage = Math.min(pages[index] || 1, totalPages);
-        const paginated = data.slice((currentPage - 1) * 10, currentPage * 10);
+        const paginated = tableData.slice((currentPage - 1) * 10, currentPage * 10);
         
         return (
         <Card key={title} className={index === 0 ? "mb-6" : ""}>
@@ -824,9 +1006,16 @@ export default function BillingPage() {
             <CardTitle className="font-display flex items-center gap-2">
               <Receipt className="w-5 h-5" /> {title}
             </CardTitle>
+            {title === "NON-GST Invoice History" && (
+              <div className="flex bg-muted/50 p-1 rounded-lg border border-border">
+                <button className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${nonGstFilter === "All" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`} onClick={() => setNonGstFilter("All")}>All</button>
+                <button className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${nonGstFilter === "INV" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`} onClick={() => setNonGstFilter("INV")}>Invoices</button>
+                <button className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${nonGstFilter === "MAN" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`} onClick={() => setNonGstFilter("MAN")}>Manual Dues</button>
+              </div>
+            )}
           </CardHeader>
           <CardContent className="p-0">
-            {data.length === 0 ? (
+            {tableData.length === 0 ? (
               <p className="text-sm text-muted-foreground py-12 text-center">No invoices found.</p>
             ) : (
               <div className="overflow-x-auto">
@@ -836,6 +1025,7 @@ export default function BillingPage() {
                       <th className="p-3 font-medium">Invoice</th>
                       <th className="font-medium">Date</th>
                       <th className="font-medium">Customer</th>
+                      {title === "NON-GST Invoice History" && <th className="font-medium">Type</th>}
                       <th className="font-medium">Mode</th>
                       <th className="text-right font-medium">Total</th>
                       <th className="text-right font-medium">Due</th>
@@ -849,6 +1039,15 @@ export default function BillingPage() {
                         <td className="p-3 font-medium">{i.number}</td>
                         <td>{formatDate(i.createdAt)}</td>
                         <td>{i.customerName}</td>
+                        {title === "NON-GST Invoice History" && (
+                          <td>
+                            {i.number?.startsWith("MAN-") ? (
+                              <span className="bg-amber-100 text-amber-800 px-2 py-0.5 rounded text-[10px] font-semibold uppercase">Manual Due</span>
+                            ) : (
+                              <span className="bg-blue-100 text-blue-800 px-2 py-0.5 rounded text-[10px] font-semibold uppercase">Invoice</span>
+                            )}
+                          </td>
+                        )}
                         <td>{i.paymentMode}</td>
                         <td className="text-right font-medium text-green-600">{inr(i.total)}</td>
                         <td className="text-right font-medium text-rose-600">{inr(i.balanceDue || 0)}</td>
@@ -876,7 +1075,7 @@ export default function BillingPage() {
                 </table>
                 {totalPages > 1 && (
                   <div className="flex items-center justify-between px-4 py-3 border-t border-border">
-                    <div className="text-xs text-muted-foreground">Showing {(currentPage - 1) * 10 + 1} to {Math.min(currentPage * 10, data.length)} of {data.length} entries</div>
+                    <div className="text-xs text-muted-foreground">Showing {(currentPage - 1) * 10 + 1} to {Math.min(currentPage * 10, tableData.length)} of {tableData.length} entries</div>
                     <div className="flex gap-1">
                       <Button size="sm" variant="outline" onClick={() => setPages(p => ({ ...p, [index]: Math.max(1, currentPage - 1) }))} disabled={currentPage === 1}>Prev</Button>
                       <Button size="sm" variant="outline" onClick={() => setPages(p => ({ ...p, [index]: Math.min(totalPages, currentPage + 1) }))} disabled={currentPage === totalPages}>Next</Button>
@@ -1068,22 +1267,29 @@ function InvoiceModal({ inv, onClose }: { inv: any; onClose: () => void }) {
                       {(() => {
                         if (inv.payments && inv.payments.length > 0) {
                           const cashPaid = inv.payments.filter((p: any) => p.mode === "Cash").reduce((s: number, p: any) => s + p.amount, 0);
-                          const onlinePaid = inv.payments.filter((p: any) => p.mode !== "Cash").reduce((s: number, p: any) => s + p.amount, 0);
+                        const onlinePaid = inv.payments.filter((p: any) => p.mode !== "Cash" && p.mode !== "Advance" && p.mode !== "Order Advance").reduce((s: number, p: any) => s + p.amount, 0);
+                        const advancePaid = inv.payments.filter((p: any) => p.mode === "Advance" || p.mode === "Order Advance").reduce((s: number, p: any) => s + p.amount, 0);
                           return (
                             <>
+                            {advancePaid > 0 && (
+                              <tr className="border-t border-slate-200 text-xs">
+                                <td className="py-0.5 text-slate-600">Advance Settled</td>
+                                <td className="py-0.5 text-right font-medium text-green-700">{inr(advancePaid)}</td>
+                              </tr>
+                            )}
                               {cashPaid > 0 && (
-                                <tr className="border-t border-slate-200 text-xs">
+                              <tr className={advancePaid > 0 ? "text-xs" : "border-t border-slate-200 text-xs"}>
                                   <td className="py-0.5 text-slate-600">Paid (Cash)</td>
                                   <td className="py-0.5 text-right font-medium text-green-700">{inr(cashPaid)}</td>
                                 </tr>
                               )}
                               {onlinePaid > 0 && (
-                                <tr className={cashPaid > 0 ? "text-xs" : "border-t border-slate-200 text-xs"}>
+                              <tr className={(cashPaid > 0 || advancePaid > 0) ? "text-xs" : "border-t border-slate-200 text-xs"}>
                                   <td className="py-0.5 text-slate-600">Paid (Online)</td>
                                   <td className="py-0.5 text-right font-medium text-green-700">{inr(onlinePaid)}</td>
                                 </tr>
                               )}
-                              {cashPaid > 0 && onlinePaid > 0 && (
+                            {(cashPaid > 0 || onlinePaid > 0 || advancePaid > 0) && (
                                 <tr className="text-xs">
                                   <td className="py-0.5 font-bold text-slate-800">Total Paid</td>
                                   <td className="py-0.5 text-right font-bold text-green-700">{inr(inv.amountPaid)}</td>

@@ -41,7 +41,6 @@ export default function KarigarTasksPage() {
   const activeRepairs = useMemo(() => assignedRepairs.filter(r => r.status !== "Delivered"), [assignedRepairs]);
   const activeOrders = useMemo(() => assignedOrders.filter(o => o.status !== "Delivered" && o.status !== "Cancelled"), [assignedOrders]);
   const repairsWeight = activeRepairs.reduce((sum, r) => sum + (Number(r.itemWeight) || 0), 0);
-  const ordersWeight = activeOrders.reduce((sum, o) => sum + (Number(o.estimatedWeight) || 0), 0);
 
   const totalPagesR = Math.ceil(assignedRepairs.length / 10) || 1;
   const currentPageR = Math.min(pageR, totalPagesR);
@@ -121,9 +120,6 @@ export default function KarigarTasksPage() {
               <CardContent className="pt-6">
                 <div className="text-sm text-muted-foreground flex items-center gap-1"><ShoppingBag className="w-4 h-4"/> Active Orders</div>
                 <div className="text-2xl font-display mt-1 text-primary">{activeOrders.length} <span className="text-sm text-muted-foreground font-normal">assigned</span></div>
-                <div className="text-xs font-medium text-muted-foreground mt-2 bg-muted/40 inline-block px-2 py-1 rounded">
-                  Total Est. Quantity: {ordersWeight.toFixed(2)} g
-                </div>
               </CardContent>
             </Card>
           </div>
@@ -139,8 +135,8 @@ export default function KarigarTasksPage() {
                     <td><div className="font-medium">{r.itemDescription}</div><div className="text-xs text-rose-500">{r.problem}</div></td>
                     <td>{r.deliveryDate ? formatDate(r.deliveryDate) : "—"}</td>
                     <td className="px-4 py-2 text-right">
-                      <select className={`border rounded px-2 py-1 text-xs cursor-pointer ${r.status === 'Ready' ? 'bg-green-50 text-green-700 border-green-200 font-medium' : 'bg-background'}`} value={r.status} onChange={e => updateRepairStatus(r._id || r.id || "", e.target.value as Repair["status"])}>
-                        {['Received', 'In Progress', 'Ready', 'Delivered'].map((s) => <option key={s} value={s}>{s}</option>)}
+                      <select className={`border rounded px-2 py-1 text-xs cursor-pointer ${r.status === 'Ready' ? 'bg-green-50 text-green-700 border-green-200 font-medium' : r.status === 'Delivered' ? 'bg-slate-100 text-slate-500 cursor-not-allowed' : 'bg-background'}`} value={r.status} onChange={e => updateRepairStatus(r._id || r.id || "", e.target.value as Repair["status"])} disabled={r.status === 'Delivered'}>
+                        {['Received', 'In Progress', 'Ready', 'Delivered'].filter(s => s !== "Delivered" || r.status === "Delivered").map((s) => <option key={s} value={s}>{s}</option>)}
                       </select>
                     </td>
                     <td className="px-4 text-right">
@@ -170,11 +166,11 @@ export default function KarigarTasksPage() {
                 <table className="w-full text-sm"><thead className="text-left text-muted-foreground border-b bg-muted/20"><tr><th className="py-2 px-4">Order</th><th>Item</th><th>Due</th><th className="px-4 text-right">Status</th><th className="px-4"></th></tr></thead>
               <tbody>{paginatedO.map(o => (<tr key={o._id || o.id} className="border-b last:border-0 hover:bg-muted/40">
                     <td className="py-2 px-4"><div className="font-medium">{o.orderNo}</div><div className="text-xs text-muted-foreground">{formatDate(o.date)}</div></td>
-                    <td><div className="font-medium">{o.itemDescription}</div><div className="text-xs text-muted-foreground">{o.metal} {o.purity} • {o.estimatedWeight}g</div></td>
+                    <td><div className="font-medium">{o.itemDescription}</div><div className="text-xs text-muted-foreground">{o.metal} {o.purity}</div></td>
                     <td>{o.dueDate ? formatDate(o.dueDate) : "—"}</td>
                     <td className="px-4 py-2 text-right">
-                      <select className={`border rounded px-2 py-1 text-xs cursor-pointer ${o.status === 'Ready' ? 'bg-green-50 text-green-700 border-green-200 font-medium' : 'bg-background'}`} value={o.status} onChange={e => updateOrderStatus(o._id || o.id || "", e.target.value as Order["status"])}>
-                        {["Pending","In Progress","Ready","Delivered","Cancelled"].map(s => <option key={s} value={s}>{s}</option>)}
+                      <select className={`border rounded px-2 py-1 text-xs cursor-pointer ${o.status === 'Ready' ? 'bg-green-50 text-green-700 border-green-200 font-medium' : o.status === 'Delivered' ? 'bg-slate-100 text-slate-500 cursor-not-allowed' : 'bg-background'}`} value={o.status} onChange={e => updateOrderStatus(o._id || o.id || "", e.target.value as Order["status"])} disabled={o.status === 'Delivered'}>
+                        {["Pending","In Progress","Ready","Delivered","Cancelled"].filter(s => s !== "Delivered" || o.status === "Delivered").map(s => <option key={s} value={s}>{s}</option>)}
                       </select>
                     </td>
                     <td className="px-4 text-right">
@@ -252,10 +248,6 @@ export default function KarigarTasksPage() {
                   <div>
                     <div className="text-xs text-muted-foreground">Metal & Purity</div>
                     <div className="font-medium">{viewingOrder.metal} - {viewingOrder.purity}</div>
-                  </div>
-                  <div>
-                    <div className="text-xs text-muted-foreground">Estimated Weight</div>
-                    <div className="font-medium">{viewingOrder.estimatedWeight} g</div>
                   </div>
                   <div>
                     <div className="text-xs text-muted-foreground">Due Date</div>

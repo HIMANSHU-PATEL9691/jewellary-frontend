@@ -94,6 +94,7 @@ export type Invoice = {
   customerSignature?: string;
   authorizedSignatory?: string;
   createdAt: string;
+  linkedOrderId?: string;
 };
 
 export type Expense = {
@@ -199,7 +200,7 @@ export type Repair = {
   itemDescription: string;
   itemWeight: number;
   problem: string;
-  estimate: number;
+  estimate?: number;
   advance: number;
   deliveryDate?: string;
   karigarId?: string;
@@ -239,8 +240,8 @@ export type Order = {
   itemDescription: string;
   metal: "Gold" | "Silver" | "Diamond" | "Platinum" | "Other";
   purity: string;
-  estimatedWeight: number;
-  estimatedPrice: number;
+  estimatedWeight?: number;
+  estimatedPrice?: number;
   advancePaid: number;
   karigarId?: string;
   dueDate?: string;

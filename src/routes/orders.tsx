@@ -13,7 +13,6 @@ import { ordersAPI, customerAPI, karigarsAPI } from "@/lib/api";
 import { Plus, Trash2, ShoppingBag, Pencil, Printer } from "lucide-react";
 import { toast } from "sonner";
 import { DatePicker } from "@/components/ui/date-picker";
-import { PaymentQr } from "@/components/PaymentQr";
 import { InvoiceTerms, ShopHeader } from "@/components/InvoiceBranding";
 
 export default function OrdersPage() {
@@ -41,8 +40,6 @@ export default function OrdersPage() {
     itemDescription: "",
     metal: "Gold",
     purity: "22K",
-    estimatedWeight: 0,
-    estimatedPrice: 0,
     advancePaid: 0,
     karigarId: "",
     dueDate: "",
@@ -155,8 +152,6 @@ export default function OrdersPage() {
                 </select>
               </div>
               <Field label="Purity" v={form.purity} on={v => setForm({...form, purity: v})} />
-              <Field label="Estimated Weight (g)" type="number" v={String(form.estimatedWeight || "")} on={v => setForm({...form, estimatedWeight: +v})} />
-              <Field label="Estimated Price ₹" type="number" v={String(form.estimatedPrice || "")} on={v => setForm({...form, estimatedPrice: +v})} />
               <Field label="Advance Paid ₹" type="number" v={String(form.advancePaid || "")} on={v => setForm({...form, advancePaid: +v})} />
               <Field label="Date" type="date" v={form.date} on={v => setForm({...form, date: v})} />
               <Field label="Due Date" type="date" v={form.dueDate || ""} on={v => setForm({...form, dueDate: v})} />
@@ -229,7 +224,7 @@ export default function OrdersPage() {
         <CardContent>
           {isLoading ? <p className="text-center text-muted-foreground py-12">Loading orders...</p> : list.length === 0 ? <p className="text-center text-muted-foreground py-12">No orders recorded yet.</p> :
           <div className="overflow-x-auto">
-          <table className="w-full text-sm"><thead className="text-left text-muted-foreground border-b"><tr><th className="py-2">Order No</th><th>Customer</th><th>Item</th><th>Karigar</th><th>Est. Wt</th><th>Est. Total</th><th>Advance</th><th>Due</th><th>Status</th><th></th></tr></thead>
+          <table className="w-full text-sm"><thead className="text-left text-muted-foreground border-b"><tr><th className="py-2">Order No</th><th>Customer</th><th>Item</th><th>Karigar</th><th>Advance</th><th>Due Date</th><th>Status</th><th></th></tr></thead>
             <tbody>{paginated.map(r => (<tr key={(r as any)._id || r.id} className="border-b last:border-0 hover:bg-muted/40">
               <td className="py-2">
                 <div className="font-medium">{r.orderNo}</div>
@@ -238,12 +233,15 @@ export default function OrdersPage() {
               <td><div>{r.customerName}</div><div className="text-xs text-muted-foreground">{r.customerMobile}</div></td>
               <td><div>{r.itemDescription}</div><div className="text-xs text-muted-foreground">{r.metal} {r.purity}</div></td>
               <td>{karigars.find(k => k._id === r.karigarId || k.id === r.karigarId)?.name || r.note?.match(/\[Assigned:\s*(.*?)\]/)?.[1] || "—"}</td>
-              <td>{r.estimatedWeight}g</td>
-              <td>{inr(r.estimatedPrice)}</td>
-              <td className="text-green-600 font-medium">{inr(r.advancePaid)}</td>
+              <td className="text-green-600 font-medium">
+                <div>{inr(r.advancePaid)}</div>
+                {r.status === "Delivered" && (r.advancePaid || 0) > 0 && (
+                  <span className="inline-block mt-0.5 bg-green-100 text-green-800 px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase">Settled</span>
+                )}
+              </td>
               <td>{r.dueDate ? formatDate(r.dueDate) : "—"}</td>
-              <td><select className={`border rounded px-2 py-1 text-xs ${r.status === 'Ready' ? 'bg-green-50 text-green-700 border-green-200 font-medium' : 'bg-background'}`} value={r.status} onChange={e => setStatus((r as any)._id || r.id, e.target.value as Order["status"])}>
-                {["Pending","In Progress","Ready","Delivered","Cancelled"].map(s => <option key={s}>{s}</option>)}
+              <td><select className={`border rounded px-2 py-1 text-xs ${r.status === 'Ready' ? 'bg-green-50 text-green-700 border-green-200 font-medium' : r.status === 'Delivered' ? 'bg-slate-100 text-slate-500' : 'bg-background'}`} value={r.status} onChange={e => setStatus((r as any)._id || r.id, e.target.value as Order["status"])} disabled={r.status === 'Delivered'}>
+                {["Pending","In Progress","Ready","Delivered","Cancelled"].filter(s => s !== "Delivered" || r.status === "Delivered").map(s => <option key={s}>{s}</option>)}
               </select></td>
               <td className="text-right">
                 <Button size="sm" variant="ghost" onClick={() => setViewingReceipt(r)}>
@@ -282,8 +280,6 @@ function Stat({ label, value }: { label: string; value: string | number }) {
 }
 
 function OrderInvoiceModal({ order, onClose }: { order: Order; onClose: () => void }) {
-  const balanceDue = (order.estimatedPrice || 0) - (order.advancePaid || 0);
-
   return (
     <div className="fixed inset-0 z-50 bg-black/50 flex justify-center items-start p-2 sm:p-4 print:bg-white print:p-0 overflow-y-auto">
       <div className="bg-white w-full max-w-4xl rounded-lg shadow-xl print:shadow-none print:max-w-none text-slate-900 my-auto relative">
@@ -318,8 +314,6 @@ function OrderInvoiceModal({ order, onClose }: { order: Order; onClose: () => vo
                 <th className="border border-slate-300 py-2 px-3 text-center w-12 text-slate-600">#</th>
                 <th className="border border-slate-300 py-2 px-3 text-left text-slate-600">Item Description</th>
                 <th className="border border-slate-300 py-2 px-3 text-left text-slate-600">Metal & Purity</th>
-                <th className="border border-slate-300 py-2 px-3 text-right text-slate-600">Est. Weight (g)</th>
-                <th className="border border-slate-300 py-2 px-3 text-right text-slate-600">Est. Price</th>
               </tr>
             </thead>
             <tbody>
@@ -327,8 +321,6 @@ function OrderInvoiceModal({ order, onClose }: { order: Order; onClose: () => vo
                 <td className="border border-slate-300 py-2 px-3 text-center text-slate-600">1</td>
                 <td className="border border-slate-300 py-2 px-3 font-semibold">{order.itemDescription}</td>
                 <td className="border border-slate-300 py-2 px-3 text-slate-600">{order.metal} - {order.purity}</td>
-                <td className="border border-slate-300 py-2 px-3 text-right">{order.estimatedWeight} g</td>
-                <td className="border border-slate-300 py-2 px-3 text-right font-bold">{inr(order.estimatedPrice)}</td>
               </tr>
             </tbody>
           </table>
@@ -341,24 +333,15 @@ function OrderInvoiceModal({ order, onClose }: { order: Order; onClose: () => vo
               <table className="w-full">
                 <tbody>
                   <tr className="border-t-2 border-slate-300 text-lg">
-                    <td className="py-2 font-bold text-slate-900">Est. Total Price</td>
-                    <td className="py-2 text-right font-bold text-slate-900">{inr(order.estimatedPrice)}</td>
-                  </tr>
-                  <tr className="border-t border-slate-200">
-                    <td className="py-1.5 text-slate-600">Advance Paid</td>
-                    <td className="py-1.5 text-right font-semibold text-green-700">{inr(order.advancePaid)}</td>
-                  </tr>
-                  <tr>
-                    <td className="py-1.5 font-bold">Balance Due</td>
-                    <td className="py-1.5 text-right font-bold text-rose-700">{inr(balanceDue)}</td>
+                    <td className="py-2 font-bold text-slate-900">
+                      Advance Paid
+                      {order.status === "Delivered" && (order.advancePaid || 0) > 0 && <span className="ml-2 text-xs font-semibold text-green-700 uppercase tracking-wider bg-green-100 px-2 py-0.5 rounded">Settled</span>}
+                    </td>
+                    <td className="py-2 text-right font-bold text-green-700">{inr(order.advancePaid)}</td>
                   </tr>
                 </tbody>
               </table>
             </div>
-          </div>
-
-          <div className="mt-8 flex justify-center border-t border-slate-200 pt-5">
-            <PaymentQr amount={balanceDue} />
           </div>
 
           {/* Signatures */}
