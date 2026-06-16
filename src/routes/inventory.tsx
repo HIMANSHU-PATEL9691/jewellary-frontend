@@ -89,6 +89,15 @@ export default function InventoryPage() {
       (p.huid || "").toLowerCase().includes(debouncedQ.toLowerCase()))
   ).sort((a, b) => (a.name || "").localeCompare(b.name || ""));
 
+  const categoryWeights = useMemo(() => {
+    const weights: Record<string, number> = {};
+    filtered.forEach((p) => {
+      const cat = p.category || "Other";
+      weights[cat] = (weights[cat] || 0) + (p.netWeight || 0);
+    });
+    return Object.entries(weights).sort((a, b) => b[1] - a[1]);
+  }, [filtered]);
+
   const totalPages = Math.ceil(filtered.length / 10) || 1;
   const currentPage = Math.min(page, totalPages);
   const paginated = filtered.slice((currentPage - 1) * 10, currentPage * 10);
@@ -271,7 +280,7 @@ export default function InventoryPage() {
         <div>
           <h1 className="text-4xl">Inventory</h1>
           <p className="text-muted-foreground mt-1">
-            {products.length} item{products.length === 1 ? "" : "s"} in stock.
+            {filtered.length} item{filtered.length === 1 ? "" : "s"} found.
           </p>
         </div>
         <div className="flex flex-wrap gap-2 w-full sm:w-auto">
@@ -506,6 +515,19 @@ export default function InventoryPage() {
           </Select>
         </div>
       </div>
+
+      {categoryWeights.length > 0 && (
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4 mb-4">
+          {categoryWeights.map(([cat, weight]) => (
+            <Card key={cat} className="shadow-sm">
+              <CardContent className="p-4">
+                <div className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">{cat} Weight</div>
+                <div className="text-xl font-display text-primary mt-1">{weight.toFixed(3)} g</div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
 
       <Card>
         <CardContent className="p-0">

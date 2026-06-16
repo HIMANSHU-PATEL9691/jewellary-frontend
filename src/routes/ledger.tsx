@@ -25,6 +25,7 @@ export default function LedgerPage() {
 
   const isOperator = authUser?.role === "operator";
   const invoices = useMemo(() => allInvoices.filter(i => isOperator ? i.type === "GST" : i.type !== "GST"), [allInvoices, isOperator]);
+  const rolePurchases = useMemo(() => purchases.filter(p => isOperator ? (p.type === "GST" || p.gstPct > 0) : !(p.type === "GST" || p.gstPct > 0)), [purchases, isOperator]);
 
   const isLoading = loadingInvoices || loadingExpenses || loadingOrders || loadingRepairs || loadingCustomers || loadingPurchases;
 
@@ -56,7 +57,7 @@ export default function LedgerPage() {
       }
     });
 
-    purchases.forEach(p => {
+    rolePurchases.forEach(p => {
       if (new Date(p.date).toDateString() === targetDateStr) {
         arr.push({ id: p.id || (p as any)._id, time: p.date, type: 'Purchase', icon: ShoppingBag, desc: `Purchase: ${p.billNo} - ${p.supplierName}`, in: 0, out: p.paymentMode === 'Credit' ? 0 : p.total, mode: p.paymentMode });
       }
@@ -71,7 +72,7 @@ export default function LedgerPage() {
 
     // Sort alphabetically by description
     return arr.sort((a, b) => (a.desc || "").localeCompare(b.desc || ""));
-  }, [invoices, expenses, orders, repairs, customers, targetDateStr]);
+  }, [invoices, expenses, orders, repairs, customers, rolePurchases, targetDateStr]);
 
   const totalIn = entries.reduce((s, e) => s + e.in, 0);
   const totalOut = entries.reduce((s, e) => s + e.out, 0);

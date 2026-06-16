@@ -442,7 +442,7 @@ export default function BillingPage() {
     let list = invoices.filter((i) => i.type === "GST");
     if (debouncedSearchQuery) {
       const q = debouncedSearchQuery.toLowerCase().trim();
-      list = list.filter((i) => (i.number || "").toLowerCase().includes(q) || (i.customerName || "").toLowerCase().includes(q) || (i.customerMobile || "").includes(q));
+      list = list.filter((i) => (i.number || "").toLowerCase().includes(q) || (i.customerName || "").toLowerCase().includes(q) || (i.customerMobile || "").includes(q) || (i.customerAddress || "").toLowerCase().includes(q));
     }
     return list.sort((a, b) => (a.customerName || "").localeCompare(b.customerName || ""));
   }, [invoices, debouncedSearchQuery]);
@@ -451,7 +451,7 @@ export default function BillingPage() {
     let list = invoices.filter((i) => i.type === "NON-GST");
     if (debouncedSearchQuery) {
       const q = debouncedSearchQuery.toLowerCase().trim();
-      list = list.filter((i) => (i.number || "").toLowerCase().includes(q) || (i.customerName || "").toLowerCase().includes(q) || (i.customerMobile || "").includes(q));
+      list = list.filter((i) => (i.number || "").toLowerCase().includes(q) || (i.customerName || "").toLowerCase().includes(q) || (i.customerMobile || "").includes(q) || (i.customerAddress || "").toLowerCase().includes(q));
     }
     return list.sort((a, b) => (a.customerName || "").localeCompare(b.customerName || ""));
   }, [invoices, debouncedSearchQuery]);
@@ -486,7 +486,7 @@ export default function BillingPage() {
                     <Label className="text-xs">Search Customer</Label>
                     <Input
                       className="bg-background"
-                      placeholder="Search name or mobile..."
+                    placeholder="Search name, mobile, or address..."
                       value={searchCust}
                       onChange={(e) => {
                         const v = e.target.value;
@@ -495,7 +495,8 @@ export default function BillingPage() {
                           (c) =>
                             c.mobile === v ||
                             c.phone === v ||
-                            c.name.toLowerCase() === v.toLowerCase()
+                            c.name.toLowerCase() === v.toLowerCase() ||
+                            (c.address || "").toLowerCase().includes(v.toLowerCase())
                         );
                         if (match) {
                           setCustomerId(match._id || match.id);
@@ -508,7 +509,7 @@ export default function BillingPage() {
                           if (searchCust.trim() !== "") {
                             const v = searchCust.toLowerCase().trim();
                             const match = customers.find(
-                              (c) => c.name.toLowerCase().includes(v) || (c.mobile || c.phone || "").includes(v)
+                              (c) => c.name.toLowerCase().includes(v) || (c.mobile || c.phone || "").includes(v) || (c.address || "").toLowerCase().includes(v)
                             );
                             if (match) {
                               setCustomerId(match._id || match.id);
@@ -535,7 +536,8 @@ export default function BillingPage() {
                             .filter(
                               (c) =>
                                 c.name.toLowerCase().includes(debouncedSearchCust.toLowerCase()) ||
-                                (c.mobile || c.phone || "").includes(debouncedSearchCust)
+                                (c.mobile || c.phone || "").includes(debouncedSearchCust) ||
+                                (c.address || "").toLowerCase().includes(debouncedSearchCust.toLowerCase())
                             )
                             .sort((a, b) => (a.name || "").localeCompare(b.name || ""))
                             .map((c) => (
@@ -1007,21 +1009,13 @@ export default function BillingPage() {
 
       <div className="relative mb-4 w-full sm:max-w-md">
         <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-        <Input className="pl-9 w-full bg-background border-border shadow-sm" placeholder="Search by invoice no, name or mobile..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
+        <Input className="pl-9 w-full bg-background border-border shadow-sm" placeholder="Search invoice, name, mobile, or address..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
       </div>
 
       {(isOperator ? [{ title: "GST Invoice History", data: gstInvoices }] : [
         { title: "NON-GST Invoice History", data: nonGstInvoices }
       ]).map(({ title, data }, index) => {
         let tableData = data;
-        if (title === "NON-GST Invoice History") {
-          if (nonGstFilter === "INV") {
-            tableData = tableData.filter((i) => !i.number?.startsWith("MAN-"));
-          } else if (nonGstFilter === "MAN") {
-            tableData = tableData.filter((i) => i.number?.startsWith("MAN-"));
-          }
-        }
-
         const totalPages = Math.ceil(tableData.length / 10) || 1;
         const currentPage = Math.min(pages[index] || 1, totalPages);
         const paginated = tableData.slice((currentPage - 1) * 10, currentPage * 10);

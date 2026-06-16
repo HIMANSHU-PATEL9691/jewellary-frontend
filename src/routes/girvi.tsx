@@ -17,7 +17,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { inr, type Girvi, useLocalState } from "@/lib/storage";
 import { useApi, useApiMutation } from "@/hooks/useApi";
-import { girviAPI, customerAPI } from "@/lib/api";
+import { girviAPI, customerAPI, inventoryAPI } from "@/lib/api";
 import { useMemo, useState } from "react";
 import { Plus, Trash2, Printer, Pencil, Search, Image as ImageIcon, Wallet, Scale, Landmark, TrendingUp } from "lucide-react";
 import { formatDate } from "@/lib/utils";
@@ -78,8 +78,12 @@ function calculateInterest(girvi: any) {
   }
 }
 
+function isGirviForwardedSettled(girvi: any) {
+  return girvi.isForwardedSettled || (girvi.note && /\[Forwarding to .*? cleared on .*? - Paid .*?\]/.test(girvi.note));
+}
+
 function calculateForwardedInterest(girvi: any) {
-  if (girvi.isForwardedSettled) return girvi.forwardedSettledInterest || 0;
+  if (isGirviForwardedSettled(girvi)) return girvi.forwardedSettledInterest || 0;
   if (!girvi.forwardedAmount || !girvi.forwardedInterestPct) return 0;
   const isDaily = girvi.forwardedInterestPeriod === "Daily" || girvi.note?.includes("[FwdIntPeriod:Daily]");
   if (isDaily) {
@@ -103,6 +107,7 @@ export default function GirviPage() {
   const updateMutation = useApiMutation((data: { id: string; body: Girvi }) => girviAPI.update(data.id, data.body), ["girvis"]);
   const deleteMutation = useApiMutation((id: string) => girviAPI.delete(id), ["girvis"]);
   const createCustomerMutation = useApiMutation((data: any) => customerAPI.create(data), ["customers"]);
+  const createInventoryMutation = useApiMutation((data: any) => inventoryAPI.create(data), ["inventory"]);
   const [newCust, setNewCust] = useState({ name: "", phone: "", phone2: "", address: "" });
 
   const [filter, setFilter] = useState<"All" | Girvi["status"]>("All");
@@ -156,7 +161,7 @@ export default function GirviPage() {
 
   const totals = useMemo(() => {
     const active = girvis.filter((g) => g.status === "Active");
-    const forwarded = active.filter(g => (g.forwardedAmount || 0) > 0 && !(g as any).isForwardedSettled);
+    const forwarded = active.filter(g => (g.forwardedAmount || 0) > 0 && !isGirviForwardedSettled(g));
     return {
       activeCount: active.length,
       principal: active.reduce((s, g) => s + g.loanAmount, 0),
@@ -174,7 +179,8 @@ export default function GirviPage() {
       list = list.filter((g) => 
         g.customerName.toLowerCase().includes(lowerQ) || 
         g.loanNo.toLowerCase().includes(lowerQ) || 
-        g.customerMobile.includes(lowerQ)
+        g.customerMobile.includes(lowerQ) ||
+        (g.customerAddress || "").toLowerCase().includes(lowerQ)
       );
     }
     return [...list].sort((a, b) => (a.customerName || "").localeCompare(b.customerName || ""));
@@ -380,7 +386,7 @@ export default function GirviPage() {
     const g = girvis.find((x) => x.id === id || (x as any)._id === id);
 
     if ((status === "Closed" || status === "Auctioned") && g) {
-      if (Number(g.forwardedAmount) > 0 && !(g as any).isForwardedSettled) {
+      if (Number(g.forwardedAmount) > 0 && !isGirviForwardedSettled(g)) {
         window.alert("Take item from Forwarded Shops first before closing or auctioning this loan.");
         return;
       }
@@ -506,11 +512,11 @@ export default function GirviPage() {
                 <div>
                   <Label className="text-xs">Search Customer</Label>
                   <Input 
-                    placeholder="Search name or mobile..." 
+                    placeholder="Search name, mobile, or address..." 
                     value={searchCust} 
                     onChange={(e) => {
                       setSearchCust(e.target.value);
-                      const match = customers.find(c => c.mobile === e.target.value || c.phone === e.target.value || c.name.toLowerCase() === e.target.value.toLowerCase());
+                      const match = customers.find(c => c.mobile === e.target.value || c.phone === e.target.value || c.name.toLowerCase() === e.target.value.toLowerCase() || (c.address || "").toLowerCase().includes(e.target.value.toLowerCase()));
                       if (match) setForm({...form, customerName: match.name, customerMobile: match.mobile || match.phone || "", customerMobile2: match.phone2 || "", customerAddress: match.address || ""});
                     }} 
                   />
@@ -528,7 +534,7 @@ export default function GirviPage() {
                     <SelectTrigger><SelectValue placeholder="Select customer" /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="NEW" className="font-semibold text-primary">+ Create New Customer</SelectItem>
-                      {customers.filter(c => c.name.toLowerCase().includes(searchCust.toLowerCase()) || (c.mobile || c.phone || "").includes(searchCust)).sort((a, b) => (a.name || "").localeCompare(b.name || "")).map((c) => (
+                      {customers.filter(c => c.name.toLowerCase().includes(searchCust.toLowerCase()) || (c.mobile || c.phone || "").includes(searchCust) || (c.address || "").toLowerCase().includes(searchCust.toLowerCase())).sort((a, b) => (a.name || "").localeCompare(b.name || "")).map((c) => (
                         <SelectItem key={c.mobile || c.phone} value={c.mobile || c.phone}>{c.name} · {c.mobile || c.phone}</SelectItem>
                       ))}
                     </SelectContent>
@@ -780,7 +786,7 @@ export default function GirviPage() {
                 <div className="relative flex-1 sm:w-64">
                   <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                   <Input 
-                    placeholder="Search customer or loan no..." 
+                    placeholder="Search customer, loan no, or address..." 
                     value={q} 
                     onChange={e => setQ(e.target.value)} 
                     className="pl-9 h-8 bg-background text-xs border-border shadow-sm"
@@ -1088,7 +1094,7 @@ function GirviModal({ girvi, authUser, onClose }: { girvi: Girvi; authUser: any;
               <h4 className="font-bold mb-3 uppercase tracking-wider text-purple-900 flex items-center gap-2">
                 <span className="bg-purple-200 text-purple-900 px-2 py-0.5 rounded">Internal Use Only</span> 
                 Forwarding Details
-                {(girvi as any).isForwardedSettled && <span className="ml-auto bg-green-100 text-green-800 px-2 py-0.5 rounded text-[10px]">SETTLED</span>}
+                {isGirviForwardedSettled(girvi) && <span className="ml-auto bg-green-100 text-green-800 px-2 py-0.5 rounded text-[10px]">SETTLED</span>}
               </h4>
               <div className="grid grid-cols-3 gap-4 text-purple-900">
                 <div>

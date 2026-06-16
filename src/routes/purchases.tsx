@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Layout } from "@/components/Layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { inr, type Purchase, type Supplier } from "@/lib/storage";
+import { inr, type Purchase, type Supplier, useLocalState } from "@/lib/storage";
 import { useDebounce } from "@/lib/utils";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { purchasesAPI, supplierAPI } from "@/lib/api";
@@ -25,6 +25,8 @@ function calcTotal(p: Purchase) {
 }
 
 export default function PurchasesPage() {
+  const [authUser] = useLocalState<any>("ajms.auth", null);
+  const isOperator = authUser?.role === "operator";
   const { data: list = [], isLoading } = useApi<Purchase[]>(["purchases"], () => purchasesAPI.getAll());
   const { data: suppliers = [] } = useApi<Supplier[]>(["suppliers"], () => supplierAPI.getAll());
 
@@ -37,7 +39,9 @@ export default function PurchasesPage() {
   const debouncedSearchSup = useDebounce(searchSup, 300);
   const [page, setPage] = useState(1);
   const empty: any = { id: "", type: "GST", billNo: "", date: new Date().toISOString().slice(0,10), supplierId: "", supplierName: "", metal: "Gold", purity: "22K", weight: 0, ratePerGram: 0, makingCharge: 0, gstPct: 3, total: 0, paymentMode: "Cash", note: "" };
-  const [form, setForm] = useState<Purchase & { type?: string }>(empty);
+  const [form, setForm] = useState<Purchase & { type?: string }>({
+    ...empty, type: isOperator ? "GST" : "NON-GST", gstPct: isOperator ? 3 : 0
+  });
 
   const save = async () => {
     if (!form.supplierName || !form.weight) return;
@@ -123,12 +127,15 @@ export default function PurchasesPage() {
       toast.success("Purchase deleted successfully!");
     }
   };
-  const monthKey = `${new Date().getFullYear()}-${new Date().getMonth()}`;
-  const monthTotal = list.filter(p => { const d = new Date(p.date); return `${d.getFullYear()}-${d.getMonth()}` === monthKey; }).reduce((s, p) => s + p.total, 0);
 
-  const totalPages = Math.ceil(list.length / 10) || 1;
+  const filteredPurchases = useMemo(() => list.filter(p => isOperator ? (p as any).type === "GST" || p.gstPct > 0 : (p as any).type !== "GST" && (!p.gstPct || p.gstPct === 0)), [list, isOperator]);
+
+  const monthKey = `${new Date().getFullYear()}-${new Date().getMonth()}`;
+  const monthTotal = filteredPurchases.filter(p => { const d = new Date(p.date); return `${d.getFullYear()}-${d.getMonth()}` === monthKey; }).reduce((s, p) => s + p.total, 0);
+
+  const totalPages = Math.ceil(filteredPurchases.length / 10) || 1;
   const currentPage = Math.min(page, totalPages);
-  const sortedList = [...list].sort((a, b) => (a.supplierName || "").localeCompare(b.supplierName || ""));
+  const sortedList = [...filteredPurchases].sort((a, b) => (a.supplierName || "").localeCompare(b.supplierName || ""));
   const paginated = sortedList.slice((currentPage - 1) * 10, currentPage * 10);
 
   return (
@@ -136,15 +143,15 @@ export default function PurchasesPage() {
       <header className="flex flex-col sm:flex-row items-start sm:items-end justify-between gap-4 mb-6">
         <div><h1 className="text-4xl">Purchases</h1><p className="text-muted-foreground mt-1">Stock & metal purchased from suppliers.</p></div>
         <Dialog open={open} onOpenChange={setOpen}>
-          <DialogTrigger asChild><Button size="lg" className="w-full sm:w-auto" onClick={() => { setForm(empty); setSearchSup(""); }}><Plus className="w-4 h-4 mr-2"/>New Purchase</Button></DialogTrigger>
+          <DialogTrigger asChild><Button size="lg" className="w-full sm:w-auto" onClick={() => { setForm({...empty, type: isOperator ? "GST" : "NON-GST", gstPct: isOperator ? 3 : 0}); setSearchSup(""); }}><Plus className="w-4 h-4 mr-2"/>New Purchase</Button></DialogTrigger>
           <DialogContent className="max-w-2xl max-h-[75vh] overflow-y-auto" aria-describedby={undefined}><DialogHeader><DialogTitle>Record Purchase</DialogTitle></DialogHeader>
             <div className="grid grid-cols-2 gap-3">
               <div className="col-span-2 grid grid-cols-2 gap-3">
                 <div>
                   <Label className="text-xs">Search Supplier</Label>
-                  <Input placeholder="Search name or mobile..." value={searchSup} onChange={e => {
+                  <Input placeholder="Search name, mobile, or address..." value={searchSup} onChange={e => {
                     setSearchSup(e.target.value);
-                    const match = suppliers.find(s => s.name.toLowerCase() === e.target.value.toLowerCase() || (s.mobile||"").includes(e.target.value));
+                    const match = suppliers.find(s => s.name.toLowerCase() === e.target.value.toLowerCase() || (s.mobile||"").includes(e.target.value) || (s.address || "").toLowerCase().includes(e.target.value.toLowerCase()));
                     if (match) setForm({...form, supplierId: match._id || match.id, supplierName: match.name});
                   }} />
                 </div>
@@ -156,7 +163,7 @@ export default function PurchasesPage() {
                   }}>
                     <SelectTrigger><SelectValue placeholder="Select supplier" /></SelectTrigger>
                     <SelectContent>
-                    {suppliers.filter(s => s.name.toLowerCase().includes(debouncedSearchSup.toLowerCase()) || (s.mobile||"").includes(debouncedSearchSup)).sort((a, b) => (a.name || "").localeCompare(b.name || "")).map(s => (
+                    {suppliers.filter(s => s.name.toLowerCase().includes(debouncedSearchSup.toLowerCase()) || (s.mobile||"").includes(debouncedSearchSup) || (s.address || "").toLowerCase().includes(debouncedSearchSup.toLowerCase())).sort((a, b) => (a.name || "").localeCompare(b.name || "")).map(s => (
                         <SelectItem key={s._id || s.id} value={s._id || s.id}>{s.name} · {s.mobile}</SelectItem>
                       ))}
                     </SelectContent>
@@ -198,15 +205,15 @@ export default function PurchasesPage() {
       </header>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-        <Stat label="Total Purchases" value={list.length} />
+        <Stat label="Total Purchases" value={filteredPurchases.length} />
         <Stat label="This Month" value={inr(monthTotal)} />
-        <Stat label="Suppliers Used" value={new Set(list.map(p => p.supplierName)).size} />
+        <Stat label="Suppliers Used" value={new Set(filteredPurchases.map(p => p.supplierName)).size} />
       </div>
 
       <Card>
         <CardHeader><CardTitle className="font-display flex items-center gap-2"><ShoppingBag className="w-5 h-5"/>Purchase Bills</CardTitle></CardHeader>
         <CardContent className="p-0">
-          {isLoading ? <p className="text-center text-muted-foreground py-12">Loading purchases...</p> : list.length === 0 ? <p className="text-center text-muted-foreground py-12">No purchases yet.</p> :
+          {isLoading ? <p className="text-center text-muted-foreground py-12">Loading purchases...</p> : filteredPurchases.length === 0 ? <p className="text-center text-muted-foreground py-12">No purchases yet.</p> :
           <div className="overflow-x-auto">
           <table className="w-full text-sm"><thead className="text-left text-muted-foreground border-b bg-muted/20"><tr><th className="py-2 px-4">Bill</th><th>Type</th><th>Date</th><th>Supplier</th><th>Metal</th><th>Wt</th><th>Rate</th><th>Mode</th><th className="text-right">Total</th><th></th></tr></thead>
           <tbody>{paginated.map(p => (<tr key={(p as any)._id || p.id} className="border-b last:border-0">
@@ -217,7 +224,7 @@ export default function PurchasesPage() {
             </tr>))}</tbody></table>
           {totalPages > 1 && (
             <div className="flex items-center justify-between px-4 py-3 border-t">
-              <div className="text-xs text-muted-foreground">Showing {(currentPage - 1) * 10 + 1} to {Math.min(currentPage * 10, list.length)} of {list.length} entries</div>
+              <div className="text-xs text-muted-foreground">Showing {(currentPage - 1) * 10 + 1} to {Math.min(currentPage * 10, filteredPurchases.length)} of {filteredPurchases.length} entries</div>
               <div className="flex gap-1">
                 <Button size="sm" variant="outline" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={currentPage === 1}>Prev</Button>
                 <Button size="sm" variant="outline" onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages}>Next</Button>

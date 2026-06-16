@@ -137,7 +137,8 @@ export default function CustomersPage() {
     (c: Customer) =>
       c.name.toLowerCase().includes(debouncedQ.toLowerCase()) ||
       (c.phone || "").includes(debouncedQ) ||
-      (c.phone2 && c.phone2.includes(debouncedQ))
+      (c.phone2 && c.phone2.includes(debouncedQ)) ||
+      (c.address || "").toLowerCase().includes(debouncedQ.toLowerCase())
   ).sort((a: any, b: any) => (a.name || "").localeCompare(b.name || ""));
 
   const totalPages = Math.ceil(filtered.length / 10) || 1;
@@ -530,7 +531,7 @@ export default function CustomersPage() {
         <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
         <Input
           className="pl-9"
-          placeholder="Search by name or phone"
+          placeholder="Search by name, phone, or address"
           value={q}
           onChange={(e) => setQ(e.target.value)}
         />

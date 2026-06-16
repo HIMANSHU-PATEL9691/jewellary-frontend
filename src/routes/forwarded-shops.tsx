@@ -14,30 +14,6 @@ import { toast } from "sonner";
 import { PaymentQr } from "@/components/PaymentQr";
 import { InvoiceTerms, ShopHeader } from "@/components/InvoiceBranding";
 
-function getElapsedDays(dateStr: string) {
-  if (!dateStr) return 0;
-  const start = new Date(dateStr);
-  start.setHours(0, 0, 0, 0);
-  const now = new Date();
-  now.setHours(0, 0, 0, 0);
-  const diffTime = now.getTime() > start.getTime() ? now.getTime() - start.getTime() : 0;
-  return Math.round(diffTime / (1000 * 60 * 60 * 24));
-}
-
-function calculateInterest(girvi: any) {
-  const isDaily = girvi.interestPeriod === "Daily" || girvi.note?.includes("[IntPeriod:Daily]");
-  if (isDaily) {
-    const diffDays = getElapsedDays(girvi.date);
-    const interestPerDay = girvi.loanAmount * (girvi.interestPct / 100);
-    return Math.round(interestPerDay * diffDays);
-  } else {
-    const { months, days } = getElapsedMonthsAndDays(girvi.date);
-    const interestPerMonth = girvi.loanAmount * (girvi.interestPct / 100);
-    const interestForDays = (interestPerMonth / 30) * days;
-    return Math.round((months * interestPerMonth) + interestForDays);
-  }
-}
-
 function getElapsedMonthsAndDays(dateStr: string) {
   if (!dateStr) return { months: 0, days: 0 };
   const start = new Date(dateStr);
@@ -59,8 +35,12 @@ function getElapsedMonthsAndDays(dateStr: string) {
   return { months, days };
 }
 
+function isGirviForwardedSettled(girvi: any) {
+  return girvi.isForwardedSettled || (girvi.note && /\[Forwarding to .*? cleared on .*? - Paid .*?\]/.test(girvi.note));
+}
+
 function calculateForwardedInterest(girvi: any) {
-  if (girvi.isForwardedSettled) return girvi.forwardedSettledInterest || 0;
+  if (isGirviForwardedSettled(girvi)) return girvi.forwardedSettledInterest || 0;
   if (!girvi.forwardedAmount || !girvi.forwardedInterestPct) return 0;
   
   const isDaily = girvi.forwardedInterestPeriod === "Daily" || girvi.note?.includes("[FwdIntPeriod:Daily]");
@@ -136,8 +116,8 @@ export default function ForwardedShopsPage() {
     });
 
     return Array.from(map.values()).map(shop => {
-      const activeRecords = shop.records.filter((r: any) => (r.forwardedAmount || 0) > 0 && !r.isForwardedSettled);
-      const settledRecords = shop.records.filter((r: any) => r.isForwardedSettled || (r.note && /\[Forwarding to .*? cleared on .*? - Paid .*?\]/.test(r.note)));
+      const activeRecords = shop.records.filter((r: any) => (r.forwardedAmount || 0) > 0 && !isGirviForwardedSettled(r));
+      const settledRecords = shop.records.filter((r: any) => isGirviForwardedSettled(r));
       const totalPrincipal = activeRecords.reduce((s: number, r: Girvi) => s + (r.forwardedAmount || 0), 0);
       const totalInterest = activeRecords.reduce((s: number, r: Girvi) => s + calculateForwardedInterest(r), 0);
       
@@ -173,24 +153,10 @@ export default function ForwardedShopsPage() {
     const principal = settlingItem.forwardedAmount || 0;
     const interest = calculateForwardedInterest(settlingItem);
     const total = principal + interest;
-    
-    let newStatus = settlingItem.status;
-    if (newStatus !== "Closed") {
-      const askClose = window.confirm(`Item will be settled with the forwarded shop.\n\nDo you also want to close the customer's Girvi loan (${settlingItem.loanNo}) now?`);
-      if (askClose) {
-        const custInterest = calculateInterest(settlingItem);
-        const custTotal = settlingItem.loanAmount + custInterest;
-        const confirmClose = window.confirm(`Close customer loan?\n\nPrincipal: ${inr(settlingItem.loanAmount)}\nAccrued Interest: ${inr(custInterest)}\nTotal to Collect: ${inr(custTotal)}\n\nIs the full amount cleared by the customer?`);
-        if (confirmClose) {
-          newStatus = "Closed";
-        }
-      }
-    }
 
     try {
       const updatedGirvi = {
         ...settlingItem,
-        status: newStatus,
         isForwardedSettled: true,
         forwardedSettledDate: new Date().toISOString(),
         forwardedSettledInterest: interest,
@@ -208,7 +174,7 @@ export default function ForwardedShopsPage() {
       });
       
       setSettlingItem(null);
-      toast.success(newStatus === "Closed" ? "Item settled and customer loan closed." : "Item settled and received from forwarded shop.");
+      toast.success("Item settled and received from forwarded shop.");
     } catch (e) {
       toast.error("Failed to settle forwarding");
     }
@@ -405,7 +371,7 @@ export default function ForwardedShopsPage() {
                           <td className="py-2 text-right text-amber-600">{inr(interest)}</td>
                           <td className="py-2 px-3 text-right font-medium text-rose-600">{inr((r.forwardedAmount || 0) + interest)}</td>
                           <td className="py-2 px-3 text-right">
-                                {(r as any).isForwardedSettled ? (
+                                {isGirviForwardedSettled(r) ? (
                                   <span className="bg-green-100 text-green-800 px-2 py-0.5 rounded text-[10px] font-semibold uppercase inline-block">Settled</span>
                                 ) : (
                                   <Button size="sm" variant="outline" className="border-green-200 text-green-700 hover:bg-green-50" onClick={() => setSettlingItem(r)}>

@@ -162,11 +162,11 @@ export default function AdvancePage() {
                 <div>
                   <Label className="text-xs">Search Customer</Label>
                   <Input 
-                    placeholder="Search name or mobile..." 
+                    placeholder="Search name, mobile, or address..." 
                     value={searchCust} 
                     onChange={(e) => {
                       setSearchCust(e.target.value);
-                      const match = customers.find(c => c.mobile === e.target.value || (c as any).phone === e.target.value || c.name.toLowerCase() === e.target.value.toLowerCase());
+                      const match = customers.find(c => c.mobile === e.target.value || (c as any).phone === e.target.value || c.name.toLowerCase() === e.target.value.toLowerCase() || (c.address || "").toLowerCase().includes(e.target.value.toLowerCase()));
                       if (match) setForm({...form, customerId: match._id || match.id, customerName: match.name, customerMobile: match.mobile || (match as any).phone || ""});
                     }} 
                   />
@@ -184,7 +184,7 @@ export default function AdvancePage() {
                     <SelectTrigger><SelectValue placeholder="Select customer" /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="NEW" className="font-semibold text-primary">+ Create New Customer</SelectItem>
-                      {customers.filter(c => c.name.toLowerCase().includes(searchCust.toLowerCase()) || (c.mobile || (c as any).phone || "").includes(searchCust)).sort((a, b) => (a.name || "").localeCompare(b.name || "")).map((c) => (
+                      {customers.filter(c => c.name.toLowerCase().includes(searchCust.toLowerCase()) || (c.mobile || (c as any).phone || "").includes(searchCust) || (c.address || "").toLowerCase().includes(searchCust.toLowerCase())).sort((a, b) => (a.name || "").localeCompare(b.name || "")).map((c) => (
                         <SelectItem key={(c as any)._id || c.id} value={(c as any)._id || c.id}>
                           {c.name} · {c.mobile || (c as any).phone}
                         </SelectItem>

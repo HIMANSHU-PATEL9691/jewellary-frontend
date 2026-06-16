@@ -93,7 +93,8 @@ export default function KarigarsPage() {
   const filtered = list.filter(s => 
     s.name.toLowerCase().includes(debouncedQ.toLowerCase()) || 
     s.mobile.includes(debouncedQ) || 
-    (s.companyName || "").toLowerCase().includes(debouncedQ.toLowerCase())
+    (s.companyName || "").toLowerCase().includes(debouncedQ.toLowerCase()) ||
+    (s.address || "").toLowerCase().includes(debouncedQ.toLowerCase())
   ).sort((a, b) => (a.name || "").localeCompare(b.name || ""));
 
   const isLoading_UI = isLoading || createMutation.isPending || updateMutation.isPending || deleteMutation.isPending;
@@ -186,7 +187,7 @@ export default function KarigarsPage() {
 
       <div className="relative mb-4 max-w-md">
         <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-        <Input className="pl-9" placeholder="Search by name, mobile or company" value={q} onChange={(e) => setQ(e.target.value)} name="search-karigars-query" id="search-karigars-query" autoComplete="new-password" role="presentation" />
+        <Input className="pl-9" placeholder="Search by name, mobile, company, or address" value={q} onChange={(e) => setQ(e.target.value)} name="search-karigars-query" id="search-karigars-query" autoComplete="new-password" role="presentation" />
       </div>
 
       <Card>

@@ -54,6 +54,7 @@ export default function Dashboard() {
 
   const isOperator = authUser?.role === "operator";
   const invoices = useMemo(() => allInvoices.filter(i => isOperator ? i.type === "GST" : i.type !== "GST"), [allInvoices, isOperator]);
+  const rolePurchases = useMemo(() => purchases.filter(p => isOperator ? (p.type === "GST" || p.gstPct > 0) : !(p.type === "GST" || p.gstPct > 0)), [purchases, isOperator]);
 
   const rates = ratesList[0] || defaultRates;
 
@@ -78,7 +79,7 @@ export default function Dashboard() {
   const todayExpense = expenses.filter((e) => new Date(e.date).toDateString() === today).reduce((s, e) => s + e.amount, 0);
   const monthExpense = expenses.filter((e) => inMonth(e.date)).reduce((s, e) => s + e.amount, 0);
   const totalDue = suppliers.reduce((s, sup) => s + (sup.outstanding || 0), 0);
-  const purchaseAmount = purchases.reduce((s, p) => s + p.total, 0);
+  const purchaseAmount = rolePurchases.reduce((s, p) => s + p.total, 0);
   const todayCustomers = new Set(todayInvoices.map((i) => i.customerId || i.customerMobile || i.customerName)).size;
 
   const counts = new Map<string, number>();
@@ -86,9 +87,9 @@ export default function Dashboard() {
   const loyal = customers.filter((c) => (counts.get(c._id || c.id) || 0) >= LOYAL_THRESHOLD).length;
   const normal = customers.length - loyal;
 
-  const stockValue = products.reduce((s, p) => s + p.netWeight * p.ratePerGram * p.stock, 0);
-  const goldGrams = products.filter(p => p.category === "Gold").reduce((s, p) => s + p.netWeight * p.stock, 0);
-  const silverGrams = products.filter(p => p.category === "Silver").reduce((s, p) => s + p.netWeight * p.stock, 0);
+  const stockValue = products.reduce((s, p) => s + p.netWeight * p.ratePerGram, 0);
+  const goldGrams = products.filter(p => p.category === "Gold").reduce((s, p) => s + p.netWeight, 0);
+  const silverGrams = products.filter(p => p.category === "Silver").reduce((s, p) => s + p.netWeight, 0);
 
   // 7-day trend
   const days: { label: string; Sales: number }[] = [];
@@ -134,7 +135,7 @@ export default function Dashboard() {
     { label: "Total Sell", value: inr(totalSell), icon: TrendingUp, sub: `${invoices.length} invoices`, to: "/sales" },
     { label: "Total Money Today", value: inr(todaySales), icon: Wallet, sub: `${todayInvoices.length} invoices`, to: "/sales" },
     { label: "Total Due", value: inr(totalDue), icon: AlertTriangle, sub: `${suppliers.length} suppliers`, to: "/suppliers" },
-    { label: "Purchase Amount", value: inr(purchaseAmount), icon: Package, sub: `${purchases.length} purchases`, to: "/purchases" },
+    { label: "Purchase Amount", value: inr(purchaseAmount), icon: Package, sub: `${rolePurchases.length} purchases`, to: "/purchases" },
     { label: "Today's Customers", value: todayCustomers, icon: UserCheck, sub: `${todayInvoices.length} invoices`, to: "/customers" },
     { label: "Today's Sales", value: inr(todaySales), icon: TrendingUp, sub: `${todayInvoices.length} invoices`, to: "/sales" },
     { label: "24K Gold Rate", value: inr(displayRates.gold24), icon: TrendingUp, sub: "/g", to: "/gold-rates" },

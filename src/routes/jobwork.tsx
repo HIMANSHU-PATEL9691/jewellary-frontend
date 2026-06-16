@@ -66,9 +66,9 @@ export default function JobWorkPage() {
               <div className="col-span-2 grid grid-cols-2 gap-3">
                 <div>
                   <Label className="text-xs">Search Karigar</Label>
-                  <Input placeholder="Search name..." value={searchKar} onChange={e => {
+                  <Input placeholder="Search name, mobile, or address..." value={searchKar} onChange={e => {
                     setSearchKar(e.target.value);
-                    const match = karigars.find(k => k.name.toLowerCase() === e.target.value.toLowerCase() || (k.mobile||"").includes(e.target.value));
+                    const match = karigars.find(k => k.name.toLowerCase() === e.target.value.toLowerCase() || (k.mobile||"").includes(e.target.value) || (k.address || "").toLowerCase().includes(e.target.value.toLowerCase()));
                     if (match) setForm({...form, karigarId: match._id || match.id, karigarName: match.name});
                   }} />
                 </div>
@@ -80,7 +80,7 @@ export default function JobWorkPage() {
                   }}>
                     <SelectTrigger><SelectValue placeholder="Select karigar" /></SelectTrigger>
                     <SelectContent>
-                    {karigars.filter(k => k.name.toLowerCase().includes(searchKar.toLowerCase()) || (k.mobile||"").includes(searchKar)).sort((a, b) => (a.name || "").localeCompare(b.name || "")).map(k => (
+                    {karigars.filter(k => k.name.toLowerCase().includes(searchKar.toLowerCase()) || (k.mobile||"").includes(searchKar) || (k.address || "").toLowerCase().includes(searchKar.toLowerCase())).sort((a, b) => (a.name || "").localeCompare(b.name || "")).map(k => (
                         <SelectItem key={k._id || k.id} value={k._id || k.id}>{k.name}</SelectItem>
                       ))}
                     </SelectContent>

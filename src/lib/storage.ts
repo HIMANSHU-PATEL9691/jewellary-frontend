@@ -81,6 +81,7 @@ export type Invoice = {
   customerId?: string;
   customerName: string;
   customerMobile: string;
+  customerAddress?: string;
   items: InvoiceItem[];
   discount: number;
   oldGoldAmount: number;

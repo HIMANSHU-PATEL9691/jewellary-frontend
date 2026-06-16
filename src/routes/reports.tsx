@@ -21,7 +21,7 @@ export default function ReportsPage() {
 
   const isOperator = authUser?.role === "operator";
   const invoices = useMemo(() => allInvoices.filter(i => isOperator ? i.type === "GST" : i.type !== "GST"), [allInvoices, isOperator]);
-  const purchases = useMemo(() => allPurchases.filter(p => !(p.type === "GST" || p.gstPct > 0)), [allPurchases]); // non-gst
+  const purchases = useMemo(() => allPurchases.filter(p => isOperator ? (p.type === "GST" || p.gstPct > 0) : !(p.type === "GST" || p.gstPct > 0)), [allPurchases, isOperator]);
 
   const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().slice(0, 10));
   const [dateFocused, setDateFocused] = useState(false);

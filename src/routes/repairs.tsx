@@ -138,7 +138,8 @@ export default function RepairsPage() {
         o.customerName.toLowerCase().includes(lowerQ) ||
         o.ticketNo.toLowerCase().includes(lowerQ) ||
         o.customerMobile.includes(lowerQ) ||
-        o.itemDescription.toLowerCase().includes(lowerQ)
+        o.itemDescription.toLowerCase().includes(lowerQ) ||
+        (o.customerAddress || "").toLowerCase().includes(lowerQ)
       );
     }
     return [...result].sort((a, b) => (a.customerName || "").localeCompare(b.customerName || ""));
@@ -170,11 +171,11 @@ export default function RepairsPage() {
                 <div>
                   <Label className="text-xs">Search Customer</Label>
                   <Input 
-                    placeholder="Search name or mobile..." 
+                    placeholder="Search name, mobile, or address..." 
                     value={searchCust} 
                     onChange={(e) => {
                       setSearchCust(e.target.value);
-                      const match = customers.find(c => c.mobile === e.target.value || (c as any).phone === e.target.value || c.name.toLowerCase() === e.target.value.toLowerCase());
+                      const match = customers.find(c => c.mobile === e.target.value || (c as any).phone === e.target.value || c.name.toLowerCase() === e.target.value.toLowerCase() || (c.address || "").toLowerCase().includes(e.target.value.toLowerCase()));
                       if (match) setForm({...form, customerName: match.name, customerMobile: match.mobile || (match as any).phone || "", customerAddress: match.address || ""});
                     }} 
                   />
@@ -192,7 +193,7 @@ export default function RepairsPage() {
                     <SelectTrigger><SelectValue placeholder="Select customer" /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="NEW" className="font-semibold text-primary">+ Create New Customer</SelectItem>
-                      {customers.filter(c => c.name.toLowerCase().includes(debouncedSearchCust.toLowerCase()) || (c.mobile || (c as any).phone || "").includes(debouncedSearchCust)).sort((a, b) => (a.name || "").localeCompare(b.name || "")).map((c) => (
+                      {customers.filter(c => c.name.toLowerCase().includes(debouncedSearchCust.toLowerCase()) || (c.mobile || (c as any).phone || "").includes(debouncedSearchCust) || (c.address || "").toLowerCase().includes(debouncedSearchCust.toLowerCase())).sort((a, b) => (a.name || "").localeCompare(b.name || "")).map((c) => (
                         <SelectItem key={c.mobile || c.phone} value={c.mobile || c.phone}>{c.name} · {c.mobile || (c as any).phone}</SelectItem>
                       ))}
                     </SelectContent>
@@ -221,9 +222,9 @@ export default function RepairsPage() {
               <div className="col-span-2 grid grid-cols-2 gap-3">
                 <div>
                   <Label className="text-xs">Search Karigar</Label>
-                  <Input placeholder="Search name..." value={searchKar} onChange={e => {
+                  <Input placeholder="Search name, mobile, or address..." value={searchKar} onChange={e => {
                     setSearchKar(e.target.value);
-                    const match = karigars.find(k => k.name.toLowerCase() === e.target.value.toLowerCase() || (k.mobile||"").includes(e.target.value));
+                    const match = karigars.find(k => k.name.toLowerCase() === e.target.value.toLowerCase() || (k.mobile||"").includes(e.target.value) || (k.address || "").toLowerCase().includes(e.target.value.toLowerCase()));
                     if (match) setForm({...form, karigarId: match._id || match.id});
                   }} />
                 </div>
@@ -233,7 +234,7 @@ export default function RepairsPage() {
                     <SelectTrigger><SelectValue placeholder="Unassigned" /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="unassigned">Unassigned</SelectItem>
-                      {karigars.filter(k => k.name.toLowerCase().includes(debouncedSearchKar.toLowerCase()) || (k.mobile||"").includes(debouncedSearchKar)).sort((a, b) => (a.name || "").localeCompare(b.name || "")).map(k => (
+                      {karigars.filter(k => k.name.toLowerCase().includes(debouncedSearchKar.toLowerCase()) || (k.mobile||"").includes(debouncedSearchKar) || (k.address || "").toLowerCase().includes(debouncedSearchKar.toLowerCase())).sort((a, b) => (a.name || "").localeCompare(b.name || "")).map(k => (
                         <SelectItem key={k._id || k.id} value={k._id || k.id}>{k.name}</SelectItem>
                       ))}
                     </SelectContent>
@@ -296,7 +297,7 @@ export default function RepairsPage() {
               <div className="relative flex-1 sm:w-64">
                 <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input
-                  placeholder="Search ticket or customer..."
+                  placeholder="Search ticket, customer, or address..."
                   value={q}
                   onChange={e => setQ(e.target.value)}
                   className="pl-9 h-8 bg-background text-xs border-border shadow-sm"

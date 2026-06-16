@@ -27,7 +27,7 @@ export default function SalesPage() {
   const [pages, setPages] = useState<Record<number, number>>({});
 
   const filtered = invoices.filter(i =>
-    (i.number + i.customerName + i.customerMobile).toLowerCase().includes(debouncedQ.toLowerCase())
+    (i.number + i.customerName + i.customerMobile + (i.customerAddress || "")).toLowerCase().includes(debouncedQ.toLowerCase())
   ).sort((a, b) => (a.customerName || "").localeCompare(b.customerName || ""));
   const total = filtered.reduce((s, i) => s + i.total, 0);
 
@@ -98,7 +98,7 @@ export default function SalesPage() {
       </Card>
 
       <div className="flex justify-end mb-4">
-        <Input placeholder="Search invoice / customer" value={q} onChange={e => setQ(e.target.value)} className="max-w-xs bg-background" />
+        <Input placeholder="Search invoice, customer, or address" value={q} onChange={e => setQ(e.target.value)} className="max-w-xs bg-background" />
       </div>
 
       {[

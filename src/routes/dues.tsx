@@ -27,7 +27,8 @@ export default function DuesPage() {
         (i) =>
           i.customerName.toLowerCase().includes(debouncedQ.toLowerCase()) ||
           i.customerMobile.includes(debouncedQ) ||
-          i.number.toLowerCase().includes(debouncedQ.toLowerCase())
+          i.number.toLowerCase().includes(debouncedQ.toLowerCase()) ||
+          (i.customerAddress || "").toLowerCase().includes(debouncedQ.toLowerCase())
       )
       .filter((i) => {
         if (!dateFilter) return true;
@@ -82,7 +83,7 @@ export default function DuesPage() {
       <div className="flex flex-col sm:flex-row gap-3 mb-4 max-w-2xl">
         <div className="relative flex-1">
           <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-          <Input className="pl-9 bg-background" placeholder="Search by customer name, mobile or invoice no" value={q} onChange={(e) => setQ(e.target.value)} />
+          <Input className="pl-9 bg-background" placeholder="Search customer, mobile, invoice, or address" value={q} onChange={(e) => setQ(e.target.value)} />
         </div>
         <div className="flex items-center gap-2">
           <Input
