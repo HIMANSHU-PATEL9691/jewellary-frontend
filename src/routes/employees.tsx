@@ -9,7 +9,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Plus, Trash2, Pencil, Search, Briefcase, IndianRupee, Users } from "lucide-react";
 import { inr } from "@/lib/storage";
 import { formatDate } from "@/lib/utils";
-import { DatePicker } from "@/components/ui/date-picker";
 import { toast } from "sonner";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { employeesAPI } from "@/lib/api";
@@ -61,6 +60,7 @@ export default function EmployeesPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [q, setQ] = useState("");
   const [page, setPage] = useState(1);
+  const [dateFocused, setDateFocused] = useState(false);
 
   const save = async () => {
     if (!form.name || !form.role || !form.salary) {
@@ -127,7 +127,7 @@ export default function EmployeesPage() {
       e.name.toLowerCase().includes(q.toLowerCase()) ||
       e.phone.includes(q) ||
       e.role.toLowerCase().includes(q.toLowerCase())
-  );
+  ).sort((a, b) => (a.name || "").localeCompare(b.name || ""));
 
   const activeCount = list.filter((e) => e.status === "Active").length;
   const totalSalary = list.filter((e) => e.status === "Active").reduce((sum, e) => sum + e.salary, 0);
@@ -178,7 +178,18 @@ export default function EmployeesPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5">
                   <Label className="text-xs">Join Date</Label>
-                  <DatePicker value={form.joinDate} onChange={(v) => setForm({ ...form, joinDate: v })} className="w-full" />
+                  {(() => {
+                    let displayValue = form.joinDate;
+                    if (!dateFocused && form.joinDate) {
+                      const parts = form.joinDate.split('-');
+                      if (parts.length === 3) {
+                        displayValue = `${parts[2]}/${parts[1]}/${parts[0]}`;
+                      }
+                    }
+                    return (
+                      <Input type={dateFocused ? "date" : "text"} placeholder="DD/MM/YYYY" value={displayValue} onChange={(e) => setForm({ ...form, joinDate: e.target.value })} onFocus={() => setDateFocused(true)} onBlur={() => setDateFocused(false)} className="w-full" />
+                    );
+                  })()}
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs">Status</Label>

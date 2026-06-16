@@ -31,11 +31,11 @@ export default function KarigarTasksPage() {
   const activeKarigarName = useMemo(() => karigars.find(k => (k._id || k.id) === selectedKarigarId)?.name || "", [karigars, selectedKarigarId]);
 
   const assignedRepairs = useMemo(() => {
-    return repairs.filter((r) => r.karigarId === selectedKarigarId || (activeKarigarName && r.note?.includes(`[Assigned: ${activeKarigarName}]`))).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    return repairs.filter((r) => r.karigarId === selectedKarigarId || (activeKarigarName && r.note?.includes(`[Assigned: ${activeKarigarName}]`))).sort((a, b) => (a.customerName || "").localeCompare(b.customerName || ""));
   }, [repairs, selectedKarigarId, activeKarigarName]);
 
   const assignedOrders = useMemo(() => {
-    return orders.filter((o) => o.karigarId === selectedKarigarId || (activeKarigarName && o.note?.includes(`[Assigned: ${activeKarigarName}]`))).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    return orders.filter((o) => o.karigarId === selectedKarigarId || (activeKarigarName && o.note?.includes(`[Assigned: ${activeKarigarName}]`))).sort((a, b) => (a.customerName || "").localeCompare(b.customerName || ""));
   }, [orders, selectedKarigarId, activeKarigarName]);
 
   const activeRepairs = useMemo(() => assignedRepairs.filter(r => r.status !== "Delivered"), [assignedRepairs]);

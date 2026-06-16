@@ -21,7 +21,7 @@ import { useApi, useApiMutation } from "@/hooks/useApi";
 import { advancesAPI, customerAPI } from "@/lib/api";
 import { useMemo, useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
-import { DatePicker } from "@/components/ui/date-picker";
+import { toast } from "sonner";
 
 export default function AdvancePage() {
   const { data: advances = [], isLoading } = useApi<Advance[]>(["advances"], () => advancesAPI.getAll());
@@ -30,10 +30,13 @@ export default function AdvancePage() {
   const createMutation = useApiMutation((data: Advance) => advancesAPI.create(data), ["advances"]);
   const updateMutation = useApiMutation((data: { id: string; body: Advance }) => advancesAPI.update(data.id, data.body), ["advances"]);
   const deleteMutation = useApiMutation((id: string) => advancesAPI.delete(id), ["advances"]);
+  const createCustomerMutation = useApiMutation((data: any) => customerAPI.create(data), ["customers"]);
 
   const [open, setOpen] = useState(false);
   const [searchCust, setSearchCust] = useState("");
   const [page, setPage] = useState(1);
+  const [newCust, setNewCust] = useState({ name: "", phone: "", phone2: "", address: "" });
+  const [dateFocused, setDateFocused] = useState(false);
   const [form, setForm] = useState({
     date: new Date().toISOString().slice(0, 10),
     customerId: "",
@@ -56,16 +59,46 @@ export default function AdvancePage() {
   }, [advances]);
 
   async function add() {
-    if (!form.customerName || !form.amount || !form.ratePerGram) return;
+    if (!form.amount || !form.ratePerGram) return;
+    if (form.customerId !== "NEW" && !form.customerName) return;
+
+    let custId = form.customerId;
+    let custName = form.customerName;
+    let custMobile = form.customerMobile;
+
+    if (form.customerId === "NEW") {
+      if (!newCust.name) {
+        toast.error("Customer name is required for a new customer.");
+        return;
+      }
+      if (!newCust.address) {
+        toast.error("Customer address is required for a new customer.");
+        return;
+      }
+      try {
+        const created = await createCustomerMutation.mutateAsync(newCust);
+        custId = created._id || created.id;
+        custName = created.name;
+        custMobile = created.phone || created.mobile || "";
+      } catch (e) {
+        toast.error("Failed to create new customer");
+        return;
+      }
+    }
+
     const weightLocked = form.amount / form.ratePerGram;
     const payload = {
       ...form,
+      customerId: custId,
+      customerName: custName,
+      customerMobile: custMobile,
       weightLocked,
       status: "Active",
     };
     try {
       await createMutation.mutateAsync(payload as any);
       setForm({ ...form, customerName: "", customerMobile: "", customerId: "", amount: 0, note: "" });
+      setNewCust({ name: "", phone: "", phone2: "", address: "" });
       setOpen(false);
     } catch (error) {
       console.error("[Advances] Error saving to DB:", error);
@@ -81,7 +114,7 @@ export default function AdvancePage() {
     await deleteMutation.mutateAsync(id);
   }
 
-  const sorted = [...advances].sort((a, b) => b.date.localeCompare(a.date));
+  const sorted = [...advances].sort((a, b) => (a.customerName || "").localeCompare(b.customerName || ""));
 
   const totalPages = Math.ceil(sorted.length / 10) || 1;
   const currentPage = Math.min(page, totalPages);
@@ -99,7 +132,7 @@ export default function AdvancePage() {
 
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
-            <Button size="lg" className="w-full sm:w-auto">
+            <Button size="lg" className="w-full sm:w-auto" onClick={() => { setForm({ ...form, customerName: "", customerMobile: "", customerId: "", amount: 0, note: "" }); setNewCust({ name: "", phone: "", phone2: "", address: "" }); setSearchCust(""); }}>
               <Plus className="w-4 h-4 mr-2" /> New Advance
             </Button>
           </DialogTrigger>
@@ -111,7 +144,18 @@ export default function AdvancePage() {
             <div className="space-y-3">
               <div>
                 <Label>Date</Label>
-                <DatePicker value={form.date} onChange={(v) => setForm({ ...form, date: v })} className="w-full" />
+                {(() => {
+                  let displayValue = form.date;
+                  if (!dateFocused && form.date) {
+                    const parts = form.date.split('-');
+                    if (parts.length === 3) {
+                      displayValue = `${parts[2]}/${parts[1]}/${parts[0]}`;
+                    }
+                  }
+                  return (
+                    <Input type={dateFocused ? "date" : "text"} placeholder="DD/MM/YYYY" value={displayValue} onChange={(e) => setForm({ ...form, date: e.target.value })} onFocus={() => setDateFocused(true)} onBlur={() => setDateFocused(false)} className="w-full" />
+                  );
+                })()}
               </div>
 
               <div className="col-span-2 grid grid-cols-2 gap-3">
@@ -130,12 +174,17 @@ export default function AdvancePage() {
                 <div>
                   <Label className="text-xs">Customer *</Label>
                   <Select value={form.customerId || ""} onValueChange={(val) => {
-                    const match = customers.find(c => (c._id || c.id) === val);
-                    if (match) setForm({...form, customerId: val, customerName: match.name, customerMobile: match.mobile || (match as any).phone || ""});
+                    if (val === "NEW") {
+                      setForm({...form, customerId: "NEW", customerName: "", customerMobile: ""});
+                    } else {
+                      const match = customers.find(c => (c._id || c.id) === val);
+                      if (match) setForm({...form, customerId: val, customerName: match.name, customerMobile: match.mobile || (match as any).phone || ""});
+                    }
                   }}>
                     <SelectTrigger><SelectValue placeholder="Select customer" /></SelectTrigger>
                     <SelectContent>
-                      {customers.filter(c => c.name.toLowerCase().includes(searchCust.toLowerCase()) || (c.mobile || (c as any).phone || "").includes(searchCust)).map((c) => (
+                      <SelectItem value="NEW" className="font-semibold text-primary">+ Create New Customer</SelectItem>
+                      {customers.filter(c => c.name.toLowerCase().includes(searchCust.toLowerCase()) || (c.mobile || (c as any).phone || "").includes(searchCust)).sort((a, b) => (a.name || "").localeCompare(b.name || "")).map((c) => (
                         <SelectItem key={(c as any)._id || c.id} value={(c as any)._id || c.id}>
                           {c.name} · {c.mobile || (c as any).phone}
                         </SelectItem>
@@ -144,6 +193,15 @@ export default function AdvancePage() {
                   </Select>
                 </div>
               </div>
+
+              {form.customerId === "NEW" && (
+                <div className="p-3 rounded-md bg-primary/5 border border-primary/20 text-sm space-y-3 mt-2 col-span-2">
+                  <div className="space-y-1.5"><Label className="text-xs">Full Name *</Label><Input value={newCust.name} onChange={e => setNewCust({...newCust, name: e.target.value})} className="h-8 bg-background" /></div>
+                  <div className="space-y-1.5"><Label className="text-xs">Mobile No (optional)</Label><Input value={newCust.phone} onChange={e => setNewCust({...newCust, phone: e.target.value})} className="h-8 bg-background" /></div>
+                  <div className="space-y-1.5"><Label className="text-xs">Mobile No 2 (optional)</Label><Input value={newCust.phone2} onChange={e => setNewCust({...newCust, phone2: e.target.value})} className="h-8 bg-background" /></div>
+                  <div className="space-y-1.5"><Label className="text-xs">Address *</Label><Input value={newCust.address} onChange={e => setNewCust({...newCust, address: e.target.value})} className="h-8 bg-background" /></div>
+                </div>
+              )}
 
               <div className="grid grid-cols-2 gap-2">
                 <div>

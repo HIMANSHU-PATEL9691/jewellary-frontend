@@ -7,23 +7,33 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { inr, type Repair, type Karigar } from "@/lib/storage";
-import { formatDate } from "@/lib/utils";
+import { useDebounce } from "@/lib/utils";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { repairsAPI, karigarsAPI, customerAPI } from "@/lib/api";
 import { Plus, Trash2, Wrench, Pencil, Printer, Search } from "lucide-react";
-import { DatePicker } from "@/components/ui/date-picker";
 import { InvoiceTerms, ShopHeader } from "@/components/InvoiceBranding";
+import { toast } from "sonner";
+import { format } from "date-fns";
+
+const formatDate = (date: string | Date) => {
+  if (!date) return "";
+  const d = typeof date === "string" ? new Date(date) : date;
+  return isNaN(d.getTime()) ? "" : format(d, "dd/MM/yyyy");
+};
 
 export default function RepairsPage() {
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [searchCust, setSearchCust] = useState("");
+  const debouncedSearchCust = useDebounce(searchCust, 300);
   const [searchKar, setSearchKar] = useState("");
+  const debouncedSearchKar = useDebounce(searchKar, 300);
   const empty: Repair = { ticketNo: "", date: new Date().toISOString().slice(0,10), customerName: "", customerMobile: "", customerAddress: "", itemDescription: "", itemWeight: 0, problem: "", advance: 0, deliveryDate: "", karigarId: "", status: "Received", note: "", customerSignature: "", authorizedSignatory: "" };
   const [form, setForm] = useState<Repair>(empty);
   const [viewingReceipt, setViewingReceipt] = useState<Repair | null>(null);
   const [page, setPage] = useState(1);
   const [q, setQ] = useState("");
+  const debouncedQ = useDebounce(q, 300);
   const [filter, setFilter] = useState<"All" | Repair["status"]>("All");
 
   const { data = [], isLoading, error } = useApi<Repair[]>(["repairs"], () => repairsAPI.getAll());
@@ -35,6 +45,7 @@ export default function RepairsPage() {
     ["repairs"]
   );
   const deleteMutation = useApiMutation((id: string) => repairsAPI.delete(id), ["repairs"]);
+  const createCustomerMutation = useApiMutation((data: any) => customerAPI.create(data), ["customers"]);
 
   const list = (data || []).map((item) => ({
     ...item,
@@ -42,9 +53,35 @@ export default function RepairsPage() {
     date: item.date ? new Date(item.date).toISOString().slice(0,10) : new Date().toISOString().slice(0,10),
     deliveryDate: item.deliveryDate ? new Date(item.deliveryDate).toISOString().slice(0,10) : "",
   }));
+  const [newCust, setNewCust] = useState({ name: "", phone: "", phone2: "", address: "" });
 
   const save = async () => {
-    if (!form.customerName) return;
+    if (form.customerMobile !== "NEW" && !form.customerName) return;
+
+    let custName = form.customerName;
+    let custMobile = form.customerMobile;
+    let custAddress = form.customerAddress;
+
+    if (form.customerMobile === "NEW") {
+      if (!newCust.name) {
+        toast.error("Customer name is required for a new customer.");
+        return;
+      }
+      if (!newCust.address) {
+        toast.error("Customer address is required for a new customer.");
+        return;
+      }
+      try {
+        const created = await createCustomerMutation.mutateAsync(newCust);
+        custName = created.name;
+        custMobile = created.phone || created.mobile || "";
+        custAddress = created.address || "";
+      } catch (e) {
+        toast.error("Failed to create new customer");
+        return;
+      }
+    }
+
     const ticketNo = form.ticketNo || `REP-${(list.length + 1).toString().padStart(4, "0")}`;
     const finalKarigarId = form.karigarId === "unassigned" ? "" : form.karigarId;
 
@@ -59,7 +96,7 @@ export default function RepairsPage() {
       safeNote = safeNote.replace(/\[Assigned:.*?\]/g, "").trim();
     }
 
-    const payload = { ...form, ticketNo, status: form.status || "Received", karigarId: finalKarigarId, note: safeNote.trim() };
+    const payload = { ...form, customerName: custName, customerMobile: custMobile, customerAddress: custAddress, ticketNo, status: form.status || "Received", karigarId: finalKarigarId, note: safeNote.trim() };
 
     console.log("[Repairs] Attempting to save to DB:", payload);
     try {
@@ -70,6 +107,7 @@ export default function RepairsPage() {
       }
       console.log("[Repairs] Successfully saved to DB!");
       setForm(empty);
+      setNewCust({ name: "", phone: "", phone2: "", address: "" });
       setEditingId(null);
       setOpen(false);
     } catch (error: any) {
@@ -94,8 +132,8 @@ export default function RepairsPage() {
 
   const filtered = useMemo(() => {
     let result = filter === "All" ? list : list.filter(o => o.status === filter);
-    if (q.trim()) {
-      const lowerQ = q.toLowerCase().trim();
+    if (debouncedQ.trim()) {
+      const lowerQ = debouncedQ.toLowerCase().trim();
       result = result.filter(o => 
         o.customerName.toLowerCase().includes(lowerQ) ||
         o.ticketNo.toLowerCase().includes(lowerQ) ||
@@ -103,8 +141,8 @@ export default function RepairsPage() {
         o.itemDescription.toLowerCase().includes(lowerQ)
       );
     }
-    return [...result].sort((a, b) => b.date.localeCompare(a.date));
-  }, [list, q, filter]);
+    return [...result].sort((a, b) => (a.customerName || "").localeCompare(b.customerName || ""));
+  }, [list, debouncedQ, filter]);
 
   const totalPages = Math.ceil(filtered.length / 10) || 1;
   const currentPage = Math.min(page, totalPages);
@@ -119,7 +157,7 @@ export default function RepairsPage() {
         </div>
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
-            <Button size="lg" className="w-full sm:w-auto" onClick={() => { setForm(empty); setEditingId(null); }}>
+            <Button size="lg" className="w-full sm:w-auto" onClick={() => { setForm(empty); setNewCust({ name: "", phone: "", phone2: "", address: "" }); setEditingId(null); setSearchCust(""); setSearchKar(""); }}>
               <Plus className="w-4 h-4 mr-2" />New Repair
             </Button>
           </DialogTrigger>
@@ -144,18 +182,31 @@ export default function RepairsPage() {
                 <div>
                   <Label className="text-xs">Customer *</Label>
                   <Select value={form.customerMobile || ""} onValueChange={(val) => {
-                    const match = customers.find(c => (c.mobile || c.phone) === val);
-                    if (match) setForm({...form, customerName: match.name, customerMobile: match.mobile || (match as any).phone || "", customerAddress: match.address || ""});
+                    if (val === "NEW") {
+                      setForm({...form, customerMobile: "NEW", customerName: "", customerAddress: ""});
+                    } else {
+                      const match = customers.find(c => (c.mobile || c.phone) === val);
+                      if (match) setForm({...form, customerName: match.name, customerMobile: match.mobile || (match as any).phone || "", customerAddress: match.address || ""});
+                    }
                   }}>
                     <SelectTrigger><SelectValue placeholder="Select customer" /></SelectTrigger>
                     <SelectContent>
-                      {customers.filter(c => c.name.toLowerCase().includes(searchCust.toLowerCase()) || (c.mobile || (c as any).phone || "").includes(searchCust)).map((c) => (
+                      <SelectItem value="NEW" className="font-semibold text-primary">+ Create New Customer</SelectItem>
+                      {customers.filter(c => c.name.toLowerCase().includes(debouncedSearchCust.toLowerCase()) || (c.mobile || (c as any).phone || "").includes(debouncedSearchCust)).sort((a, b) => (a.name || "").localeCompare(b.name || "")).map((c) => (
                         <SelectItem key={c.mobile || c.phone} value={c.mobile || c.phone}>{c.name} · {c.mobile || (c as any).phone}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
               </div>
+              {form.customerMobile === "NEW" && (
+                <div className="p-3 rounded-md bg-primary/5 border border-primary/20 text-sm space-y-3 mt-2 col-span-2">
+                  <div className="space-y-1.5"><Label className="text-xs">Full Name *</Label><Input value={newCust.name} onChange={e => setNewCust({...newCust, name: e.target.value})} className="h-8 bg-background" /></div>
+                  <div className="space-y-1.5"><Label className="text-xs">Mobile No (optional)</Label><Input value={newCust.phone} onChange={e => setNewCust({...newCust, phone: e.target.value})} className="h-8 bg-background" /></div>
+                  <div className="space-y-1.5"><Label className="text-xs">Mobile No 2 (optional)</Label><Input value={newCust.phone2} onChange={e => setNewCust({...newCust, phone2: e.target.value})} className="h-8 bg-background" /></div>
+                  <div className="space-y-1.5"><Label className="text-xs">Address *</Label><Input value={newCust.address} onChange={e => setNewCust({...newCust, address: e.target.value})} className="h-8 bg-background" /></div>
+                </div>
+              )}
               <div className="col-span-2">
                 <Field label="Customer Address" v={form.customerAddress || ""} on={(v) => setForm({ ...form, customerAddress: v })} />
               </div>
@@ -182,7 +233,7 @@ export default function RepairsPage() {
                     <SelectTrigger><SelectValue placeholder="Unassigned" /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="unassigned">Unassigned</SelectItem>
-                      {karigars.filter(k => k.name.toLowerCase().includes(searchKar.toLowerCase()) || (k.mobile||"").includes(searchKar)).map(k => (
+                      {karigars.filter(k => k.name.toLowerCase().includes(debouncedSearchKar.toLowerCase()) || (k.mobile||"").includes(debouncedSearchKar)).sort((a, b) => (a.name || "").localeCompare(b.name || "")).map(k => (
                         <SelectItem key={k._id || k.id} value={k._id || k.id}>{k.name}</SelectItem>
                       ))}
                     </SelectContent>
@@ -371,8 +422,30 @@ export default function RepairsPage() {
 }
 
 function Field({ label, v, on, type = "text" }: { label: string; v: string; on: (v: string) => void; type?: string }) {
+  const [focused, setFocused] = useState(false);
+
   if (type === "date") {
-    return <div className="space-y-1.5"><Label className="text-xs">{label}</Label><DatePicker value={v} onChange={on} className="w-full h-9" /></div>;
+    let displayValue = v;
+    if (!focused && v) {
+      const parts = v.split('-');
+      if (parts.length === 3) {
+        displayValue = `${parts[2]}/${parts[1]}/${parts[0]}`;
+      }
+    }
+    return (
+      <div className="space-y-1.5">
+        <Label className="text-xs">{label}</Label>
+        <Input 
+          type={focused ? "date" : "text"} 
+          placeholder="DD/MM/YYYY"
+          value={displayValue} 
+          onChange={(e) => on(e.target.value)} 
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+          className="w-full h-9" 
+        />
+      </div>
+    );
   }
   return <div className="space-y-1.5"><Label className="text-xs">{label}</Label><Input type={type} value={v} onChange={(e) => on(e.target.value)} /></div>;
 }

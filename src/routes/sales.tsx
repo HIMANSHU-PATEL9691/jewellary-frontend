@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { inr, type Invoice, useLocalState } from "@/lib/storage";
-import { formatDate } from "@/lib/utils";
+import { formatDate, useDebounce } from "@/lib/utils";
 import { Receipt, Trash2, TrendingUp } from "lucide-react";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { invoicesAPI, inventoryAPI } from "@/lib/api";
@@ -23,11 +23,12 @@ export default function SalesPage() {
   const invoices = useMemo(() => allInvoices.filter(i => isOperator ? i.type === "GST" : i.type !== "GST"), [allInvoices, isOperator]);
 
   const [q, setQ] = useState("");
+  const debouncedQ = useDebounce(q, 300);
   const [pages, setPages] = useState<Record<number, number>>({});
 
   const filtered = invoices.filter(i =>
-    (i.number + i.customerName + i.customerMobile).toLowerCase().includes(q.toLowerCase())
-  );
+    (i.number + i.customerName + i.customerMobile).toLowerCase().includes(debouncedQ.toLowerCase())
+  ).sort((a, b) => (a.customerName || "").localeCompare(b.customerName || ""));
   const total = filtered.reduce((s, i) => s + i.total, 0);
 
   const last30Days = useMemo(() => {

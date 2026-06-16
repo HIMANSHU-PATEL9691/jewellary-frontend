@@ -10,6 +10,7 @@ import { useApi, useApiMutation } from "@/hooks/useApi";
 import { karigarsAPI } from "@/lib/api";
 import { Plus, Trash2, Pencil, Search, Loader2 } from "lucide-react";
 import { useLocalState } from "@/lib/storage";
+import { useDebounce } from "@/lib/utils";
 import { toast } from "sonner";
 
 interface Karigar {
@@ -42,6 +43,7 @@ export default function KarigarsPage() {
   const [form, setForm] = useState<Karigar>(empty);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [q, setQ] = useState("");
+  const debouncedQ = useDebounce(q, 300);
   const [page, setPage] = useState(1);
 
   const [categories, setCategories] = useLocalState<string[]>("ajms.karigarCategories", ["Goldsmith", "Polisher", "Stone Setter"]);
@@ -89,10 +91,10 @@ export default function KarigarsPage() {
   };
 
   const filtered = list.filter(s => 
-    s.name.toLowerCase().includes(q.toLowerCase()) || 
-    s.mobile.includes(q) || 
-    (s.companyName || "").toLowerCase().includes(q.toLowerCase())
-  );
+    s.name.toLowerCase().includes(debouncedQ.toLowerCase()) || 
+    s.mobile.includes(debouncedQ) || 
+    (s.companyName || "").toLowerCase().includes(debouncedQ.toLowerCase())
+  ).sort((a, b) => (a.name || "").localeCompare(b.name || ""));
 
   const isLoading_UI = isLoading || createMutation.isPending || updateMutation.isPending || deleteMutation.isPending;
 

@@ -11,6 +11,7 @@ import { Search, Package, Filter, Gem, Hash, Weight, Sparkles, Plus, Image as Im
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { inventoryAPI } from "@/lib/api";
 import { type Product, inr } from "@/lib/storage";
+import { useDebounce } from "@/lib/utils";
 import { toast } from "sonner";
 
 export default function CatalogPage() {
@@ -20,6 +21,7 @@ export default function CatalogPage() {
   
   const products = useMemo(() => (Array.isArray(allItems) ? allItems : []), [allItems]);
   const [q, setQ] = useState("");
+  const debouncedQ = useDebounce(q, 300);
   const [category, setCategory] = useState<string>("All");
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [addOpen, setAddOpen] = useState(false);
@@ -45,12 +47,12 @@ export default function CatalogPage() {
   }, [products]);
 
   const filtered = products.filter(p => {
-    const matchesSearch = p.name.toLowerCase().includes(q.toLowerCase()) || 
-                          (p.huid || "").toLowerCase().includes(q.toLowerCase());
+    const matchesSearch = p.name.toLowerCase().includes(debouncedQ.toLowerCase()) || 
+                          (p.huid || "").toLowerCase().includes(debouncedQ.toLowerCase());
     const matchesCategory = category === "All" || p.category === category;
     
     return matchesSearch && matchesCategory;
-  });
+  }).sort((a, b) => (a.name || "").localeCompare(b.name || ""));
   
   const groupedProducts = useMemo(() => {
     const groups: Record<string, Product[]> = {};

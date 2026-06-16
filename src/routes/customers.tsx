@@ -14,11 +14,10 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useState, useMemo } from "react";
 import { Plus, Trash2, Pencil, Search, Loader2, Eye, Receipt, Wallet, ShoppingBag, UserCheck, Wrench, MessageCircle, Printer } from "lucide-react";
-import { formatDate } from "@/lib/utils";
+import { formatDate, useDebounce } from "@/lib/utils";
 import { useApi, useApiMutation } from "@/hooks/useApi";
-import { customerAPI, invoicesAPI, ordersAPI, girviAPI, repairsAPI } from "@/lib/api";
-import { inr, calcItem, type Invoice, type Order, type Girvi, type Repair, useLocalState } from "@/lib/storage";
-import { DatePicker } from "@/components/ui/date-picker";
+import { customerAPI, invoicesAPI, ordersAPI, repairsAPI } from "@/lib/api";
+import { inr, calcItem, type Invoice, type Order, type Repair, useLocalState } from "@/lib/storage";
 import { toast } from "sonner";
 import { PaymentQr } from "@/components/PaymentQr";
 import { InvoiceTerms, ShopHeader } from "@/components/InvoiceBranding";
@@ -27,8 +26,10 @@ interface Customer {
   _id?: string;
   id?: string;
   name: string;
-  phone: string;
+  phone?: string;
   phone2?: string;
+  // Both mobile numbers are optional
+
   address: string;
   gstNumber?: string;
   pan?: string;
@@ -70,6 +71,7 @@ export default function CustomersPage() {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState<Customer>(empty);
   const [q, setQ] = useState("");
+  const debouncedQ = useDebounce(q, 300);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [profileId, setProfileId] = useState<string | null>(null);
   const [page, setPage] = useState(1);
@@ -86,7 +88,6 @@ export default function CustomersPage() {
 
   const { data: allInvoices = [] } = useApi<Invoice[]>(["invoices"], () => invoicesAPI.getAll());
   const { data: orders = [] } = useApi<Order[]>(["orders"], () => ordersAPI.getAll());
-  const { data: girvis = [] } = useApi<Girvi[]>(["girvis"], () => girviAPI.getAll());
   const { data: repairs = [] } = useApi<Repair[]>(["repairs"], () => repairsAPI.getAll());
 
   const isOperator = authUser?.role === "operator";
@@ -134,10 +135,10 @@ export default function CustomersPage() {
 
   const filtered = customers.filter(
     (c: Customer) =>
-      c.name.toLowerCase().includes(q.toLowerCase()) ||
-      c.phone.includes(q) ||
-      (c.phone2 && c.phone2.includes(q))
-  );
+      c.name.toLowerCase().includes(debouncedQ.toLowerCase()) ||
+      (c.phone || "").includes(debouncedQ) ||
+      (c.phone2 && c.phone2.includes(debouncedQ))
+  ).sort((a: any, b: any) => (a.name || "").localeCompare(b.name || ""));
 
   const totalPages = Math.ceil(filtered.length / 10) || 1;
   const currentPage = Math.min(page, totalPages);
@@ -157,8 +158,12 @@ export default function CustomersPage() {
 
   const save = async () => {
     console.log("[Frontend Component] Attempting to save customer draft:", draft);
-    if (!draft.name || !draft.phone) {
-      toast.error("Name and phone are required");
+    if (!draft.name) {
+      toast.error("Name is required");
+      return;
+    }
+    if (!draft.address) {
+      toast.error("Address is required");
       return;
     }
 
@@ -171,7 +176,8 @@ export default function CustomersPage() {
         toast.success("Customer updated successfully");
       } else {
         await createMutation.mutateAsync(draft);
-        toast.success("Customer created successfully");
+        toast.success("Customer is created");
+        setQ("");
       }
       setOpen(false);
       setDraft(empty);
@@ -199,7 +205,6 @@ export default function CustomersPage() {
   
   const custInvoices = invoices.filter(i => i.customerId === profileId || i.customerMobile === selectedCustomer?.phone);
   const custOrders = orders.filter(o => o.customerMobile === selectedCustomer?.phone);
-  const custGirvis = girvis.filter(g => g.customerMobile === selectedCustomer?.phone || g.customerMobile2 === selectedCustomer?.phone);
   const custRepairs = repairs.filter(r => r.customerMobile === selectedCustomer?.phone);
 
   const filteredCustInvoices = custInvoices.filter(i => {
@@ -222,6 +227,7 @@ export default function CustomersPage() {
 
   const [manualDueOpen, setManualDueOpen] = useState(false);
   const [manualDue, setManualDue] = useState(defaultManualDue);
+  const [manualDueDateFocused, setManualDueDateFocused] = useState(false);
 
   const saveManualDue = async () => {
     if (!manualDue.date || manualDue.dueAmount === "") {
@@ -234,9 +240,13 @@ export default function CustomersPage() {
     let cPhone = manualDue.phone;
 
     if (!cid || cid === "NEW") {
-      if (!cName || !cPhone) {
-         toast.error("Customer name and phone are required for a new customer");
+      if (!cName) {
+         toast.error("Customer name is required for a new customer");
          return;
+      }
+      if (!manualDue.address) {
+        toast.error("Customer address is required for a new customer");
+        return;
       }
       try {
         const newCust = await createMutation.mutateAsync({
@@ -359,7 +369,7 @@ export default function CustomersPage() {
       }
       return pmts.map(p => ({ ...p, invoiceNo: inv.number }));
     })
-    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    .sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
   const groupedPayments = allPayments.reduce((acc, p) => {
     if (!acc[p.invoiceNo]) acc[p.invoiceNo] = [];
@@ -386,16 +396,6 @@ export default function CustomersPage() {
         overallTotal += (i.balanceDue || 0);
       });
       message += `*कुल बिल बकाया: ${inr(totalDue)}*\n-----------------------------------\n\n`;
-    }
-
-    const activeGirvi = custGirvis.filter(g => g.status === "Active");
-    if (activeGirvi.length > 0) {
-      hasDues = true;
-      message += `📦 *सक्रिय गिरवी (Active Girvi)*\n-----------------------------------\n`;
-      activeGirvi.forEach(g => {
-        message += `▪️ लोन: ${g.loanNo} (${g.itemType})\n   मूलधन: ${inr(g.loanAmount)}\n\n`;
-      });
-      message += `-----------------------------------\n\n`;
     }
 
     const dueRepairs = custRepairs.filter(r => ((r.estimate || 0) - (r.advance || 0)) > 0 && r.status !== "Delivered");
@@ -464,9 +464,9 @@ export default function CustomersPage() {
                   placeholder="Customer name"
                 />
               </F>
-              <F label="Mobile No *">
+              <F label="Mobile No (optional)">
                 <Input
-                  value={draft.phone}
+                  value={draft.phone || ""}
                   onChange={(e) => set("phone", e.target.value)}
                   placeholder="Primary mobile number"
                 />
@@ -478,7 +478,7 @@ export default function CustomersPage() {
                   placeholder="Secondary mobile number"
                 />
               </F>
-              <F label="Address (optional)">
+              <F label="Address *">
                 <Input
                   value={draft.address || ""}
                   onChange={(e) => set("address", e.target.value)}
@@ -511,7 +511,7 @@ export default function CustomersPage() {
               <Button variant="outline" onClick={() => setOpen(false)} disabled={isLoading_UI}>
                 Cancel
               </Button>
-              <Button onClick={save} disabled={isLoading_UI || !draft.name || !draft.phone}>
+              <Button onClick={save} disabled={isLoading_UI || !draft.name || !draft.address}>
                 {isLoading_UI ? (
                   <>
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" /> Saving...
@@ -947,46 +947,6 @@ export default function CustomersPage() {
                   </CardContent>
                 </Card>
               </div>
-
-              {/* Girvi Loans */}
-              <div className="mt-4">
-                <h3 className="font-display text-lg mb-3 flex items-center gap-2"><Wallet className="w-5 h-5"/> Girvi Loans</h3>
-                <Card className="shadow-none border-border">
-                    <CardContent className="p-0">
-                      {custGirvis.length === 0 ? (
-                        <p className="text-sm text-muted-foreground py-6 text-center">No girvi loans.</p>
-                      ) : (
-                        <table className="w-full text-sm">
-                          <thead className="text-left text-muted-foreground border-b bg-muted/20">
-                            <tr>
-                              <th className="py-2 px-4">Loan No</th>
-                              <th>Date</th>
-                              <th>Item Description</th>
-                              <th className="text-right">Amount</th>
-                              <th className="text-center px-4">Status</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {custGirvis.map((g) => (
-                              <tr key={g.id || g.loanNo} className="border-b last:border-0 hover:bg-muted/40">
-                                <td className="py-2 px-4 font-medium">{g.loanNo}</td>
-                                <td>{formatDate(g.date)}</td>
-                                <td>
-                                  <div className="font-medium">{g.itemType} {g.purity}</div>
-                                  <div className="text-xs text-muted-foreground">{g.itemDescription}</div>
-                                </td>
-                                <td className="text-right">{inr(g.loanAmount)}</td>
-                                <td className="text-center px-4">
-                                  <span className="inline-block px-2 py-1 bg-muted rounded-full text-xs">{g.status}</span>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      )}
-                    </CardContent>
-                  </Card>
-              </div>
             </>
           )}
         </DialogContent>
@@ -1059,7 +1019,7 @@ export default function CustomersPage() {
                       <SelectTrigger className="bg-background"><SelectValue placeholder="Select or create customer" /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="NEW" className="font-semibold text-primary">+ Create New Customer</SelectItem>
-                        {customers.map((c: Customer) => (
+                        {[...customers].sort((a: any, b: any) => (a.name || "").localeCompare(b.name || "")).map((c: Customer) => (
                           <SelectItem key={c._id || c.id} value={c._id || c.id || ""}>{c.name} - {c.phone}</SelectItem>
                         ))}
                       </SelectContent>
@@ -1067,11 +1027,11 @@ export default function CustomersPage() {
                   </F>
                 </div>
                 <F label="Customer Name *"><Input className="bg-background" value={manualDue.customerName} onChange={e => setManualDue({...manualDue, customerName: e.target.value})} disabled={manualDue.customerId !== "NEW"} /></F>
-                <F label="Mobile No *"><Input className="bg-background" value={manualDue.phone} onChange={e => setManualDue({...manualDue, phone: e.target.value})} disabled={manualDue.customerId !== "NEW"} /></F>
+                <F label="Mobile No (optional)"><Input className="bg-background" value={manualDue.phone} onChange={e => setManualDue({...manualDue, phone: e.target.value})} disabled={manualDue.customerId !== "NEW"} /></F>
                 <F label="Mobile No 2 (optional)"><Input className="bg-background" value={manualDue.phone2} onChange={e => setManualDue({...manualDue, phone2: e.target.value})} disabled={manualDue.customerId !== "NEW"} /></F>
                 <F label="GST No (optional)"><Input className="bg-background" value={manualDue.gstNumber} onChange={e => setManualDue({...manualDue, gstNumber: e.target.value})} disabled={manualDue.customerId !== "NEW"} /></F>
                 <F label="PAN No (optional)"><Input className="bg-background" value={manualDue.pan} onChange={e => setManualDue({...manualDue, pan: e.target.value})} disabled={manualDue.customerId !== "NEW"} /></F>
-                <div className="sm:col-span-2"><F label="Address (optional)"><Input className="bg-background" value={manualDue.address} onChange={e => setManualDue({...manualDue, address: e.target.value})} disabled={manualDue.customerId !== "NEW"} /></F></div>
+                <div className="sm:col-span-2"><F label="Address *"><Input className="bg-background" value={manualDue.address} onChange={e => setManualDue({...manualDue, address: e.target.value})} disabled={manualDue.customerId !== "NEW"} /></F></div>
                 <div className="sm:col-span-2"><F label="Notes (optional)"><Input className="bg-background" value={manualDue.notes} onChange={e => setManualDue({...manualDue, notes: e.target.value})} disabled={manualDue.customerId !== "NEW"} /></F></div>
               </div>
             </div>
@@ -1112,7 +1072,18 @@ export default function CustomersPage() {
               <h3 className="font-semibold text-primary">3. Financials</h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <F label="Date *">
-                  <DatePicker value={manualDue.date} onChange={v => setManualDue({...manualDue, date: v})} className="w-full bg-background" />
+                  {(() => {
+                    let displayValue = manualDue.date;
+                    if (!manualDueDateFocused && manualDue.date) {
+                      const parts = manualDue.date.split('-');
+                      if (parts.length === 3) {
+                        displayValue = `${parts[2]}/${parts[1]}/${parts[0]}`;
+                      }
+                    }
+                    return (
+                      <Input type={manualDueDateFocused ? "date" : "text"} placeholder="DD/MM/YYYY" value={displayValue} onChange={(e) => setManualDue({...manualDue, date: e.target.value})} onFocus={() => setManualDueDateFocused(true)} onBlur={() => setManualDueDateFocused(false)} className="w-full bg-background" />
+                    );
+                  })()}
                 </F>
                 <F label="Due Amount (₹) *">
                   <Input className="bg-background font-medium text-lg text-rose-600" type="number" value={manualDue.dueAmount} onChange={e => setManualDue({...manualDue, dueAmount: e.target.value === "" ? "" : Number(e.target.value)})} />
@@ -1122,7 +1093,7 @@ export default function CustomersPage() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setManualDueOpen(false)}>Cancel</Button>
-            <Button onClick={saveManualDue} disabled={createInvoiceMutation.isPending || !manualDue.date || manualDue.dueAmount === "" || (!manualDue.customerName && manualDue.customerId === "NEW")}>
+            <Button onClick={saveManualDue} disabled={createInvoiceMutation.isPending || !manualDue.date || manualDue.dueAmount === "" || (manualDue.customerId === "NEW" && (!manualDue.customerName || !manualDue.address))}>
               Save Manual Due
             </Button>
           </DialogFooter>

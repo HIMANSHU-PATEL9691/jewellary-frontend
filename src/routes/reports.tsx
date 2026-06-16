@@ -7,25 +7,30 @@ import { useMemo, useState } from "react";
 import { Label } from "@/components/ui/label";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Legend, PieChart, Pie, Cell } from "recharts";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { useApi } from "@/hooks/useApi";
 import { invoicesAPI, expensesAPI, supplierAPI } from "@/lib/api";
-import { DatePicker } from "@/components/ui/date-picker";
+import { purchasesAPI } from "@/lib/api";
 
 export default function ReportsPage() {
   const [authUser] = useLocalState<any>("ajms.auth", null);
   const { data: allInvoices = [] } = useApi<any[]>(["invoices"], () => invoicesAPI.getAll());
   const { data: expenses = [] } = useApi<any[]>(["expenses"], () => expensesAPI.getAll());
   const { data: suppliers = [] } = useApi<any[]>(["suppliers"], () => supplierAPI.getAll());
+  const { data: allPurchases = [] } = useApi<any[]>(["purchases"], () => purchasesAPI.getAll());
 
   const isOperator = authUser?.role === "operator";
   const invoices = useMemo(() => allInvoices.filter(i => isOperator ? i.type === "GST" : i.type !== "GST"), [allInvoices, isOperator]);
+  const purchases = useMemo(() => allPurchases.filter(p => !(p.type === "GST" || p.gstPct > 0)), [allPurchases]); // non-gst
 
   const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().slice(0, 10));
+  const [dateFocused, setDateFocused] = useState(false);
 
   const targetDateStr = useMemo(() => new Date(selectedDate).toDateString(), [selectedDate]);
 
-  const dailyInvoices = useMemo(() => invoices.filter((i) => new Date(i.createdAt).toDateString() === targetDateStr), [invoices, targetDateStr]);
-  const dailyExpenses = useMemo(() => expenses.filter((e) => new Date(e.date).toDateString() === targetDateStr), [expenses, targetDateStr]);
+  const dailyInvoices = useMemo(() => invoices.filter((i) => new Date(i.createdAt).toDateString() === targetDateStr).sort((a, b) => (a.customerName || "").localeCompare(b.customerName || "")), [invoices, targetDateStr]);
+  const dailyExpenses = useMemo(() => expenses.filter((e) => new Date(e.date).toDateString() === targetDateStr).sort((a, b) => (a.category || "").localeCompare(b.category || "")), [expenses, targetDateStr]);
+  const dailyPurchases = useMemo(() => purchases.filter((p) => new Date(p.date).toDateString() === targetDateStr).sort((a, b) => (a.supplierName || "").localeCompare(b.supplierName || "")), [purchases, targetDateStr]);
 
   const monthKey = useMemo(() => {
     const d = new Date(selectedDate);
@@ -41,30 +46,41 @@ export default function ReportsPage() {
     const d = new Date(e.date);
     return `${d.getFullYear()}-${d.getMonth()}` === monthKey;
   }), [expenses, monthKey]);
+  
+  const monthlyPurchases = useMemo(() => purchases.filter((p) => {
+    const d = new Date(p.date);
+    return `${d.getFullYear()}-${d.getMonth()}` === monthKey;
+  }), [purchases, monthKey]);
 
-  const suppliersWithDue = useMemo(() => suppliers.filter((s) => (s.outstanding || 0) > 0), [suppliers]);
+  const suppliersWithDue = useMemo(() => suppliers.filter((s) => (s.outstanding || 0) > 0).sort((a, b) => (a.name || "").localeCompare(b.name || "")), [suppliers]);
 
   const stats = useMemo(() => {
     const dailyIncome = dailyInvoices.reduce((s, i) => s + i.total, 0);
     const dailyExpenseTotal = dailyExpenses.reduce((s, e) => s + e.amount, 0);
+    const dailyPurchaseTotal = dailyPurchases.reduce((s, p) => s + p.total, 0);
     const totalDue = suppliers.reduce((s, sup) => s + (sup.outstanding || 0), 0);
     const monthlyIncome = monthlyInvoices.reduce((s, i) => s + i.total, 0);
     const monthlyExpenseTotal = monthlyExpenses.reduce((s, e) => s + e.amount, 0);
+    const monthlyPurchaseTotal = monthlyPurchases.reduce((s, p) => s + p.total, 0);
     
     return {
       dailyIncome,
       dailyExpenseTotal,
+      dailyPurchaseTotal,
       totalDue,
       monthlyIncome,
       monthlyExpenseTotal,
-      net: dailyIncome - dailyExpenseTotal,
-      monthlyNet: monthlyIncome - monthlyExpenseTotal,
+      monthlyPurchaseTotal,
+      net: dailyIncome - dailyExpenseTotal - dailyPurchaseTotal,
+      monthlyNet: monthlyIncome - monthlyExpenseTotal - monthlyPurchaseTotal,
       invoicesCount: dailyInvoices.length,
       expensesCount: dailyExpenses.length,
+      purchasesCount: dailyPurchases.length,
       monthlyInvoicesCount: monthlyInvoices.length,
-      monthlyExpensesCount: monthlyExpenses.length
+      monthlyExpensesCount: monthlyExpenses.length,
+      monthlyPurchasesCount: monthlyPurchases.length
     };
-  }, [dailyInvoices, dailyExpenses, suppliers, monthlyInvoices, monthlyExpenses]);
+  }, [dailyInvoices, dailyExpenses, dailyPurchases, suppliers, monthlyInvoices, monthlyExpenses, monthlyPurchases]);
 
   const trendData = useMemo(() => {
     const arr = [];
@@ -117,6 +133,7 @@ export default function ReportsPage() {
 
     dailyInvoices.forEach(i => rows.push(["Income", i.number, i.customerName || "Walk-in", i.total]));
     dailyExpenses.forEach(e => rows.push(["Expense", formatDate(e.date), `${e.category} - ${e.description}`, e.amount]));
+    dailyPurchases.forEach(p => rows.push(["Purchase", formatDate(p.date), `${p.billNo} - ${p.supplierName}`, p.total]));
     suppliers.forEach(s => {
       const due = s.outstanding || 0;
       if (due > 0) rows.push(["Supplier Due", "", s.name, due]);
@@ -142,11 +159,26 @@ export default function ReportsPage() {
         <div className="flex flex-col sm:flex-row items-start sm:items-end w-full sm:w-auto gap-4">
           <div className="space-y-1.5 w-full sm:w-auto">
             <Label className="text-xs">Select Date</Label>
-            <DatePicker 
-              value={selectedDate} 
-              onChange={setSelectedDate} 
-              className="w-full sm:w-48 bg-background"
-            />
+            {(() => {
+              let displayValue = selectedDate;
+              if (!dateFocused && selectedDate) {
+                const parts = selectedDate.split('-');
+                if (parts.length === 3) {
+                  displayValue = `${parts[2]}/${parts[1]}/${parts[0]}`;
+                }
+              }
+              return (
+                <Input
+                  type={dateFocused ? "date" : "text"}
+                  placeholder="DD/MM/YYYY"
+                  value={displayValue}
+                  onChange={(e: any) => setSelectedDate(e.target.value)}
+                  onFocus={() => setDateFocused(true)}
+                  onBlur={() => setDateFocused(false)}
+                  className="w-full sm:w-48 bg-background"
+                />
+              );
+            })()}
           </div>
           <Button onClick={exportToExcel} variant="outline" className="h-10 w-full sm:w-auto">
             <Download className="w-4 h-4 mr-2" /> Export CSV
@@ -254,8 +286,8 @@ export default function ReportsPage() {
         </CardHeader>
         <CardContent>
           <div className="text-sm space-y-2">
-             <p>On <strong>{formatDate(selectedDate)}</strong>, you have a daily net revenue of <strong className={stats.net >= 0 ? "text-green-500" : "text-rose-500"}>{inr(stats.net)}</strong> after deducting daily expenses from daily sales.</p>
-             <p>For the month of <strong>{new Date(selectedDate).toLocaleString('default', { month: 'long', year: 'numeric' })}</strong>, your monthly net revenue is <strong className={stats.monthlyNet >= 0 ? "text-green-500" : "text-rose-500"}>{inr(stats.monthlyNet)}</strong>.</p>
+             <p>On <strong>{formatDate(selectedDate)}</strong>, you have a daily net revenue of <strong className={stats.net >= 0 ? "text-green-500" : "text-rose-500"}>{inr(stats.net)}</strong> after deducting daily expenses and purchases from daily sales.</p>
+             <p>For the month of <strong>{new Date(selectedDate).toLocaleString('default', { month: 'long', year: 'numeric' })}</strong>, your monthly net revenue is <strong className={stats.monthlyNet >= 0 ? "text-green-500" : "text-rose-500"}>{inr(stats.monthlyNet)}</strong> (Sales - Expenses - Purchases).</p>
           </div>
         </CardContent>
       </Card>
@@ -310,7 +342,7 @@ export default function ReportsPage() {
         </Card>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
         <Card>
           <CardHeader>
             <CardTitle className="font-display flex items-center gap-2"><TrendingUp className="w-5 h-5"/> Daily Income</CardTitle>
@@ -370,6 +402,38 @@ export default function ReportsPage() {
                         <td>{e.description}</td>
                         <td>{e.paymentMode}</td>
                         <td className="text-right text-rose-600">{inr(e.amount)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="font-display flex items-center gap-2"><Wallet className="w-5 h-5"/> Daily Purchases</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {dailyPurchases.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-8 text-center">No purchases (NON-GST) for this date.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="text-left text-muted-foreground border-b">
+                    <tr>
+                      <th className="py-2">Bill No</th>
+                      <th>Supplier</th>
+                      <th className="text-right">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {dailyPurchases.map((p) => (
+                      <tr key={(p as any)._id || p.id} className="border-b last:border-0 hover:bg-muted/40">
+                        <td className="py-2">{p.billNo}</td>
+                        <td>{p.supplierName}</td>
+                        <td className="text-right text-rose-600">{inr(p.total)}</td>
                       </tr>
                     ))}
                   </tbody>

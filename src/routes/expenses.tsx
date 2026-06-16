@@ -19,7 +19,6 @@ import { useApi, useApiMutation } from "@/hooks/useApi";
 import { expensesAPI } from "@/lib/api";
 import { useMemo, useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
-import { DatePicker } from "@/components/ui/date-picker";
 
 const CATEGORIES = ["Rent", "Salary", "Utilities", "Purchase", "Repair", "Marketing", "Misc"];
 
@@ -30,6 +29,7 @@ export default function ExpensesPage() {
   const [open, setOpen] = useState(false);
   const [dateFilter, setDateFilter] = useState<string>("");
   const [page, setPage] = useState(1);
+  const [formDateFocused, setFormDateFocused] = useState(false);
 
   const [form, setForm] = useState<Omit<Expense, "id">>({
     date: new Date().toISOString().slice(0, 10),
@@ -61,7 +61,7 @@ export default function ExpensesPage() {
       const targetDateStr = new Date(dateFilter).toDateString();
       list = list.filter(e => new Date(e.date).toDateString() === targetDateStr);
     }
-    return [...list].sort((a, b) => b.date.localeCompare(a.date));
+    return [...list].sort((a, b) => (a.category || "").localeCompare(b.category || ""));
   }, [expenses, dateFilter]);
 
   const byCategory = useMemo(() => {
@@ -112,7 +112,18 @@ export default function ExpensesPage() {
             <div className="space-y-3">
               <div>
                 <Label>Date</Label>
-                <DatePicker value={form.date} onChange={(v) => setForm({ ...form, date: v })} className="w-full" />
+                {(() => {
+                  let displayValue = form.date;
+                  if (!formDateFocused && form.date) {
+                    const parts = form.date.split('-');
+                    if (parts.length === 3) {
+                      displayValue = `${parts[2]}/${parts[1]}/${parts[0]}`;
+                    }
+                  }
+                  return (
+                    <Input type={formDateFocused ? "date" : "text"} placeholder="DD/MM/YYYY" value={displayValue} onChange={(e) => setForm({ ...form, date: e.target.value })} onFocus={() => setFormDateFocused(true)} onBlur={() => setFormDateFocused(false)} className="w-full" />
+                  );
+                })()}
               </div>
               <div>
                 <Label>Category</Label>
@@ -159,9 +170,10 @@ export default function ExpensesPage() {
           <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-2">
             <CardTitle className="font-display">Records</CardTitle>
             <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 w-full sm:w-auto">
-              <DatePicker 
-                value={dateFilter} 
-                onChange={setDateFilter} 
+              <Input
+                type="date"
+                value={dateFilter}
+                onChange={(e) => setDateFilter(e.target.value)}
                 className="w-full sm:w-40 bg-background h-9"
               />
               {dateFilter && (

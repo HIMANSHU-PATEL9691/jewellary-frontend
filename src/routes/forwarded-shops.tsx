@@ -14,6 +14,30 @@ import { toast } from "sonner";
 import { PaymentQr } from "@/components/PaymentQr";
 import { InvoiceTerms, ShopHeader } from "@/components/InvoiceBranding";
 
+function getElapsedDays(dateStr: string) {
+  if (!dateStr) return 0;
+  const start = new Date(dateStr);
+  start.setHours(0, 0, 0, 0);
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  const diffTime = now.getTime() > start.getTime() ? now.getTime() - start.getTime() : 0;
+  return Math.round(diffTime / (1000 * 60 * 60 * 24));
+}
+
+function calculateInterest(girvi: any) {
+  const isDaily = girvi.interestPeriod === "Daily" || girvi.note?.includes("[IntPeriod:Daily]");
+  if (isDaily) {
+    const diffDays = getElapsedDays(girvi.date);
+    const interestPerDay = girvi.loanAmount * (girvi.interestPct / 100);
+    return Math.round(interestPerDay * diffDays);
+  } else {
+    const { months, days } = getElapsedMonthsAndDays(girvi.date);
+    const interestPerMonth = girvi.loanAmount * (girvi.interestPct / 100);
+    const interestForDays = (interestPerMonth / 30) * days;
+    return Math.round((months * interestPerMonth) + interestForDays);
+  }
+}
+
 function getElapsedMonthsAndDays(dateStr: string) {
   if (!dateStr) return { months: 0, days: 0 };
   const start = new Date(dateStr);
@@ -35,8 +59,9 @@ function getElapsedMonthsAndDays(dateStr: string) {
   return { months, days };
 }
 
-function calculateForwardedInterest(girvi: Girvi) {
-  if (!girvi.date || !girvi.forwardedAmount || !girvi.forwardedInterestPct) return 0;
+function calculateForwardedInterest(girvi: any) {
+  if (girvi.isForwardedSettled) return girvi.forwardedSettledInterest || 0;
+  if (!girvi.forwardedAmount || !girvi.forwardedInterestPct) return 0;
   
   const isDaily = girvi.forwardedInterestPeriod === "Daily" || girvi.note?.includes("[FwdIntPeriod:Daily]");
   if (isDaily) {
@@ -111,8 +136,8 @@ export default function ForwardedShopsPage() {
     });
 
     return Array.from(map.values()).map(shop => {
-      const activeRecords = shop.records.filter((r: Girvi) => r.status === "Active" && (r.forwardedAmount || 0) > 0);
-      const settledRecords = shop.records.filter((r: Girvi) => r.note && /\[Forwarding to .*? cleared on .*? - Paid .*?\]/.test(r.note));
+      const activeRecords = shop.records.filter((r: any) => (r.forwardedAmount || 0) > 0 && !r.isForwardedSettled);
+      const settledRecords = shop.records.filter((r: any) => r.isForwardedSettled || (r.note && /\[Forwarding to .*? cleared on .*? - Paid .*?\]/.test(r.note)));
       const totalPrincipal = activeRecords.reduce((s: number, r: Girvi) => s + (r.forwardedAmount || 0), 0);
       const totalInterest = activeRecords.reduce((s: number, r: Girvi) => s + calculateForwardedInterest(r), 0);
       
@@ -135,7 +160,7 @@ export default function ForwardedShopsPage() {
       };
     })
     .filter(shop => shop.profileId || shop.activeRecords.length > 0 || shop.settledRecords.length > 0)
-    .sort((a, b) => b.totalPrincipal - a.totalPrincipal); // Sort by highest principal first
+    .sort((a, b) => (a.name || "").localeCompare(b.name || ""));
   }, [girvis, profiles]);
 
   const activeProfile = shops.find(s => s.name === selectedShop);
@@ -149,11 +174,26 @@ export default function ForwardedShopsPage() {
     const interest = calculateForwardedInterest(settlingItem);
     const total = principal + interest;
     
+    let newStatus = settlingItem.status;
+    if (newStatus !== "Closed") {
+      const askClose = window.confirm(`Item will be settled with the forwarded shop.\n\nDo you also want to close the customer's Girvi loan (${settlingItem.loanNo}) now?`);
+      if (askClose) {
+        const custInterest = calculateInterest(settlingItem);
+        const custTotal = settlingItem.loanAmount + custInterest;
+        const confirmClose = window.confirm(`Close customer loan?\n\nPrincipal: ${inr(settlingItem.loanAmount)}\nAccrued Interest: ${inr(custInterest)}\nTotal to Collect: ${inr(custTotal)}\n\nIs the full amount cleared by the customer?`);
+        if (confirmClose) {
+          newStatus = "Closed";
+        }
+      }
+    }
+
     try {
       const updatedGirvi = {
         ...settlingItem,
-        forwardedAmount: 0,
-        forwardedInterestPct: 0,
+        status: newStatus,
+        isForwardedSettled: true,
+        forwardedSettledDate: new Date().toISOString(),
+        forwardedSettledInterest: interest,
         note: `${settlingItem.note ? settlingItem.note + '\n' : ''}[Forwarding to ${settlingItem.forwardedShopName || settlingItem.forwardedTo} cleared on ${formatDate(new Date().toISOString())} - Paid ${inr(total)}]`
       };
       
@@ -168,7 +208,7 @@ export default function ForwardedShopsPage() {
       });
       
       setSettlingItem(null);
-      toast.success("Forwarding settled successfully");
+      toast.success(newStatus === "Closed" ? "Item settled and customer loan closed." : "Item settled and received from forwarded shop.");
     } catch (e) {
       toast.error("Failed to settle forwarding");
     }
@@ -318,6 +358,7 @@ export default function ForwardedShopsPage() {
                     <tr>
                       <th className="py-2 px-3 font-medium">Original Loan</th>
                       <th className="py-2 font-medium">Item Details</th>
+                      <th className="py-2 font-medium text-center">Status</th>
                       <th className="py-2 font-medium text-right">Rate</th>
                       <th className="py-2 font-medium text-right">Principal</th>
                       <th className="py-2 font-medium text-right">Accrued Interest</th>
@@ -349,14 +390,28 @@ export default function ForwardedShopsPage() {
                               </div>
                             </div>
                           </td>
+                          <td className="py-2 text-center">
+                            <div className="flex flex-col gap-1 items-center">
+                              <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase bg-blue-100 text-blue-800">
+                                Fwd: Active
+                              </span>
+                              <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase ${r.status === 'Active' ? 'bg-amber-100 text-amber-800' : r.status === 'Closed' ? 'bg-green-100 text-green-800' : 'bg-slate-100 text-slate-800'}`}>
+                                Loan: {r.status}
+                              </span>
+                            </div>
+                          </td>
                           <td className="py-2 text-right">{r.forwardedInterestPct}%/{r.forwardedInterestPeriod === "Daily" || r.note?.includes("[FwdIntPeriod:Daily]") ? "day" : "mo"}</td>
                           <td className="py-2 text-right">{inr(r.forwardedAmount || 0)}</td>
                           <td className="py-2 text-right text-amber-600">{inr(interest)}</td>
                           <td className="py-2 px-3 text-right font-medium text-rose-600">{inr((r.forwardedAmount || 0) + interest)}</td>
                           <td className="py-2 px-3 text-right">
-                            <Button size="sm" variant="outline" className="border-green-200 text-green-700 hover:bg-green-50" onClick={() => setSettlingItem(r)}>
-                              Settle
-                            </Button>
+                                {(r as any).isForwardedSettled ? (
+                                  <span className="bg-green-100 text-green-800 px-2 py-0.5 rounded text-[10px] font-semibold uppercase inline-block">Settled</span>
+                                ) : (
+                                  <Button size="sm" variant="outline" className="border-green-200 text-green-700 hover:bg-green-50" onClick={() => setSettlingItem(r)}>
+                                    Settle
+                                  </Button>
+                                )}
                           </td>
                         </tr>
                       );
@@ -374,14 +429,15 @@ export default function ForwardedShopsPage() {
                         <tr>
                           <th className="py-2 px-3 font-medium">Original Loan</th>
                           <th className="py-2 font-medium">Item Details</th>
+                          <th className="py-2 font-medium text-center">Status</th>
                           <th className="py-2 font-medium text-right pr-3">Settlement Details</th>
                         </tr>
                       </thead>
                       <tbody>
                         {activeProfile.settledRecords.map((r: Girvi) => {
                           const match = r.note?.match(/cleared on (.*?) - Paid (.*?)\]/);
-                          const clearedDate = match ? match[1] : "—";
-                          const paidAmount = match ? match[2] : "—";
+                          const clearedDate = match ? match[1] : (r as any).forwardedSettledDate ? formatDate((r as any).forwardedSettledDate) : "—";
+                          const paidAmount = match ? match[2] : inr((r.forwardedAmount || 0) + ((r as any).forwardedSettledInterest || 0));
                           return (
                             <tr key={r.id || (r as any)._id} className="border-b last:border-0 hover:bg-muted/40">
                               <td className="py-2 px-3">
@@ -390,6 +446,16 @@ export default function ForwardedShopsPage() {
                               <td className="py-2">
                                 <div className="font-medium text-primary">{r.itemDescription}</div>
                                 <div className="text-xs text-muted-foreground">{r.itemType} {r.purity}</div>
+                              </td>
+                              <td className="py-2 text-center">
+                                <div className="flex flex-col gap-1 items-center">
+                                  <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase bg-green-100 text-green-800">
+                                    Fwd: Settled
+                                  </span>
+                                  <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase ${r.status === 'Active' ? 'bg-amber-100 text-amber-800' : r.status === 'Closed' ? 'bg-green-100 text-green-800' : 'bg-slate-100 text-slate-800'}`}>
+                                    Loan: {r.status}
+                                  </span>
+                                </div>
                               </td>
                               <td className="py-2 text-right pr-3">
                                 <div className="text-green-700 font-medium">Paid {paidAmount}</div>

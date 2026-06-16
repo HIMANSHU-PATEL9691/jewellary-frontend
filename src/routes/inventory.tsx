@@ -24,6 +24,7 @@ import { useState, useRef, useMemo } from "react";
 import { Textarea } from "@/components/ui/textarea";
 import { Plus, Trash2, Pencil, Search, Image as ImageIcon, Upload, Filter } from "lucide-react";
 import { useLocalState, uid, type Product } from "@/lib/storage";
+import { useDebounce } from "@/lib/utils";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { inventoryAPI } from "@/lib/api";
 import { toast } from "sonner";
@@ -70,6 +71,7 @@ export default function InventoryPage() {
   const [newCat, setNewCat] = useState("");
   const [newSub, setNewSub] = useState("");
   const [q, setQ] = useState("");
+  const debouncedQ = useDebounce(q, 300);
   const [catFilter, setCatFilter] = useState("All");
   const [page, setPage] = useState(1);
   const [imagePreviews, setImagePreviews] = useState<string[]>([]);
@@ -82,10 +84,10 @@ export default function InventoryPage() {
   const filtered = products.filter(
     (p) =>
       (catFilter === "All" || p.category === catFilter) &&
-      (p.name.toLowerCase().includes(q.toLowerCase()) ||
-      p.barcode.toLowerCase().includes(q.toLowerCase()) ||
-      (p.huid || "").toLowerCase().includes(q.toLowerCase()))
-  );
+      (p.name.toLowerCase().includes(debouncedQ.toLowerCase()) ||
+      p.barcode.toLowerCase().includes(debouncedQ.toLowerCase()) ||
+      (p.huid || "").toLowerCase().includes(debouncedQ.toLowerCase()))
+  ).sort((a, b) => (a.name || "").localeCompare(b.name || ""));
 
   const totalPages = Math.ceil(filtered.length / 10) || 1;
   const currentPage = Math.min(page, totalPages);

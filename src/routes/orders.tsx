@@ -7,13 +7,19 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { inr, type Order, type Karigar } from "@/lib/storage";
-import { formatDate } from "@/lib/utils";
+import { useDebounce } from "@/lib/utils";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { ordersAPI, customerAPI, karigarsAPI } from "@/lib/api";
 import { Plus, Trash2, ShoppingBag, Pencil, Printer, Search } from "lucide-react";
 import { toast } from "sonner";
-import { DatePicker } from "@/components/ui/date-picker";
 import { InvoiceTerms, ShopHeader } from "@/components/InvoiceBranding";
+import { format } from "date-fns";
+
+const formatDate = (date: string | Date) => {
+  if (!date) return "";
+  const d = typeof date === "string" ? new Date(date) : date;
+  return isNaN(d.getTime()) ? "" : format(d, "dd/MM/yyyy");
+};
 
 export default function OrdersPage() {
   const { data: list = [], isLoading } = useApi<Order[]>(["orders"], () => ordersAPI.getAll());
@@ -23,14 +29,19 @@ export default function OrdersPage() {
   const createMutation = useApiMutation((data: Order) => ordersAPI.create(data), ["orders"]);
   const updateMutation = useApiMutation((data: { id: string; body: Order }) => ordersAPI.update(data.id, data.body), ["orders"]);
   const deleteMutation = useApiMutation((id: string) => ordersAPI.delete(id), ["orders"]);
+  const createCustomerMutation = useApiMutation((data: any) => customerAPI.create(data), ["customers"]);
 
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [searchCust, setSearchCust] = useState("");
+  const debouncedSearchCust = useDebounce(searchCust, 300);
   const [searchKar, setSearchKar] = useState("");
+  const debouncedSearchKar = useDebounce(searchKar, 300);
+  const [newCust, setNewCust] = useState({ name: "", phone: "", phone2: "", address: "" });
   const [viewingReceipt, setViewingReceipt] = useState<Order | null>(null);
   const [page, setPage] = useState(1);
   const [q, setQ] = useState("");
+  const debouncedQ = useDebounce(q, 300);
   const [filter, setFilter] = useState<"All" | Order["status"]>("All");
   const empty: Order = {
     id: "",
@@ -54,7 +65,33 @@ export default function OrdersPage() {
   const [form, setForm] = useState<Order>(empty);
 
   const save = async () => {
-    if (!form.customerName || !form.itemDescription) return;
+    if (!form.itemDescription) return;
+    if (form.customerMobile !== "NEW" && !form.customerName) return;
+
+    let custName = form.customerName;
+    let custMobile = form.customerMobile;
+    let custAddress = form.customerAddress;
+
+    if (form.customerMobile === "NEW") {
+      if (!newCust.name) {
+        toast.error("Customer name is required for a new customer.");
+        return;
+      }
+      if (!newCust.address) {
+        toast.error("Customer address is required for a new customer.");
+        return;
+      }
+      try {
+        const created = await createCustomerMutation.mutateAsync(newCust);
+        custName = created.name;
+        custMobile = created.phone || created.mobile || "";
+        custAddress = created.address || "";
+      } catch (e) {
+        toast.error("Failed to create new customer");
+        return;
+      }
+    }
+
     const orderNo = form.orderNo || `ORD-${(list.length + 1).toString().padStart(4, "0")}`;
     const finalKarigarId = form.karigarId === "unassigned" ? "" : form.karigarId;
     
@@ -71,13 +108,14 @@ export default function OrdersPage() {
 
     try {
       if (editingId) {
-        await updateMutation.mutateAsync({ id: editingId, body: { ...form, orderNo, karigarId: finalKarigarId, note: safeNote.trim() } });
+        await updateMutation.mutateAsync({ id: editingId, body: { ...form, customerName: custName, customerMobile: custMobile, customerAddress: custAddress, orderNo, karigarId: finalKarigarId, note: safeNote.trim() } });
         toast.success("Order updated successfully!");
       } else {
-        await createMutation.mutateAsync({ ...form, orderNo, karigarId: finalKarigarId, note: safeNote.trim() });
+        await createMutation.mutateAsync({ ...form, customerName: custName, customerMobile: custMobile, customerAddress: custAddress, orderNo, karigarId: finalKarigarId, note: safeNote.trim() });
         toast.success("Order created successfully!");
       }
       setForm(empty);
+      setNewCust({ name: "", phone: "", phone2: "", address: "" });
       setEditingId(null);
       setOpen(false);
     } catch (error) {
@@ -102,8 +140,8 @@ export default function OrdersPage() {
 
   const filtered = useMemo(() => {
     let result = filter === "All" ? list : list.filter(o => o.status === filter);
-    if (q.trim()) {
-      const lowerQ = q.toLowerCase().trim();
+    if (debouncedQ.trim()) {
+      const lowerQ = debouncedQ.toLowerCase().trim();
       result = result.filter(o => 
         o.customerName.toLowerCase().includes(lowerQ) ||
         o.orderNo.toLowerCase().includes(lowerQ) ||
@@ -111,8 +149,8 @@ export default function OrdersPage() {
         o.itemDescription.toLowerCase().includes(lowerQ)
       );
     }
-    return [...result].sort((a, b) => b.date.localeCompare(a.date));
-  }, [list, q, filter]);
+    return [...result].sort((a, b) => (a.customerName || "").localeCompare(b.customerName || ""));
+  }, [list, debouncedQ, filter]);
 
   const totalPages = Math.ceil(filtered.length / 10) || 1;
   const currentPage = Math.min(page, totalPages);
@@ -126,7 +164,7 @@ export default function OrdersPage() {
           <p className="text-muted-foreground mt-1">Manage custom Jewellery orders and advances.</p>
         </div>
         <Dialog open={open} onOpenChange={setOpen}>
-          <DialogTrigger asChild><Button size="lg" className="w-full sm:w-auto" onClick={() => { setForm(empty); setEditingId(null); }}><Plus className="w-4 h-4 mr-2"/>New Order</Button></DialogTrigger>
+          <DialogTrigger asChild><Button size="lg" className="w-full sm:w-auto" onClick={() => { setForm(empty); setNewCust({ name: "", phone: "", phone2: "", address: "" }); setEditingId(null); setSearchCust(""); setSearchKar(""); }}><Plus className="w-4 h-4 mr-2"/>New Order</Button></DialogTrigger>
           <DialogContent className="max-w-2xl max-h-[75vh] overflow-y-auto" aria-describedby={undefined}>
             <DialogHeader><DialogTitle>Create Custom Order</DialogTitle></DialogHeader>
             <div className="grid grid-cols-2 gap-3">
@@ -146,18 +184,31 @@ export default function OrdersPage() {
                 <div>
                   <Label className="text-xs">Customer *</Label>
                   <Select value={form.customerMobile || ""} onValueChange={(val) => {
-                    const match = customers.find(c => (c.mobile || c.phone) === val);
-                    if (match) setForm({...form, customerName: match.name, customerMobile: match.mobile || (match as any).phone || "", customerAddress: match.address || ""});
+                    if (val === "NEW") {
+                      setForm({...form, customerMobile: "NEW", customerName: "", customerAddress: ""});
+                    } else {
+                      const match = customers.find(c => (c.mobile || c.phone) === val);
+                      if (match) setForm({...form, customerName: match.name, customerMobile: match.mobile || (match as any).phone || "", customerAddress: match.address || ""});
+                    }
                   }}>
                     <SelectTrigger><SelectValue placeholder="Select customer" /></SelectTrigger>
                     <SelectContent>
-                      {customers.filter(c => c.name.toLowerCase().includes(searchCust.toLowerCase()) || (c.mobile || (c as any).phone || "").includes(searchCust)).map((c) => (
+                      <SelectItem value="NEW" className="font-semibold text-primary">+ Create New Customer</SelectItem>
+                      {customers.filter(c => c.name.toLowerCase().includes(debouncedSearchCust.toLowerCase()) || (c.mobile || (c as any).phone || "").includes(debouncedSearchCust)).sort((a, b) => (a.name || "").localeCompare(b.name || "")).map((c) => (
                         <SelectItem key={c.mobile || c.phone} value={c.mobile || c.phone}>{c.name} · {c.mobile || (c as any).phone}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
               </div>
+              {form.customerMobile === "NEW" && (
+                <div className="p-3 rounded-md bg-primary/5 border border-primary/20 text-sm space-y-3 mt-2 col-span-2">
+                  <div className="space-y-1.5"><Label className="text-xs">Full Name *</Label><Input value={newCust.name} onChange={e => setNewCust({...newCust, name: e.target.value})} className="h-8 bg-background" /></div>
+                  <div className="space-y-1.5"><Label className="text-xs">Mobile No (optional)</Label><Input value={newCust.phone} onChange={e => setNewCust({...newCust, phone: e.target.value})} className="h-8 bg-background" /></div>
+                  <div className="space-y-1.5"><Label className="text-xs">Mobile No 2 (optional)</Label><Input value={newCust.phone2} onChange={e => setNewCust({...newCust, phone2: e.target.value})} className="h-8 bg-background" /></div>
+                  <div className="space-y-1.5"><Label className="text-xs">Address *</Label><Input value={newCust.address} onChange={e => setNewCust({...newCust, address: e.target.value})} className="h-8 bg-background" /></div>
+                </div>
+              )}
               <div className="col-span-2">
                 <Field label="Customer Address" v={form.customerAddress || ""} on={v => setForm({...form, customerAddress: v})} />
               </div>
@@ -188,7 +239,7 @@ export default function OrdersPage() {
                     <SelectTrigger><SelectValue placeholder="Unassigned" /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="unassigned">Unassigned</SelectItem>
-                      {karigars.filter(k => k.name.toLowerCase().includes(searchKar.toLowerCase()) || (k.mobile||"").includes(searchKar)).map(k => (
+                      {karigars.filter(k => k.name.toLowerCase().includes(debouncedSearchKar.toLowerCase()) || (k.mobile||"").includes(debouncedSearchKar)).sort((a, b) => (a.name || "").localeCompare(b.name || "")).map(k => (
                         <SelectItem key={k._id || k.id} value={k._id || k.id}>{k.name}</SelectItem>
                       ))}
                     </SelectContent>
@@ -382,8 +433,30 @@ export default function OrdersPage() {
 }
 
 function Field({ label, v, on, type = "text" }: { label: string; v: string; on: (v: string) => void; type?: string }) {
+  const [focused, setFocused] = useState(false);
+
   if (type === "date") {
-    return <div className="space-y-1.5"><Label className="text-xs">{label}</Label><DatePicker value={v} onChange={on} className="w-full h-9" /></div>;
+    let displayValue = v;
+    if (!focused && v) {
+      const parts = v.split('-');
+      if (parts.length === 3) {
+        displayValue = `${parts[2]}/${parts[1]}/${parts[0]}`;
+      }
+    }
+    return (
+      <div className="space-y-1.5">
+        <Label className="text-xs">{label}</Label>
+        <Input 
+          type={focused ? "date" : "text"} 
+          placeholder="DD/MM/YYYY"
+          value={displayValue} 
+          onChange={(e) => on(e.target.value)} 
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+          className="w-full h-9" 
+        />
+      </div>
+    );
   }
   return <div className="space-y-1.5"><Label className="text-xs">{label}</Label><Input type={type} value={v} onChange={e => on(e.target.value)} /></div>;
 }

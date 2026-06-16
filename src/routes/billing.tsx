@@ -26,7 +26,7 @@ import {
   type InvoiceItem,
   useLocalState,
 } from "@/lib/storage";
-import { formatDate } from "@/lib/utils";
+import { formatDate, useDebounce } from "@/lib/utils";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { invoicesAPI, inventoryAPI, customerAPI, goldRatesAPI, ordersAPI, repairsAPI } from "@/lib/api";
 import { toast } from "sonner";
@@ -57,7 +57,9 @@ export default function BillingPage() {
   const [type, setType] = useState<"GST" | "NON-GST">("GST");
   const [customerId, setCustomerId] = useState<string>("");
   const [searchCust, setSearchCust] = useState("");
+  const debouncedSearchCust = useDebounce(searchCust, 300);
   const [searchProd, setSearchProd] = useState("");
+  const debouncedSearchProd = useDebounce(searchProd, 300);
   const [items, setItems] = useState<InvoiceItem[]>([]);
   const [discount, setDiscount] = useState<number | "">("");
   const [oldGoldAmount, setOldGoldAmount] = useState<number | "">("");
@@ -70,6 +72,7 @@ export default function BillingPage() {
   const [linkedOrderId, setLinkedOrderId] = useState<string>("");
   const [nonGstFilter, setNonGstFilter] = useState<"All" | "INV" | "MAN">("All");
   const [searchQuery, setSearchQuery] = useState("");
+  const debouncedSearchQuery = useDebounce(searchQuery, 300);
 
   const isOperator = authUser?.role === 'operator';
   const isGst = type === "GST";
@@ -202,6 +205,8 @@ export default function BillingPage() {
     setCustomerSignature("");
     setAuthorizedSignatory("");
     setLinkedOrderId("");
+    setSearchCust("");
+    setSearchProd("");
   };
 
   useEffect(() => {
@@ -435,21 +440,21 @@ export default function BillingPage() {
 
   const gstInvoices = useMemo(() => {
     let list = invoices.filter((i) => i.type === "GST");
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase().trim();
+    if (debouncedSearchQuery) {
+      const q = debouncedSearchQuery.toLowerCase().trim();
       list = list.filter((i) => (i.number || "").toLowerCase().includes(q) || (i.customerName || "").toLowerCase().includes(q) || (i.customerMobile || "").includes(q));
     }
-    return list;
-  }, [invoices, searchQuery]);
+    return list.sort((a, b) => (a.customerName || "").localeCompare(b.customerName || ""));
+  }, [invoices, debouncedSearchQuery]);
 
   const nonGstInvoices = useMemo(() => {
     let list = invoices.filter((i) => i.type === "NON-GST");
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase().trim();
+    if (debouncedSearchQuery) {
+      const q = debouncedSearchQuery.toLowerCase().trim();
       list = list.filter((i) => (i.number || "").toLowerCase().includes(q) || (i.customerName || "").toLowerCase().includes(q) || (i.customerMobile || "").includes(q));
     }
-    return list;
-  }, [invoices, searchQuery]);
+    return list.sort((a, b) => (a.customerName || "").localeCompare(b.customerName || ""));
+  }, [invoices, debouncedSearchQuery]);
 
   return (
     <Layout>
@@ -529,12 +534,13 @@ export default function BillingPage() {
                           {customers
                             .filter(
                               (c) =>
-                                c.name.toLowerCase().includes(searchCust.toLowerCase()) ||
-                                (c.mobile || c.phone || "").includes(searchCust)
+                                c.name.toLowerCase().includes(debouncedSearchCust.toLowerCase()) ||
+                                (c.mobile || c.phone || "").includes(debouncedSearchCust)
                             )
+                            .sort((a, b) => (a.name || "").localeCompare(b.name || ""))
                             .map((c) => (
                               <SelectItem key={c._id || c.id} value={c._id || c.id}>
-                                {c.name} · {c.mobile || c.phone}
+                                {c.name} · {c.mobile || (c as any).phone}
                               </SelectItem>
                             ))}
                         </SelectContent>
@@ -705,14 +711,15 @@ export default function BillingPage() {
                           {products
                             .filter(
                               (p) =>
-                                p.name.toLowerCase().includes(searchProd.toLowerCase()) ||
+                                p.name.toLowerCase().includes(debouncedSearchProd.toLowerCase()) ||
                                 (p.barcode || "")
                                   .toLowerCase()
-                                  .includes(searchProd.toLowerCase()) ||
+                                  .includes(debouncedSearchProd.toLowerCase()) ||
                                 (p.huid || "")
                                   .toLowerCase()
-                                  .includes(searchProd.toLowerCase())
+                                  .includes(debouncedSearchProd.toLowerCase())
                             )
+                            .sort((a, b) => (a.name || "").localeCompare(b.name || ""))
                             .map((p) => (
                               <SelectItem key={p._id || p.id} value={p._id || p.id} disabled={p.stock <= 0}>
                                 {p.name} · {p.barcode || p.huid || p.purity} · {p.stock > 0 ? `${p.stock} in stock` : "Out of stock"}
@@ -1122,18 +1129,19 @@ function Row({ label, v, className, valueClassName }: { label: string; v: string
 }
 
 function NumI({ v, on, className = "w-24 h-8" }: { v: number; on: (n: number) => void; className?: string }) {
-  const [val, setVal] = useState(v.toString());
+  const safeV = v ?? 0;
+  const [val, setVal] = useState(safeV.toString());
 
   // Update local state if the prop changes externally (e.g., reset)
   useEffect(() => {
     setVal((prev) => {
       const parsedPrev = parseFloat(prev);
-      if (parsedPrev === v || (prev === "" && v === 0)) {
+      if (parsedPrev === safeV || (prev === "" && safeV === 0)) {
         return prev;
       }
-      return v.toString();
+      return safeV.toString();
     });
-  }, [v]);
+  }, [safeV]);
 
   return (
     <Input

@@ -14,3 +14,7 @@ export function formatDate(value: string | number | Date | null | undefined) {
   const year = date.getFullYear();
   return `${day}/${month}/${year}`;
 }
+
+// Re-export debounce hook from a dedicated module.
+export { useDebounce } from "./timing";
+

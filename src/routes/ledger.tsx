@@ -2,15 +2,17 @@ import { useState, useMemo } from "react";
 import { Layout } from "@/components/Layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import { useApi } from "@/hooks/useApi";
 import { customerAPI, expensesAPI, invoicesAPI, ordersAPI, repairsAPI } from "@/lib/api";
+import { purchasesAPI } from "@/lib/api";
 import { inr, type Customer, type Expense, type Invoice, type Order, type Repair, useLocalState } from "@/lib/storage";
 import { BookOpen, ArrowDownLeft, ArrowUpRight, Users, Wrench, ShoppingBag, Receipt, Wallet } from "lucide-react";
-import { DatePicker } from "@/components/ui/date-picker";
 
 export default function LedgerPage() {
   const [authUser] = useLocalState<any>("ajms.auth", null);
   const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().slice(0, 10));
+  const [dateFocused, setDateFocused] = useState(false);
   const targetDateStr = useMemo(() => new Date(selectedDate).toDateString(), [selectedDate]);
 
   // Fetch all related data
@@ -19,11 +21,12 @@ export default function LedgerPage() {
   const { data: orders = [], isLoading: loadingOrders } = useApi<Order[]>(["orders"], () => ordersAPI.getAll());
   const { data: repairs = [], isLoading: loadingRepairs } = useApi<Repair[]>(["repairs"], () => repairsAPI.getAll());
   const { data: customers = [], isLoading: loadingCustomers } = useApi<Customer[]>(["customers"], () => customerAPI.getAll());
+  const { data: purchases = [], isLoading: loadingPurchases } = useApi<any[]>(["purchases"], () => purchasesAPI.getAll());
 
   const isOperator = authUser?.role === "operator";
   const invoices = useMemo(() => allInvoices.filter(i => isOperator ? i.type === "GST" : i.type !== "GST"), [allInvoices, isOperator]);
 
-  const isLoading = loadingInvoices || loadingExpenses || loadingOrders || loadingRepairs || loadingCustomers;
+  const isLoading = loadingInvoices || loadingExpenses || loadingOrders || loadingRepairs || loadingCustomers || loadingPurchases;
 
   // Process and group all transactions for the selected day
   const entries = useMemo(() => {
@@ -53,6 +56,12 @@ export default function LedgerPage() {
       }
     });
 
+    purchases.forEach(p => {
+      if (new Date(p.date).toDateString() === targetDateStr) {
+        arr.push({ id: p.id || (p as any)._id, time: p.date, type: 'Purchase', icon: ShoppingBag, desc: `Purchase: ${p.billNo} - ${p.supplierName}`, in: 0, out: p.paymentMode === 'Credit' ? 0 : p.total, mode: p.paymentMode });
+      }
+    });
+
     customers.forEach(c => {
       if (c.createdAt && new Date(c.createdAt).toDateString() === targetDateStr) {
         const phone = (c as any).phone || c.mobile || "";
@@ -60,8 +69,8 @@ export default function LedgerPage() {
       }
     });
 
-    // Sort newest transactions first
-    return arr.sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime());
+    // Sort alphabetically by description
+    return arr.sort((a, b) => (a.desc || "").localeCompare(b.desc || ""));
   }, [invoices, expenses, orders, repairs, customers, targetDateStr]);
 
   const totalIn = entries.reduce((s, e) => s + e.in, 0);
@@ -77,11 +86,26 @@ export default function LedgerPage() {
         </div>
         <div className="space-y-1.5 w-full sm:w-auto">
           <Label className="text-xs">Select Date</Label>
-          <DatePicker 
-            value={selectedDate} 
-            onChange={setSelectedDate} 
-            className="w-full sm:w-48 bg-background"
-          />
+          {(() => {
+            let displayValue = selectedDate;
+            if (!dateFocused && selectedDate) {
+              const parts = selectedDate.split('-');
+              if (parts.length === 3) {
+                displayValue = `${parts[2]}/${parts[1]}/${parts[0]}`;
+              }
+            }
+            return (
+              <Input
+                type={dateFocused ? "date" : "text"}
+                placeholder="DD/MM/YYYY"
+                value={displayValue}
+                onChange={(e) => setSelectedDate(e.target.value)}
+                onFocus={() => setDateFocused(true)}
+                onBlur={() => setDateFocused(false)}
+                className="w-full sm:w-48 bg-background"
+              />
+            );
+          })()}
         </div>
       </header>
 

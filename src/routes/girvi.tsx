@@ -22,7 +22,6 @@ import { useMemo, useState } from "react";
 import { Plus, Trash2, Printer, Pencil, Search, Image as ImageIcon, Wallet, Scale, Landmark, TrendingUp } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 import { toast } from "sonner";
-import { DatePicker } from "@/components/ui/date-picker";
 import { PaymentQr } from "@/components/PaymentQr";
 import { InvoiceTerms, ShopHeader } from "@/components/InvoiceBranding";
 
@@ -65,7 +64,7 @@ function getElapsedTimeString(dateStr: string) {
   return `${days} days`;
 }
 
-function calculateInterest(girvi: Girvi) {
+function calculateInterest(girvi: any) {
   const isDaily = girvi.interestPeriod === "Daily" || girvi.note?.includes("[IntPeriod:Daily]");
   if (isDaily) {
     const diffDays = getElapsedDays(girvi.date);
@@ -79,7 +78,8 @@ function calculateInterest(girvi: Girvi) {
   }
 }
 
-function calculateForwardedInterest(girvi: Girvi) {
+function calculateForwardedInterest(girvi: any) {
+  if (girvi.isForwardedSettled) return girvi.forwardedSettledInterest || 0;
   if (!girvi.forwardedAmount || !girvi.forwardedInterestPct) return 0;
   const isDaily = girvi.forwardedInterestPeriod === "Daily" || girvi.note?.includes("[FwdIntPeriod:Daily]");
   if (isDaily) {
@@ -95,12 +95,15 @@ function calculateForwardedInterest(girvi: Girvi) {
 }
 
 export default function GirviPage() {
+  const [authUser] = useLocalState<any>("ajms.auth", null);
   const { data: girvis = [], isLoading } = useApi<Girvi[]>(["girvis"], () => girviAPI.getAll());
   const { data: customers = [] } = useApi<any[]>(["customers"], () => customerAPI.getAll());
   const [forwardedShops] = useLocalState<any[]>("ajms.forwardedShops", []);
   const createMutation = useApiMutation((data: Girvi) => girviAPI.create(data), ["girvis"]);
   const updateMutation = useApiMutation((data: { id: string; body: Girvi }) => girviAPI.update(data.id, data.body), ["girvis"]);
   const deleteMutation = useApiMutation((id: string) => girviAPI.delete(id), ["girvis"]);
+  const createCustomerMutation = useApiMutation((data: any) => customerAPI.create(data), ["customers"]);
+  const [newCust, setNewCust] = useState({ name: "", phone: "", phone2: "", address: "" });
 
   const [filter, setFilter] = useState<"All" | Girvi["status"]>("All");
   const [q, setQ] = useState("");
@@ -147,12 +150,13 @@ export default function GirviPage() {
   const [addCategoryOpen, setAddCategoryOpen] = useState(false);
   const [newCategory, setNewCategory] = useState("");
   const [imagePreview, setImagePreview] = useState("");
+  const [dateFocused, setDateFocused] = useState(false);
   const [forwardedImagePreview, setForwardedImagePreview] = useState("");
   const [page, setPage] = useState(1);
 
   const totals = useMemo(() => {
     const active = girvis.filter((g) => g.status === "Active");
-    const forwarded = active.filter(g => (g.forwardedAmount || 0) > 0);
+    const forwarded = active.filter(g => (g.forwardedAmount || 0) > 0 && !(g as any).isForwardedSettled);
     return {
       activeCount: active.length,
       principal: active.reduce((s, g) => s + g.loanAmount, 0),
@@ -173,7 +177,7 @@ export default function GirviPage() {
         g.customerMobile.includes(lowerQ)
       );
     }
-    return [...list].sort((a, b) => b.date.localeCompare(a.date));
+    return [...list].sort((a, b) => (a.customerName || "").localeCompare(b.customerName || ""));
   }, [girvis, filter, q]);
 
   const totalPages = Math.ceil(filtered.length / 10) || 1;
@@ -181,13 +185,40 @@ export default function GirviPage() {
   const paginated = filtered.slice((currentPage - 1) * 10, currentPage * 10);
 
   async function add(createInvoice = false) {
-    if (!form.customerName || !form.loanAmount) return;
+    if (!form.loanAmount) return;
+    if (form.customerMobile !== "NEW" && !form.customerName) return;
+
+    let custName = form.customerName;
+    let custMobile = form.customerMobile;
+    let custMobile2 = form.customerMobile2;
+    let custAddress = form.customerAddress;
+
+    if (form.customerMobile === "NEW") {
+      if (!newCust.name) {
+        toast.error("Customer name is required for a new customer.");
+        return;
+      }
+      if (!newCust.address) {
+        toast.error("Customer address is required for a new customer.");
+        return;
+      }
+      try {
+        const created = await createCustomerMutation.mutateAsync(newCust);
+        custName = created.name;
+        custMobile = created.phone || created.mobile || "";
+        custAddress = created.address || "";
+      } catch (e) {
+        toast.error("Failed to create new customer");
+        return;
+      }
+    }
+
     const dueDate = form.dueDate || (() => {
       const d = new Date(form.date);
       d.setMonth(d.getMonth() + form.tenureMonths);
       return d.toISOString().slice(0, 10);
     })();
-    const payload: any = { ...form, dueDate };
+    const payload: any = { ...form, customerName: custName, customerMobile: custMobile, customerMobile2: custMobile2, customerAddress: custAddress, dueDate };
     if (createInvoice) {
       payload.documentType = payload.documentType || "Bill";
       payload.documentNumber = payload.documentNumber || `GRV-${Date.now().toString().slice(-6)}`;
@@ -209,6 +240,32 @@ export default function GirviPage() {
       } else {
         saved = await createMutation.mutateAsync(payload);
         toast.success("Girvi loan saved successfully!");
+        
+        // Sync the newly received Girvi item directly to the Inventory
+        try {
+          await createInventoryMutation.mutateAsync({
+            barcode: `GRV-${saved?.loanNo || payload.loanNo}`,
+            name: `Girvi: ${payload.itemDescription}`,
+            category: payload.itemType === "Silver" ? "Silver" : "Gold",
+            subcategory: payload.itemCategory || "Girvi",
+            note: `Pledged under Girvi Loan ${saved?.loanNo || payload.loanNo} by ${custName}`,
+            purity: payload.purity || "22K",
+            grossWeight: payload.grossWeight || 0,
+            netWeight: payload.netWeight || 0,
+            stoneWeight: Math.max(0, (payload.grossWeight || 0) - (payload.netWeight || 0)),
+            makingCharge: 0,
+            makingChargePct: 0,
+            gstPct: 0,
+            ratePerGram: 0,
+            stock: 1,
+            huid: "",
+            imageUrl: payload.imageUrl || "",
+            imageUrls: payload.imageUrl ? [payload.imageUrl] : [],
+          });
+          toast.success("Girvi item successfully added to Inventory!");
+        } catch (invErr) {
+          console.error("Failed to sync girvi to inventory", invErr);
+        }
       }
       setForm({
         ...form,
@@ -241,6 +298,7 @@ export default function GirviPage() {
         customerSignature: "",
         authorizedSignatory: "",
       });
+      setNewCust({ name: "", phone: "", phone2: "", address: "" });
       setImagePreview("");
       setForwardedImagePreview("");
       setEditingId(null);
@@ -322,7 +380,7 @@ export default function GirviPage() {
     const g = girvis.find((x) => x.id === id || (x as any)._id === id);
 
     if ((status === "Closed" || status === "Auctioned") && g) {
-      if (Number(g.forwardedAmount) > 0) {
+      if (Number(g.forwardedAmount) > 0 && !(g as any).isForwardedSettled) {
         window.alert("Take item from Forwarded Shops first before closing or auctioning this loan.");
         return;
       }
@@ -337,6 +395,7 @@ export default function GirviPage() {
     if (g) await updateMutation.mutateAsync({ id, body: { ...g, status } });
   }
   async function remove(id: string) {
+    if (!window.confirm("Are you sure you want to delete this girvi record?")) return;
     await deleteMutation.mutateAsync(id);
   }
 
@@ -377,9 +436,11 @@ export default function GirviPage() {
       customerSignature: "",
       authorizedSignatory: "",
     });
+    setNewCust({ name: "", phone: "", phone2: "", address: "" });
     setImagePreview("");
     setForwardedImagePreview("");
     setSearchCust("");
+    setDateFocused(false);
   };
 
   const startEdit = (g: Girvi) => {
@@ -402,6 +463,7 @@ export default function GirviPage() {
     });
     setImagePreview(g.imageUrl || "");
     setForwardedImagePreview(g.forwardedImageUrl || "");
+    setDateFocused(false);
     setOpen(true);
   };
 
@@ -427,7 +489,18 @@ export default function GirviPage() {
             <div className="space-y-3">
               <div>
                 <Label>Arrival Date</Label>
-                <DatePicker value={form.date} onChange={(v) => setForm({ ...form, date: v })} className="w-full" />
+                {(() => {
+                  let displayValue = form.date;
+                  if (!dateFocused && form.date) {
+                    const parts = form.date.split('-');
+                    if (parts.length === 3) {
+                      displayValue = `${parts[2]}/${parts[1]}/${parts[0]}`;
+                    }
+                  }
+                  return (
+                    <Input type={dateFocused ? "date" : "text"} placeholder="DD/MM/YYYY" value={displayValue} onChange={(e) => setForm({ ...form, date: e.target.value })} onFocus={() => setDateFocused(true)} onBlur={() => setDateFocused(false)} className="w-full" />
+                  );
+                })()}
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <div>
@@ -445,18 +518,31 @@ export default function GirviPage() {
                 <div>
                   <Label className="text-xs">Customer *</Label>
                   <Select value={form.customerMobile || ""} onValueChange={(val) => {
-                    const match = customers.find(c => (c.mobile || c.phone) === val);
-                    if (match) setForm({...form, customerName: match.name, customerMobile: match.mobile || match.phone || "", customerMobile2: match.phone2 || "", customerAddress: match.address || ""});
+                    if (val === "NEW") {
+                      setForm({...form, customerMobile: "NEW", customerName: "", customerMobile2: "", customerAddress: ""});
+                    } else {
+                      const match = customers.find(c => (c.mobile || c.phone) === val);
+                      if (match) setForm({...form, customerName: match.name, customerMobile: match.mobile || match.phone || "", customerMobile2: match.phone2 || "", customerAddress: match.address || ""});
+                    }
                   }}>
                     <SelectTrigger><SelectValue placeholder="Select customer" /></SelectTrigger>
                     <SelectContent>
-                      {customers.filter(c => c.name.toLowerCase().includes(searchCust.toLowerCase()) || (c.mobile || c.phone || "").includes(searchCust)).map((c) => (
+                      <SelectItem value="NEW" className="font-semibold text-primary">+ Create New Customer</SelectItem>
+                      {customers.filter(c => c.name.toLowerCase().includes(searchCust.toLowerCase()) || (c.mobile || c.phone || "").includes(searchCust)).sort((a, b) => (a.name || "").localeCompare(b.name || "")).map((c) => (
                         <SelectItem key={c.mobile || c.phone} value={c.mobile || c.phone}>{c.name} · {c.mobile || c.phone}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
               </div>
+              {form.customerMobile === "NEW" && (
+                <div className="p-3 rounded-md bg-primary/5 border border-primary/20 text-sm space-y-3 mt-2 col-span-2">
+                  <div className="space-y-1.5"><Label className="text-xs">Full Name *</Label><Input value={newCust.name} onChange={e => setNewCust({...newCust, name: e.target.value})} className="h-8 bg-background" /></div>
+                  <div className="space-y-1.5"><Label className="text-xs">Mobile No (optional)</Label><Input value={newCust.phone} onChange={e => setNewCust({...newCust, phone: e.target.value})} className="h-8 bg-background" /></div>
+                  <div className="space-y-1.5"><Label className="text-xs">Mobile No 2 (optional)</Label><Input value={newCust.phone2} onChange={e => setNewCust({...newCust, phone2: e.target.value})} className="h-8 bg-background" /></div>
+                  <div className="space-y-1.5"><Label className="text-xs">Address *</Label><Input value={newCust.address} onChange={e => setNewCust({...newCust, address: e.target.value})} className="h-8 bg-background" /></div>
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <Label>Customer Name</Label>
@@ -771,7 +857,11 @@ export default function GirviPage() {
                                   {g.itemType === "Silver" && <Badge variant="outline" className="text-[10px] h-4 px-1 py-0 bg-slate-50 text-slate-600 border-slate-200 shadow-none">Silver</Badge>}
                                 </div>
                                 <div className="text-xs text-muted-foreground line-clamp-1 max-w-40 mt-0.5" title={g.itemDescription}>{g.itemDescription}</div>
-                              {(g.forwardedShopName || g.forwardedTo) && <div className="mt-1 text-[10px] font-semibold text-purple-700 border border-purple-200 bg-purple-50 inline-block px-1.5 py-0.5 rounded truncate max-w-40" title={g.forwardedShopName || g.forwardedTo}>Fwd: {g.forwardedShopName || g.forwardedTo}</div>}
+                              {(g.forwardedShopName || g.forwardedTo) && (
+                                <div className={`mt-1 text-[10px] font-semibold border inline-block px-1.5 py-0.5 rounded truncate max-w-40 ${(g as any).isForwardedSettled ? "text-green-700 border-green-200 bg-green-50" : "text-purple-700 border-purple-200 bg-purple-50"}`} title={g.forwardedShopName || g.forwardedTo}>
+                                  Fwd: {g.forwardedShopName || g.forwardedTo} {(g as any).isForwardedSettled ? "(Settled)" : ""}
+                                </div>
+                              )}
                               </div>
                             </div>
                           </td>
@@ -822,7 +912,7 @@ export default function GirviPage() {
             )}
           </CardContent>
         </Card>
-      {viewing && <GirviModal girvi={viewing} onClose={() => setViewing(null)} />}
+      {viewing && <GirviModal girvi={viewing} authUser={authUser} onClose={() => setViewing(null)} />}
     </Layout>
   );
 }
@@ -847,7 +937,7 @@ function KPI({ label, value, icon: Icon, colorClass }: { label: string; value: s
   );
 }
 
-function GirviModal({ girvi, onClose }: { girvi: Girvi; onClose: () => void }) {
+function GirviModal({ girvi, authUser, onClose }: { girvi: Girvi; authUser: any; onClose: () => void }) {
   const interest = calculateInterest(girvi);
   const total = girvi.loanAmount + interest;
   const forwardedInterest = calculateForwardedInterest(girvi);
@@ -998,6 +1088,7 @@ function GirviModal({ girvi, onClose }: { girvi: Girvi; onClose: () => void }) {
               <h4 className="font-bold mb-3 uppercase tracking-wider text-purple-900 flex items-center gap-2">
                 <span className="bg-purple-200 text-purple-900 px-2 py-0.5 rounded">Internal Use Only</span> 
                 Forwarding Details
+                {(girvi as any).isForwardedSettled && <span className="ml-auto bg-green-100 text-green-800 px-2 py-0.5 rounded text-[10px]">SETTLED</span>}
               </h4>
               <div className="grid grid-cols-3 gap-4 text-purple-900">
                 <div>
@@ -1025,7 +1116,11 @@ function GirviModal({ girvi, onClose }: { girvi: Girvi; onClose: () => void }) {
           )}
 
           <div className="mt-4">
-            <InvoiceTerms compact />
+            {authUser?.termsAndConditions ? (
+              <div className="text-[10px] text-slate-600 whitespace-pre-wrap">{authUser.termsAndConditions}</div>
+            ) : (
+              <InvoiceTerms compact />
+            )}
           </div>
 
           <div className="mt-6 flex justify-center border-t border-slate-200 pt-4">

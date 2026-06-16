@@ -11,7 +11,6 @@ import { formatDate } from "@/lib/utils";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { jobworkAPI, karigarsAPI } from "@/lib/api";
 import { Plus, Trash2, ClipboardList } from "lucide-react";
-import { DatePicker } from "@/components/ui/date-picker";
 
 export default function JobWorkPage() {
   const { data: list = [], isLoading } = useApi<JobWork[]>(["jobwork"], () => jobworkAPI.getAll());
@@ -53,14 +52,15 @@ export default function JobWorkPage() {
 
   const totalPages = Math.ceil(list.length / 10) || 1;
   const currentPage = Math.min(page, totalPages);
-  const paginated = list.slice((currentPage - 1) * 10, currentPage * 10);
+  const sortedList = [...list].sort((a, b) => (a.karigarName || "").localeCompare(b.karigarName || ""));
+  const paginated = sortedList.slice((currentPage - 1) * 10, currentPage * 10);
 
   return (
     <Layout>
       <header className="flex flex-col sm:flex-row items-start sm:items-end justify-between gap-4 mb-6">
         <div><h1 className="text-4xl">Job Work</h1><p className="text-muted-foreground mt-1">Metal issued to karigars & received back.</p></div>
         <Dialog open={open} onOpenChange={setOpen}>
-          <DialogTrigger asChild><Button size="lg" className="w-full sm:w-auto"><Plus className="w-4 h-4 mr-2"/>New Job</Button></DialogTrigger>
+          <DialogTrigger asChild><Button size="lg" className="w-full sm:w-auto" onClick={() => { setForm(empty); setSearchKar(""); }}><Plus className="w-4 h-4 mr-2"/>New Job</Button></DialogTrigger>
           <DialogContent className="max-w-2xl max-h-[75vh] overflow-y-auto" aria-describedby={undefined}><DialogHeader><DialogTitle>Issue Job Work</DialogTitle></DialogHeader>
             <div className="grid grid-cols-2 gap-3">
               <div className="col-span-2 grid grid-cols-2 gap-3">
@@ -80,7 +80,7 @@ export default function JobWorkPage() {
                   }}>
                     <SelectTrigger><SelectValue placeholder="Select karigar" /></SelectTrigger>
                     <SelectContent>
-                      {karigars.filter(k => k.name.toLowerCase().includes(searchKar.toLowerCase()) || (k.mobile||"").includes(searchKar)).map(k => (
+                    {karigars.filter(k => k.name.toLowerCase().includes(searchKar.toLowerCase()) || (k.mobile||"").includes(searchKar)).sort((a, b) => (a.name || "").localeCompare(b.name || "")).map(k => (
                         <SelectItem key={k._id || k.id} value={k._id || k.id}>{k.name}</SelectItem>
                       ))}
                     </SelectContent>
@@ -142,8 +142,30 @@ export default function JobWorkPage() {
 }
 
 function Field({ label, v, on, type = "text" }: { label: string; v: string; on: (v: string) => void; type?: string }) {
+  const [focused, setFocused] = useState(false);
+
   if (type === "date") {
-    return <div className="space-y-1.5"><Label className="text-xs">{label}</Label><DatePicker value={v} onChange={on} className="w-full h-9" /></div>;
+    let displayValue = v;
+    if (!focused && v) {
+      const parts = v.split('-');
+      if (parts.length === 3) {
+        displayValue = `${parts[2]}/${parts[1]}/${parts[0]}`;
+      }
+    }
+    return (
+      <div className="space-y-1.5">
+        <Label className="text-xs">{label}</Label>
+        <Input 
+          type={focused ? "date" : "text"} 
+          placeholder="DD/MM/YYYY"
+          value={displayValue} 
+          onChange={(e) => on(e.target.value)} 
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+          className="w-full h-9" 
+        />
+      </div>
+    );
   }
   return <div className="space-y-1.5"><Label className="text-xs">{label}</Label><Input type={type} value={v} onChange={e => on(e.target.value)} /></div>;
 }

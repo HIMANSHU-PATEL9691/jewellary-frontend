@@ -4,16 +4,16 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { inr, type Invoice, useLocalState } from "@/lib/storage";
-import { formatDate } from "@/lib/utils";
+import { formatDate, useDebounce } from "@/lib/utils";
 import { useApi } from "@/hooks/useApi";
 import { invoicesAPI } from "@/lib/api";
 import { Search, AlertCircle, MessageCircle } from "lucide-react";
-import { DatePicker } from "@/components/ui/date-picker";
 
 export default function DuesPage() {
   const [authUser] = useLocalState<any>("ajms.auth", null);
   const { data: allInvoices = [], isLoading } = useApi<Invoice[]>(["invoices"], () => invoicesAPI.getAll());
   const [q, setQ] = useState("");
+  const debouncedQ = useDebounce(q, 300);
   const [dateFilter, setDateFilter] = useState<string>("");
   const [page, setPage] = useState(1);
 
@@ -25,16 +25,16 @@ export default function DuesPage() {
       .filter((i) => (i.balanceDue || 0) > 0)
       .filter(
         (i) =>
-          i.customerName.toLowerCase().includes(q.toLowerCase()) ||
-          i.customerMobile.includes(q) ||
-          i.number.toLowerCase().includes(q.toLowerCase())
+          i.customerName.toLowerCase().includes(debouncedQ.toLowerCase()) ||
+          i.customerMobile.includes(debouncedQ) ||
+          i.number.toLowerCase().includes(debouncedQ.toLowerCase())
       )
       .filter((i) => {
         if (!dateFilter) return true;
         return new Date(i.createdAt).toISOString().slice(0, 10) === dateFilter;
       })
-      .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()); // Oldest first
-  }, [invoices, q, dateFilter]);
+      .sort((a, b) => (a.customerName || "").localeCompare(b.customerName || ""));
+  }, [invoices, debouncedQ, dateFilter]);
 
   const totalDue = dueInvoices.reduce((sum, i) => sum + (i.balanceDue || 0), 0);
 
@@ -85,9 +85,10 @@ export default function DuesPage() {
           <Input className="pl-9 bg-background" placeholder="Search by customer name, mobile or invoice no" value={q} onChange={(e) => setQ(e.target.value)} />
         </div>
         <div className="flex items-center gap-2">
-          <DatePicker 
-            value={dateFilter} 
-            onChange={setDateFilter} 
+          <Input
+            type="date"
+            value={dateFilter}
+            onChange={(e) => setDateFilter(e.target.value)}
             className="w-40 bg-background"
           />
           {dateFilter && (
