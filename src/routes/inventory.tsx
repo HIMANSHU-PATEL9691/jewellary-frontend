@@ -36,7 +36,7 @@ const empty: Product = {
   subcategory: "",
   note: "",
   huid: "",
-  purity: "22K",
+  purity: "",
   grossWeight: 0,
   netWeight: 0,
   stoneWeight: 0,
@@ -300,7 +300,7 @@ export default function InventoryPage() {
             <Upload className="w-4 h-4 mr-2" /> Import Excel
           </Button>
           <Dialog open={importOpen} onOpenChange={(val) => { setImportOpen(val); if (!val) setParsedProducts([]); }}>
-            <DialogContent className="max-w-4xl max-h-[80vh] flex flex-col">
+            <DialogContent className="max-w-4xl max-h-[80vh] flex flex-col" onInteractOutside={(e) => e.preventDefault()}>
               <DialogHeader>
                 <DialogTitle>Confirm Import</DialogTitle>
                 <DialogDescription>
@@ -346,7 +346,7 @@ export default function InventoryPage() {
               <Plus className="w-4 h-4 mr-2" /> Add Product
             </Button>
             </DialogTrigger>
-          <DialogContent className="max-w-2xl max-h-[75vh] overflow-y-auto">
+          <DialogContent className="max-w-2xl max-h-[75vh] overflow-y-auto" onInteractOutside={(e) => e.preventDefault()}>
             <DialogHeader>
               <DialogTitle className="font-display text-2xl">
                 {editingId ? "Edit" : "New"} product
@@ -377,7 +377,7 @@ export default function InventoryPage() {
                         <Plus className="w-4 h-4" />
                       </Button>
                     </DialogTrigger>
-                    <DialogContent className="max-h-[60vh] overflow-y-auto">
+                    <DialogContent className="max-h-[60vh] overflow-y-auto" onInteractOutside={(e) => e.preventDefault()}>
                       <DialogHeader>
                         <DialogTitle>Add Category</DialogTitle>
                         <DialogDescription>Add a new product category for organizing your inventory.</DialogDescription>
@@ -409,7 +409,7 @@ export default function InventoryPage() {
                         <Plus className="w-4 h-4" />
                       </Button>
                     </DialogTrigger>
-                    <DialogContent className="max-h-[60vh] overflow-y-auto">
+                    <DialogContent className="max-h-[60vh] overflow-y-auto" onInteractOutside={(e) => e.preventDefault()}>
                       <DialogHeader>
                         <DialogTitle>Add Subcategory</DialogTitle>
                         <DialogDescription>
@@ -442,7 +442,7 @@ export default function InventoryPage() {
                 </Field>
               </div>
 
-              <Field label="Stock Qty"><NumIn v={draft.stock} on={(v) => set("stock", v)} /></Field>
+              <Field label="Stock pcs"><NumIn v={draft.stock} on={(v) => set("stock", v)} /></Field>
               
               <div className="md:col-span-2">
                 <Field label="Note">

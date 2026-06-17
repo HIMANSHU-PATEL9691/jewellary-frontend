@@ -15,6 +15,24 @@ export function formatDate(value: string | number | Date | null | undefined) {
   return `${day}/${month}/${year}`;
 }
 
+export function calculateCompoundInterest(
+  principal: number,
+  monthlyRate: number,
+  months: number
+) {
+  const annualRate = (monthlyRate * 12) / 100;
+  const years = months / 12;
+
+  const totalPayable = principal * Math.pow(1 + annualRate, years);
+  const interest = totalPayable - principal;
+
+  return {
+    principal,
+    interest: Number(interest.toFixed(2)),
+    totalPayable: Number(totalPayable.toFixed(2)),
+  };
+}
+
 // Re-export debounce hook from a dedicated module.
 export { useDebounce } from "./timing";
 

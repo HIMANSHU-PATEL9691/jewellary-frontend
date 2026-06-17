@@ -13,6 +13,7 @@ import { ordersAPI, customerAPI, karigarsAPI } from "@/lib/api";
 import { Plus, Trash2, ShoppingBag, Pencil, Printer, Search } from "lucide-react";
 import { toast } from "sonner";
 import { InvoiceTerms, ShopHeader } from "@/components/InvoiceBranding";
+import { PaymentQr } from "@/components/PaymentQr";
 import { format } from "date-fns";
 
 const formatDate = (date: string | Date) => {
@@ -166,7 +167,7 @@ export default function OrdersPage() {
         </div>
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild><Button size="lg" className="w-full sm:w-auto" onClick={() => { setForm(empty); setNewCust({ name: "", phone: "", phone2: "", address: "" }); setEditingId(null); setSearchCust(""); setSearchKar(""); }}><Plus className="w-4 h-4 mr-2"/>New Order</Button></DialogTrigger>
-          <DialogContent className="max-w-2xl max-h-[75vh] overflow-y-auto" aria-describedby={undefined}>
+          <DialogContent className="max-w-2xl max-h-[75vh] overflow-y-auto" aria-describedby={undefined} onInteractOutside={(e) => e.preventDefault()}>
             <DialogHeader><DialogTitle>Create Custom Order</DialogTitle></DialogHeader>
             <div className="grid grid-cols-2 gap-3">
               <div className="col-span-2 grid grid-cols-2 gap-3">
@@ -469,9 +470,10 @@ function OrderInvoiceModal({ order, onClose }: { order: Order; onClose: () => vo
   return (
     <div className="fixed inset-0 z-100 bg-black/50 flex justify-center items-start p-2 sm:p-4 print:bg-white print:p-0 overflow-y-auto pointer-events-auto">
       <div className="bg-white w-full max-w-4xl rounded-lg shadow-xl print:shadow-none print:max-w-none text-slate-900 my-auto relative flex flex-col max-h-[95vh] print:max-h-none print:block">
-        <div className="p-6 sm:p-10 print:p-0 border-2 border-transparent print:border-none m-2 print:m-0 bg-white overflow-y-auto flex-1 print:overflow-visible">
+        <style>{`@media print { @page { margin: 4mm; } body { zoom: 0.9; } }`}</style>
+        <div className="p-6 sm:p-10 print:p-2 border-2 border-transparent print:border-none m-2 print:m-0 bg-white overflow-y-auto flex-1 print:overflow-visible">
           
-          <ShopHeader documentLabel="Custom Order Receipt" />
+          <ShopHeader documentLabel="Custom Order Receipt" compact rightElement={<PaymentQr amount={order.fixedPrice ? Math.max(0, order.fixedPrice - (order.advancePaid || 0)) : 0} compact />} />
 
           {/* Invoice Meta & Customer Details */}
           <div className="flex justify-between items-start mb-6 text-sm">
@@ -495,7 +497,7 @@ function OrderInvoiceModal({ order, onClose }: { order: Order; onClose: () => vo
 
           {/* Items Table */}
           <div className="overflow-x-auto w-full mb-6">
-            <table className="w-full text-sm border-collapse border border-slate-300 min-w-100">
+            <table className="w-full text-sm border-collapse border border-slate-300 min-w-100 print:min-w-full">
               <thead className="bg-slate-100">
               <tr>
                 <th className="border border-slate-300 py-2 px-3 text-center w-12 text-slate-600">#</th>
@@ -553,8 +555,8 @@ function OrderInvoiceModal({ order, onClose }: { order: Order; onClose: () => vo
           </div>
 
           {/* Signatures */}
-          <div className="mt-12 grid grid-cols-1 sm:grid-cols-3 gap-6 items-end text-xs font-bold text-slate-500 uppercase tracking-wider">
-            <div className="text-center order-2 sm:order-1">
+          <div className="mt-12 print:mt-6 grid grid-cols-1 sm:grid-cols-2 gap-8 items-end text-xs font-bold text-slate-500 uppercase tracking-wider print:break-inside-avoid">
+            <div className="text-center">
               {order.customerSignature ? (
                 <img src={order.customerSignature} alt="Customer Signature" className="h-16 mx-auto mb-2 object-contain" />
               ) : (
@@ -562,10 +564,7 @@ function OrderInvoiceModal({ order, onClose }: { order: Order; onClose: () => vo
               )}
               Customer Signature
             </div>
-            <div className="normal-case tracking-normal font-normal text-left text-slate-800 order-1 sm:order-2">
-              <InvoiceTerms compact />
-            </div>
-            <div className="text-center order-3 sm:order-3">
+            <div className="text-center">
               {order.authorizedSignatory ? (
                 <img src={order.authorizedSignatory} alt="Authorized Signatory" className="h-16 mx-auto mb-2 object-contain" />
               ) : (
@@ -573,6 +572,9 @@ function OrderInvoiceModal({ order, onClose }: { order: Order; onClose: () => vo
               )}
               Authorized Signatory
             </div>
+          </div>
+          <div className="mt-8 print:mt-2 border-t border-slate-200 pt-4 print:pt-2 text-center text-xs normal-case tracking-normal font-normal text-slate-600 print:break-inside-avoid">
+            <InvoiceTerms compact />
           </div>
         </div>
         

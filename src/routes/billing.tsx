@@ -73,6 +73,10 @@ export default function BillingPage() {
   const [nonGstFilter, setNonGstFilter] = useState<"All" | "INV" | "MAN">("All");
   const [searchQuery, setSearchQuery] = useState("");
   const debouncedSearchQuery = useDebounce(searchQuery, 300);
+  
+  const [openCustomItemDialog, setOpenCustomItemDialog] = useState(false);
+  const [customItemSearch, setCustomItemSearch] = useState("");
+  const debouncedCustomItemSearch = useDebounce(customItemSearch, 300);
 
   const isOperator = authUser?.role === 'operator';
   const isGst = type === "GST";
@@ -95,15 +99,6 @@ export default function BillingPage() {
       else if ((p.category === "Silver" || purityUpper.includes("SILVER") || purityUpper.includes("925")) && latestRates.silver) currentRate = latestRates.silver;
     }
 
-    let makingCharge = p.makingCharge || 0;
-    let makingChargePct = p.makingChargePct || 0;
-
-    if (makingChargePct > 0) {
-      makingCharge = (p.netWeight * currentRate * makingChargePct) / 100;
-    } else if (makingCharge > 0 && p.netWeight > 0 && currentRate > 0) {
-      makingChargePct = Number(((makingCharge / (p.netWeight * currentRate)) * 100).toFixed(2));
-    }
-
     let itemName = p.name;
     if (p.huid) {
       itemName += ` (HUID: ${p.huid})`;
@@ -121,8 +116,8 @@ export default function BillingPage() {
         grossWeight: p.grossWeight !== undefined ? p.grossWeight : p.netWeight,
         stoneWeight: p.stoneWeight || 0,
         ratePerGram: currentRate,
-        makingCharge: makingCharge,
-        makingChargePct: makingChargePct,
+        makingCharge: 0,
+        makingChargePct: 0,
         stoneCharge: 0,
         gstPct: p.gstPct,
         qty: 1,
@@ -131,27 +126,86 @@ export default function BillingPage() {
   };
 
   const addCustomItem = () => {
-    setItems((prev) => [
-      ...prev,
-      {
-        productId: "manual-" + Date.now(),
-        name: "",
-        purity: "22K",
-        netWeight: 0,
-        grossWeight: 0,
-        stoneWeight: 0,
-        ratePerGram: 0,
-        makingCharge: 0,
-        makingChargePct: 0,
-        stoneCharge: 0,
-        gstPct: type === "GST" ? 3 : 0,
-        qty: 1,
-      } as any,
-    ]);
+    setCustomItemSearch("");
+    setOpenCustomItemDialog(true);
   };
 
-  const updateItem = (idx: number, patch: Partial<InvoiceItem>) =>
-    setItems((prev) => prev.map((it, i) => (i === idx ? { ...it, ...patch } : it)));
+  const addCustomItemFromDialog = (product?: any) => {
+    if (product) {
+      // Add from inventory
+      addProduct(product._id || product.id);
+    } else {
+      // Add completely blank custom item
+      setItems((prev) => [
+        ...prev,
+        {
+          productId: "manual-" + Date.now(),
+          name: "",
+          purity: "",
+          netWeight: 0,
+          grossWeight: 0,
+          stoneWeight: 0,
+          ratePerGram: 0,
+          makingCharge: 0,
+          makingChargePct: 0,
+          stoneCharge: 0,
+          gstPct: type === "GST" ? 3 : 0,
+          qty: 1,
+        } as any,
+      ]);
+    }
+    setOpenCustomItemDialog(false);
+    setCustomItemSearch("");
+  };
+
+  const updateItem = (idx: number, patch: Partial<InvoiceItem>) => {
+    setItems((prev) => {
+      const updated = [...prev];
+      const item = updated[idx];
+      if (!item) return prev;
+
+      // If this is a manual custom item and name is being changed, try to fetch from inventory
+      if (patch.name !== undefined && item.productId.startsWith("manual-")) {
+        const nameToSearch = patch.name.toLowerCase().trim();
+        if (nameToSearch !== "") {
+          const matchedProduct = products.find(
+            (p) =>
+              p.name.toLowerCase() === nameToSearch ||
+              (p.barcode || "").toLowerCase() === nameToSearch ||
+              (p.huid || "").toLowerCase() === nameToSearch
+          );
+
+          if (matchedProduct) {
+            let currentRate = matchedProduct.ratePerGram;
+            if (latestRates && matchedProduct.category !== "Diamond" && matchedProduct.category !== "Other") {
+              const purityUpper = (matchedProduct.purity || "").toUpperCase();
+              if (purityUpper.includes("24K") && latestRates.gold24) currentRate = latestRates.gold24;
+              else if (purityUpper.includes("22K") && latestRates.gold22) currentRate = latestRates.gold22;
+              else if (purityUpper.includes("18K") && latestRates.gold18) currentRate = latestRates.gold18;
+              else if ((matchedProduct.category === "Silver" || purityUpper.includes("SILVER") || purityUpper.includes("925")) && latestRates.silver) currentRate = latestRates.silver;
+            }
+
+            // Update item with inventory data
+            updated[idx] = {
+              ...item,
+              ...patch,
+              purity: matchedProduct.purity,
+              netWeight: matchedProduct.netWeight,
+              grossWeight: matchedProduct.grossWeight !== undefined ? matchedProduct.grossWeight : matchedProduct.netWeight,
+              stoneWeight: matchedProduct.stoneWeight || 0,
+              ratePerGram: currentRate,
+              gstPct: matchedProduct.gstPct,
+            };
+            return updated;
+          }
+        }
+      }
+
+      // Default: just apply the patch
+      updated[idx] = { ...item, ...patch };
+      return updated;
+    });
+  };
 
   const removeItem = (idx: number) =>
     setItems((prev) => prev.filter((_, i) => i !== idx));
@@ -207,6 +261,8 @@ export default function BillingPage() {
     setLinkedOrderId("");
     setSearchCust("");
     setSearchProd("");
+    setCustomItemSearch("");
+    setOpenCustomItemDialog(false);
   };
 
   useEffect(() => {
@@ -285,8 +341,6 @@ export default function BillingPage() {
 
     const existingInv = editingId ? invoices.find(i => (i._id || i.id) === editingId) : null;
 
-    const isCashEmpty = cashAmount === "";
-    const isOnlineEmpty = onlineAmount === "";
     const cAmt = Number(cashAmount) || 0;
     const oAmt = Number(onlineAmount) || 0;
     const linkedOrder = orders.find(o => (o._id || o.id) === linkedOrderId || `order_${o._id || o.id}` === linkedOrderId);
@@ -298,25 +352,12 @@ export default function BillingPage() {
     let finalPaymentMode = "Cash";
     const initialPayment: any[] = [];
  
-    if (isCashEmpty && isOnlineEmpty && orderAdvanceAmount === 0) {
-      if (editingId) {
-        safeActualPaid = 0;
-        finalPaymentMode = "Cash";
-      } else {
-        safeActualPaid = totals.gTotal;
-        finalPaymentMode = "Cash";
-        if (safeActualPaid > 0) {
-          initialPayment.push({ date: new Date().toISOString(), amount: safeActualPaid, mode: "Cash", note: "Initial Payment" });
-        }
-      }
-    } else {
       safeActualPaid = cAmt + oAmt + orderAdvanceAmount;
       finalPaymentMode = oAmt > (cAmt + orderAdvanceAmount) ? onlineMode : "Cash";
  
       if (orderAdvanceAmount > 0) initialPayment.push({ date: new Date().toISOString(), amount: orderAdvanceAmount, mode: "Advance", note: advanceNote });
       if (cAmt > 0) initialPayment.push({ date: new Date().toISOString(), amount: cAmt, mode: "Cash", note: "Initial Cash Payment" });
       if (oAmt > 0) initialPayment.push({ date: new Date().toISOString(), amount: oAmt, mode: onlineMode, note: `Initial ${onlineMode} Payment` });
-    }
     const balanceDue = Math.max(0, totals.gTotal - safeActualPaid);
 
     // Clean _id from subdocuments to avoid Mongoose immutable _id CastErrors on update
@@ -469,7 +510,7 @@ export default function BillingPage() {
               <Plus className="w-4 h-4 mr-2" /> New Invoice
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-[95vw] lg:max-w-5xl max-h-[90vh] overflow-y-auto" aria-describedby={undefined}>
+          <DialogContent className="max-w-[95vw] lg:max-w-5xl max-h-[90vh] overflow-y-auto" aria-describedby={undefined} onInteractOutside={(e) => e.preventDefault()}>
             <DialogHeader>
               <DialogTitle className="text-2xl font-display">{editingId ? "Edit Invoice" : "Create Invoice"}</DialogTitle>
             </DialogHeader>
@@ -601,7 +642,7 @@ export default function BillingPage() {
                                   updated.push({
                                     productId: `linked-${newLinkedId}`,
                                     name: linkedOrder.itemDescription,
-                                    purity: linkedOrder.purity || "22K",
+                                    purity: linkedOrder.purity || "",
                                     netWeight: 0,
                                     grossWeight: 0,
                                     stoneWeight: 0,
@@ -733,6 +774,86 @@ export default function BillingPage() {
                     <Button type="button" variant="secondary" onClick={addCustomItem} className="shrink-0">
                       <Plus className="w-4 h-4 mr-2" /> Add Custom Item
                     </Button>
+                    
+                    {/* Custom Item Dialog */}
+                    <Dialog open={openCustomItemDialog} onOpenChange={setOpenCustomItemDialog}>
+                      <DialogContent className="max-w-md">
+                        <DialogHeader>
+                          <DialogTitle>Add Custom Item</DialogTitle>
+                        </DialogHeader>
+                        <div className="space-y-4">
+                          <div>
+                            <Label className="text-sm font-medium mb-2 block">Search Inventory</Label>
+                            <Input
+                              placeholder="Type product name, barcode, or HUID..."
+                              value={customItemSearch}
+                              onChange={(e) => setCustomItemSearch(e.target.value)}
+                              className="bg-background"
+                              autoFocus
+                            />
+                          </div>
+
+                          {debouncedCustomItemSearch.trim() !== "" && (
+                            <div className="max-h-48 overflow-y-auto border rounded-md">
+                              {products
+                                .filter(
+                                  (p) =>
+                                    p.name.toLowerCase().includes(debouncedCustomItemSearch.toLowerCase()) ||
+                                    (p.barcode || "").toLowerCase().includes(debouncedCustomItemSearch.toLowerCase()) ||
+                                    (p.huid || "").toLowerCase().includes(debouncedCustomItemSearch.toLowerCase())
+                                )
+                                .sort((a, b) => (a.name || "").localeCompare(b.name || ""))
+                                .map((p) => (
+                                  <div
+                                    key={p._id || p.id}
+                                    onClick={() => addCustomItemFromDialog(p)}
+                                    className="p-3 border-b hover:bg-muted cursor-pointer transition-colors last:border-0"
+                                  >
+                                    <div className="font-medium text-sm">{p.name}</div>
+                                    <div className="text-xs text-muted-foreground flex gap-2">
+                                      {p.barcode && <span>BC: {p.barcode}</span>}
+                                      {p.huid && <span>HUID: {p.huid}</span>}
+                                      <span>{p.purity}</span>
+                                      <span className={p.stock > 0 ? "text-green-600" : "text-red-600"}>
+                                        {p.stock > 0 ? `${p.stock} in stock` : "Out of stock"}
+                                      </span>
+                                    </div>
+                                  </div>
+                                ))}
+                              {products.filter(
+                                (p) =>
+                                  p.name.toLowerCase().includes(debouncedCustomItemSearch.toLowerCase()) ||
+                                  (p.barcode || "").toLowerCase().includes(debouncedCustomItemSearch.toLowerCase()) ||
+                                  (p.huid || "").toLowerCase().includes(debouncedCustomItemSearch.toLowerCase())
+                              ).length === 0 && (
+                                <div className="p-3 text-sm text-muted-foreground text-center">
+                                  No products found
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          <div className="flex gap-2 pt-4">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              onClick={() => addCustomItemFromDialog()}
+                              className="w-full"
+                            >
+                              Add Blank Custom Item
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              onClick={() => setOpenCustomItemDialog(false)}
+                              className="w-full"
+                            >
+                              Cancel
+                            </Button>
+                          </div>
+                        </div>
+                      </DialogContent>
+                    </Dialog>
                 </div>
                   {items.length === 0 ? (
                     <p className="text-sm text-muted-foreground py-12 text-center">
@@ -744,7 +865,7 @@ export default function BillingPage() {
                       <thead className="text-left text-muted-foreground border-b bg-muted/20">
                         <tr>
                           <th className="p-3 font-medium">Product</th>
-                          <th className="py-3 font-medium w-16">Qty</th>
+                          <th className="py-3 font-medium w-16">Pcs</th>
                           <th className="py-3 font-medium w-20">Gross Wt</th>
                           <th className="py-3 font-medium w-20">less Wt</th>
                           <th className="py-3 font-medium w-20">Net Wt</th>
@@ -756,7 +877,7 @@ export default function BillingPage() {
                         </tr>
                       </thead>
                       <tbody>
-                        {items.map((it, i) => {
+                        {items.map((it, i) => { // Fixed typo: 'it' was previously 'item' but already used 'it' in the map function.
                           const c = calcItem(it, isGst);
                           const amount = it.netWeight * it.ratePerGram;
                           return (
@@ -766,7 +887,7 @@ export default function BillingPage() {
                                 <Input value={it.purity} onChange={(e) => updateItem(i, { purity: e.target.value })} className="h-7 text-xs" placeholder="Purity (e.g. 22K)" />
                               </td>
                               <td className="py-2">
-                                <NumI v={it.qty} on={(v) => updateItem(i, { qty: v })} className="w-12 h-8 bg-background" />
+                                <NumI v={it.qty} on={(v) => updateItem(i, { qty: v })} className="w-16 h-8 bg-background" />
                               </td>
                               <td className="py-2">
                                 <NumI
@@ -919,7 +1040,7 @@ export default function BillingPage() {
                       )}
                       <div className="flex items-center justify-between gap-4">
                         <Label className="text-muted-foreground font-normal">Cash Amount</Label>
-                        <Input type="number" className="w-32 h-8 text-right bg-background" value={cashAmount} onChange={(e) => setCashAmount(e.target.value === "" ? "" : parseFloat(e.target.value) || 0)} placeholder={editingId ? "0" : `${totals.gTotal}`} />
+                        <Input type="number" className="w-32 h-8 text-right bg-background" value={cashAmount} onChange={(e) => setCashAmount(e.target.value === "" ? "" : parseFloat(e.target.value) || 0)} placeholder="0" />
                       </div>
                       
                       <div className="flex items-center justify-between gap-4">
@@ -944,11 +1065,7 @@ export default function BillingPage() {
                         const linkedOrder = orders.find(o => (o._id || o.id) === linkedOrderId || `order_${o._id || o.id}` === linkedOrderId);
                         const linkedRepair = repairs.find(r => `repair_${r._id || r.id}` === linkedOrderId);
                         const orderAdv = linkedOrder ? (linkedOrder.advancePaid || 0) : linkedRepair ? (linkedRepair.advance || 0) : 0;
-                        if (cashAmount === "" && onlineAmount === "" && orderAdv === 0 && !editingId) {
-                          currentPaid = totals.gTotal;
-                        } else {
-                          currentPaid = (Number(cashAmount) || 0) + (Number(onlineAmount) || 0) + orderAdv;
-                        }
+                        currentPaid = (Number(cashAmount) || 0) + (Number(onlineAmount) || 0) + orderAdv;
                         const currentDue = Math.max(0, totals.gTotal - currentPaid);
                         return (
                           <Row 
@@ -1124,7 +1241,7 @@ function Row({ label, v, className, valueClassName }: { label: string; v: string
 
 function NumI({ v, on, className = "w-24 h-8" }: { v: number; on: (n: number) => void; className?: string }) {
   const safeV = v ?? 0;
-  const [val, setVal] = useState(safeV.toString());
+  const [val, setVal] = useState(safeV === 0 ? "" : safeV.toString());
 
   // Update local state if the prop changes externally (e.g., reset)
   useEffect(() => {
@@ -1133,7 +1250,7 @@ function NumI({ v, on, className = "w-24 h-8" }: { v: number; on: (n: number) =>
       if (parsedPrev === safeV || (prev === "" && safeV === 0)) {
         return prev;
       }
-      return safeV.toString();
+      return safeV === 0 ? "" : safeV.toString();
     });
   }, [safeV]);
 
@@ -1144,7 +1261,7 @@ function NumI({ v, on, className = "w-24 h-8" }: { v: number; on: (n: number) =>
       value={val}
       onBlur={() => {
         if (val === "" || isNaN(parseFloat(val))) {
-          setVal("0");
+          setVal("");
           on(0);
         }
       }}
@@ -1176,9 +1293,10 @@ function InvoiceModal({ inv, onClose }: { inv: any; onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-100 bg-black/50 flex justify-center items-start p-2 sm:p-4 print:bg-white print:p-0 overflow-y-auto pointer-events-auto">
       <div className="bg-white w-full max-w-4xl rounded-lg shadow-xl print:shadow-none print:max-w-none text-slate-900 my-auto relative flex flex-col max-h-[95vh] print:max-h-none print:block">
-        <div className="p-4 sm:p-6 print:p-0 border-2 border-transparent print:border-none m-2 print:m-0 bg-white overflow-y-auto flex-1 print:overflow-visible">
+        <style>{`@media print { @page { margin: 4mm; } body { zoom: 0.9; } }`}</style>
+        <div className="p-4 sm:p-6 print:p-2 border-2 border-transparent print:border-none m-2 print:m-0 bg-white overflow-y-auto flex-1 print:overflow-visible">
           
-          <ShopHeader documentLabel={inv.type === "GST" ? "Tax Invoice" : "Invoice"} compact />
+          <ShopHeader documentLabel={inv.type === "GST" ? "Tax Invoice" : "Invoice"} compact rightElement={<PaymentQr amount={inv.balanceDue || 0} compact />} />
 
           {/* Invoice Meta & Customer Details */}
           <div className="flex justify-between items-start mb-3 text-sm">
@@ -1201,12 +1319,12 @@ function InvoiceModal({ inv, onClose }: { inv: any; onClose: () => void }) {
 
           {/* Items Table */}
           <div className="overflow-x-auto w-full mb-3">
-            <table className="w-full text-xs border-collapse border border-slate-300 min-w-150">
+            <table className="w-full text-xs border-collapse border border-slate-300 min-w-150 print:min-w-full">
               <thead className="bg-slate-100">
               <tr>
                 <th className="border border-slate-300 py-1 px-1.5 text-center w-8 text-slate-600">#</th>
                 <th className="border border-slate-300 py-1 px-1.5 text-left text-slate-600">Description of Goods</th>
-                <th className="border border-slate-300 py-1 px-1.5 text-right text-slate-600">Qty</th>
+                <th className="border border-slate-300 py-1 px-1.5 text-right text-slate-600">Pcs</th>
                 <th className="border border-slate-300 py-1 px-1.5 text-right text-slate-600">Gross Wt</th>
                 <th className="border border-slate-300 py-1 px-1.5 text-right text-slate-600">less Wt</th>
                 <th className="border border-slate-300 py-1 px-1.5 text-right text-slate-600">Net Wt</th>
@@ -1339,13 +1457,9 @@ function InvoiceModal({ inv, onClose }: { inv: any; onClose: () => void }) {
             </div>
           </div>
 
-          <div className="mt-4 flex justify-center border-t border-slate-200 pt-3">
-            <PaymentQr amount={inv.balanceDue || 0} compact />
-          </div>
-
           {/* Signatures */}
-          <div className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-4 items-end text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-            <div className="text-center order-2 sm:order-1">
+          <div className="mt-12 print:mt-6 grid grid-cols-1 sm:grid-cols-2 gap-8 items-end text-[10px] font-bold text-slate-500 uppercase tracking-wider print:break-inside-avoid">
+            <div className="text-center">
               {inv.customerSignature ? (
                 <img src={inv.customerSignature} alt="Customer Signature" className="h-10 mx-auto mb-1 object-contain" />
               ) : (
@@ -1353,10 +1467,7 @@ function InvoiceModal({ inv, onClose }: { inv: any; onClose: () => void }) {
               )}
               Customer Signature
             </div>
-            <div className="normal-case tracking-normal font-normal text-left text-slate-800 order-1 sm:order-2">
-              <InvoiceTerms compact />
-            </div>
-            <div className="text-center order-3 sm:order-3">
+            <div className="text-center">
               {inv.authorizedSignatory ? (
                 <img src={inv.authorizedSignatory} alt="Authorized Signatory" className="h-10 mx-auto mb-1 object-contain" />
               ) : (
@@ -1364,6 +1475,9 @@ function InvoiceModal({ inv, onClose }: { inv: any; onClose: () => void }) {
               )}
               Authorized Signatory
             </div>
+          </div>
+          <div className="mt-4 print:mt-2 border-t border-slate-200 pt-2 print:pt-1 text-center text-[10px] normal-case tracking-normal font-normal text-slate-600 print:break-inside-avoid">
+            <InvoiceTerms compact />
           </div>
         </div>
         

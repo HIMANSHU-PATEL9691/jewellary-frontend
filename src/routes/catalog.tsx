@@ -146,7 +146,7 @@ export default function CatalogPage() {
               <Plus className="w-4 h-4 mr-2" /> Add Item
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-md">
+          <DialogContent className="max-w-md" onInteractOutside={(e) => e.preventDefault()}>
             <DialogHeader>
               <DialogTitle>Add Catalog Item</DialogTitle>
               <DialogDescription>Add a new item directly to the catalog.</DialogDescription>
@@ -315,7 +315,7 @@ export default function CatalogPage() {
       )}
 
       <Dialog open={!!selectedProduct} onOpenChange={(v) => { if (!v) { setSelectedProduct(null); setActiveImageIndex(0); } }}>
-        <DialogContent className="max-w-3xl overflow-hidden p-0 sm:rounded-2xl" aria-describedby={undefined}>
+        <DialogContent className="max-w-3xl overflow-hidden p-0 sm:rounded-2xl" aria-describedby={undefined} onInteractOutside={(e) => e.preventDefault()}>
           {selectedProduct && (() => {
             const displayImages = selectedProduct.imageUrls?.length ? selectedProduct.imageUrls : (selectedProduct.imageUrl ? [selectedProduct.imageUrl] : []);
             const currentImage = displayImages[activeImageIndex] || displayImages[0];
@@ -455,7 +455,7 @@ export default function CatalogPage() {
       </Dialog>
 
       <Dialog open={!!fullScreenImage} onOpenChange={(v) => !v && setFullScreenImage(null)}>
-        <DialogContent className="max-w-[95vw] h-[95vh] p-0 border-none bg-black/95 shadow-none sm:rounded-none flex items-center justify-center [&>button]:text-white [&>button]:hover:bg-white/20 [&>button]:hover:text-white" aria-describedby={undefined}>
+        <DialogContent className="max-w-[95vw] h-[95vh] p-0 border-none bg-black/95 shadow-none sm:rounded-none flex items-center justify-center [&>button]:text-white [&>button]:hover:bg-white/20 [&>button]:hover:text-white" aria-describedby={undefined} onInteractOutside={(e) => e.preventDefault()}>
           <DialogTitle className="sr-only">Image Zoom</DialogTitle>
           {fullScreenImage && (
             <img src={fullScreenImage} alt="Zoomed" className="w-full h-full object-contain p-4" />

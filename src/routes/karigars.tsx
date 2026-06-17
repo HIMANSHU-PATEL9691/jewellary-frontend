@@ -116,7 +116,7 @@ export default function KarigarsPage() {
               <Plus className="w-4 h-4 mr-2"/> Add Karigar
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-2xl max-h-[75vh] overflow-y-auto">
+          <DialogContent className="max-w-2xl max-h-[75vh] overflow-y-auto" onInteractOutside={(e) => e.preventDefault()}>
             <DialogHeader>
               <DialogTitle className="font-display text-2xl">{editingId ? "Edit" : "New"} karigar</DialogTitle>
               <DialogDescription>Add or update karigar details and category.</DialogDescription>
@@ -139,7 +139,7 @@ export default function KarigarsPage() {
                   <Select value={form.category} onValueChange={(v) => setForm({...form, category: v})}>
                     <SelectTrigger className="flex-1"><SelectValue placeholder="Select category" /></SelectTrigger>
                     <SelectContent>
-                      {categories.map((c) => (
+                      {categories.filter(c => c && c.trim() !== "").map((c) => (
                         <SelectItem key={c} value={c}>{c}</SelectItem>
                       ))}
                     </SelectContent>
@@ -150,7 +150,7 @@ export default function KarigarsPage() {
                         <Plus className="w-4 h-4" />
                       </Button>
                     </DialogTrigger>
-                    <DialogContent className="max-h-[60vh] overflow-y-auto">
+                    <DialogContent className="max-h-[60vh] overflow-y-auto" onInteractOutside={(e) => e.preventDefault()}>
                       <DialogHeader>
                         <DialogTitle>Add Category</DialogTitle>
                         <DialogDescription>Add a new category label for your karigars.</DialogDescription>

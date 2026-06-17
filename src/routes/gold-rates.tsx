@@ -125,7 +125,7 @@ export default function GoldRatesPage() {
           <DialogTrigger asChild>
             <Button size="lg">Edit Rates</Button>
           </DialogTrigger>
-          <DialogContent className="max-w-3xl max-h-[75vh] overflow-y-auto">
+          <DialogContent className="max-w-3xl max-h-[75vh] overflow-y-auto" onInteractOutside={(e) => e.preventDefault()}>
             <DialogHeader>
               <DialogTitle>Update Metal Rates</DialogTitle>
             </DialogHeader>

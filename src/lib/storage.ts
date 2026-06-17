@@ -123,6 +123,17 @@ export type Advance = {
   status: "Active" | "Redeemed" | "Cancelled";
 };
 
+export type GirviItem = {
+  id?: string;
+  itemType: "Gold" | "Silver" | "Mixed";
+  itemCategory?: string;
+  itemDescription: string;
+  grossWeight: number;
+  netWeight: number;
+  purity: string;
+  marketValue?: number;
+};
+
 export type Girvi = {
   id: string;
   date: string;
@@ -131,17 +142,17 @@ export type Girvi = {
   customerMobile: string;
   customerMobile2?: string;
   customerAddress?: string;
-  itemType: "Gold" | "Silver";
+  items?: GirviItem[];
+  itemType?: "Gold" | "Silver" | "Mixed";
   itemCategory?: string;
-  itemDescription: string;
-  grossWeight: number;
-  netWeight: number;
-  purity: string;
-  marketValue: number;
+  itemDescription?: string;
+  grossWeight?: number;
+  netWeight?: number;
+  purity?: string;
+  marketValue?: number;
   loanAmount: number;
   interestPct: number; // monthly %
-  interestPeriod?: "Monthly" | "Daily";
-  tenureMonths: number;
+  interestPeriod?: "Yearly" | "Monthly" | "Daily";
   documentType?: "Invoice" | "Bill" | "Receipt";
   documentNumber?: string;
   imageUrl?: string;
@@ -152,9 +163,13 @@ export type Girvi = {
   forwardedShopName?: string;
   forwardedShopGstNo?: string;
   forwardedShopAddress?: string;
+  forwardedDate?: string;
   forwardedAmount?: number;
   forwardedInterestPct?: number;
-  forwardedInterestPeriod?: "Monthly" | "Daily";
+  forwardedInterestPeriod?: "Yearly" | "Monthly" | "Daily";
+  isForwardedSettled?: boolean;
+  forwardedSettledDate?: string;
+  forwardedSettledInterest?: number;
   forwardedImageUrl?: string;
   customerSignature?: string;
   authorizedSignatory?: string;

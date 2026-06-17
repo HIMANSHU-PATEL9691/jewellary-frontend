@@ -144,7 +144,7 @@ export default function PurchasesPage() {
         <div><h1 className="text-4xl">Purchases</h1><p className="text-muted-foreground mt-1">Stock & metal purchased from suppliers.</p></div>
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild><Button size="lg" className="w-full sm:w-auto" onClick={() => { setForm({...empty, type: isOperator ? "GST" : "NON-GST", gstPct: isOperator ? 3 : 0}); setSearchSup(""); }}><Plus className="w-4 h-4 mr-2"/>New Purchase</Button></DialogTrigger>
-          <DialogContent className="max-w-2xl max-h-[75vh] overflow-y-auto" aria-describedby={undefined}><DialogHeader><DialogTitle>Record Purchase</DialogTitle></DialogHeader>
+          <DialogContent className="max-w-2xl max-h-[75vh] overflow-y-auto" aria-describedby={undefined} onInteractOutside={(e) => e.preventDefault()}><DialogHeader><DialogTitle>Record Purchase</DialogTitle></DialogHeader>
             <div className="grid grid-cols-2 gap-3">
               <div className="col-span-2 grid grid-cols-2 gap-3">
                 <div>

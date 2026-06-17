@@ -149,7 +149,7 @@ export default function EmployeesPage() {
               <Plus className="w-4 h-4 mr-2" /> Add Employee
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-md">
+          <DialogContent className="max-w-md" onInteractOutside={(e) => e.preventDefault()}>
             <DialogHeader>
               <DialogTitle className="font-display text-2xl">
                 {editingId ? "Edit" : "New"} Employee

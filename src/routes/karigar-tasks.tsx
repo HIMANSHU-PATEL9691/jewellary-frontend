@@ -129,24 +129,26 @@ export default function KarigarTasksPage() {
             <Card>
               <CardHeader><CardTitle className="font-display flex items-center gap-2"><Wrench className="w-5 h-5"/> Repairs ({assignedRepairs.length})</CardTitle></CardHeader>
               <CardContent className="p-0">
-                <table className="w-full text-sm"><thead className="text-left text-muted-foreground border-b bg-muted/20"><tr><th className="py-2 px-4">Ticket</th><th>Item</th><th>Due</th><th className="px-4 text-right">Status</th><th className="px-4"></th></tr></thead>
-              <tbody>{paginatedR.map(r => (<tr key={r._id || r.id} className="border-b last:border-0 hover:bg-muted/40">
-                    <td className="py-2 px-4"><div className="font-medium">{r.ticketNo}</div><div className="text-xs text-muted-foreground">{formatDate(r.date)}</div></td>
-                    <td><div className="font-medium">{r.itemDescription}</div><div className="text-xs text-rose-500">{r.problem}</div></td>
-                    <td>{r.deliveryDate ? formatDate(r.deliveryDate) : "—"}</td>
-                    <td className="px-4 py-2 text-right">
-                      <select className={`border rounded px-2 py-1 text-xs cursor-pointer ${r.status === 'Ready' ? 'bg-green-50 text-green-700 border-green-200 font-medium' : r.status === 'Delivered' ? 'bg-slate-100 text-slate-500 cursor-not-allowed' : 'bg-background'}`} value={r.status} onChange={e => updateRepairStatus(r._id || r.id || "", e.target.value as Repair["status"])} disabled={r.status === 'Delivered'}>
-                        {['Received', 'In Progress', 'Ready', 'Delivered'].filter(s => s !== "Delivered" || r.status === "Delivered").map((s) => <option key={s} value={s}>{s}</option>)}
-                      </select>
-                    </td>
-                    <td className="px-4 text-right">
-                      <Button size="sm" variant="ghost" onClick={() => setViewingRepair(r)}>
-                        <Eye className="w-4 h-4" />
-                      </Button>
-                    </td>
-                  </tr>))}
-                  {assignedRepairs.length === 0 && <tr><td colSpan={5} className="text-center py-6 text-muted-foreground">No repairs assigned.</td></tr>}
-                  </tbody></table>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm"><thead className="text-left text-muted-foreground border-b bg-muted/20"><tr><th className="py-2 px-4">Ticket</th><th>Item</th><th>Due</th><th className="px-4 text-right">Status</th><th className="px-4"></th></tr></thead>
+                <tbody>{paginatedR.map(r => (<tr key={r._id || r.id} className="border-b last:border-0 hover:bg-muted/40">
+                      <td className="py-2 px-4"><div className="font-medium">{r.ticketNo}</div><div className="text-xs text-muted-foreground">{formatDate(r.date)}</div></td>
+                      <td><div className="font-medium">{r.itemDescription}</div><div className="text-xs text-rose-500">{r.problem}</div></td>
+                      <td>{r.deliveryDate ? formatDate(r.deliveryDate) : "—"}</td>
+                      <td className="px-4 py-2 text-right">
+                        <select className={`border rounded px-2 py-1 text-xs cursor-pointer ${r.status === 'Ready' ? 'bg-green-50 text-green-700 border-green-200 font-medium' : r.status === 'Delivered' ? 'bg-slate-100 text-slate-500 cursor-not-allowed' : 'bg-background'}`} value={r.status} onChange={e => updateRepairStatus(r._id || r.id || "", e.target.value as Repair["status"])} disabled={r.status === 'Delivered'}>
+                          {['Received', 'In Progress', 'Ready', 'Delivered'].filter(s => s !== "Delivered" || r.status === "Delivered").map((s) => <option key={s} value={s}>{s}</option>)}
+                        </select>
+                      </td>
+                      <td className="px-4 text-right">
+                        <Button size="sm" variant="ghost" onClick={() => setViewingRepair(r)}>
+                          <Eye className="w-4 h-4" />
+                        </Button>
+                      </td>
+                    </tr>))}
+                    {assignedRepairs.length === 0 && <tr><td colSpan={5} className="text-center py-6 text-muted-foreground">No repairs assigned.</td></tr>}
+                    </tbody></table>
+                </div>
             {totalPagesR > 1 && (
               <div className="flex items-center justify-between px-4 py-3 border-t">
                 <div className="text-xs text-muted-foreground">Showing {(currentPageR - 1) * 10 + 1} to {Math.min(currentPageR * 10, assignedRepairs.length)} of {assignedRepairs.length} entries</div>
@@ -163,24 +165,26 @@ export default function KarigarTasksPage() {
             <Card>
               <CardHeader><CardTitle className="font-display flex items-center gap-2"><ShoppingBag className="w-5 h-5"/> Custom Orders ({assignedOrders.length})</CardTitle></CardHeader>
               <CardContent className="p-0">
-                <table className="w-full text-sm"><thead className="text-left text-muted-foreground border-b bg-muted/20"><tr><th className="py-2 px-4">Order</th><th>Item</th><th>Due</th><th className="px-4 text-right">Status</th><th className="px-4"></th></tr></thead>
-              <tbody>{paginatedO.map(o => (<tr key={o._id || o.id} className="border-b last:border-0 hover:bg-muted/40">
-                    <td className="py-2 px-4"><div className="font-medium">{o.orderNo}</div><div className="text-xs text-muted-foreground">{formatDate(o.date)}</div></td>
-                    <td><div className="font-medium">{o.itemDescription}</div><div className="text-xs text-muted-foreground">{o.metal} {o.purity}</div></td>
-                    <td>{o.dueDate ? formatDate(o.dueDate) : "—"}</td>
-                    <td className="px-4 py-2 text-right">
-                      <select className={`border rounded px-2 py-1 text-xs cursor-pointer ${o.status === 'Ready' ? 'bg-green-50 text-green-700 border-green-200 font-medium' : o.status === 'Delivered' ? 'bg-slate-100 text-slate-500 cursor-not-allowed' : 'bg-background'}`} value={o.status} onChange={e => updateOrderStatus(o._id || o.id || "", e.target.value as Order["status"])} disabled={o.status === 'Delivered'}>
-                        {["Pending","In Progress","Ready","Delivered","Cancelled"].filter(s => s !== "Delivered" || o.status === "Delivered").map(s => <option key={s} value={s}>{s}</option>)}
-                      </select>
-                    </td>
-                    <td className="px-4 text-right">
-                      <Button size="sm" variant="ghost" onClick={() => setViewingOrder(o)}>
-                        <Eye className="w-4 h-4" />
-                      </Button>
-                    </td>
-                  </tr>))}
-                  {assignedOrders.length === 0 && <tr><td colSpan={5} className="text-center py-6 text-muted-foreground">No custom orders assigned.</td></tr>}
-                  </tbody></table>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm"><thead className="text-left text-muted-foreground border-b bg-muted/20"><tr><th className="py-2 px-4">Order</th><th>Item</th><th>Due</th><th className="px-4 text-right">Status</th><th className="px-4"></th></tr></thead>
+                <tbody>{paginatedO.map(o => (<tr key={o._id || o.id} className="border-b last:border-0 hover:bg-muted/40">
+                      <td className="py-2 px-4"><div className="font-medium">{o.orderNo}</div><div className="text-xs text-muted-foreground">{formatDate(o.date)}</div></td>
+                      <td><div className="font-medium">{o.itemDescription}</div><div className="text-xs text-muted-foreground">{o.metal} {o.purity}</div></td>
+                      <td>{o.dueDate ? formatDate(o.dueDate) : "—"}</td>
+                      <td className="px-4 py-2 text-right">
+                        <select className={`border rounded px-2 py-1 text-xs cursor-pointer ${o.status === 'Ready' ? 'bg-green-50 text-green-700 border-green-200 font-medium' : o.status === 'Delivered' ? 'bg-slate-100 text-slate-500 cursor-not-allowed' : 'bg-background'}`} value={o.status} onChange={e => updateOrderStatus(o._id || o.id || "", e.target.value as Order["status"])} disabled={o.status === 'Delivered'}>
+                          {["Pending","In Progress","Ready","Delivered","Cancelled"].filter(s => s !== "Delivered" || o.status === "Delivered").map(s => <option key={s} value={s}>{s}</option>)}
+                        </select>
+                      </td>
+                      <td className="px-4 text-right">
+                        <Button size="sm" variant="ghost" onClick={() => setViewingOrder(o)}>
+                          <Eye className="w-4 h-4" />
+                        </Button>
+                      </td>
+                    </tr>))}
+                    {assignedOrders.length === 0 && <tr><td colSpan={5} className="text-center py-6 text-muted-foreground">No custom orders assigned.</td></tr>}
+                    </tbody></table>
+                </div>
             {totalPagesO > 1 && (
               <div className="flex items-center justify-between px-4 py-3 border-t">
                 <div className="text-xs text-muted-foreground">Showing {(currentPageO - 1) * 10 + 1} to {Math.min(currentPageO * 10, assignedOrders.length)} of {assignedOrders.length} entries</div>
@@ -197,7 +201,7 @@ export default function KarigarTasksPage() {
       )}
 
       <Dialog open={!!viewingRepair} onOpenChange={(v) => !v && setViewingRepair(null)}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md" onInteractOutside={(e) => e.preventDefault()}>
           {viewingRepair && (
             <>
               <DialogHeader>
@@ -233,7 +237,7 @@ export default function KarigarTasksPage() {
       </Dialog>
 
       <Dialog open={!!viewingOrder} onOpenChange={(v) => !v && setViewingOrder(null)}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md" onInteractOutside={(e) => e.preventDefault()}>
           {viewingOrder && (
             <>
               <DialogHeader>

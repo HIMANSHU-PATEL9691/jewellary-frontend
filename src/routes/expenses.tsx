@@ -105,7 +105,7 @@ export default function ExpensesPage() {
               <Plus className="w-4 h-4 mr-2" /> Add Expense
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-2xl max-h-[75vh] overflow-y-auto">
+          <DialogContent className="max-w-2xl max-h-[75vh] overflow-y-auto" onInteractOutside={(e) => e.preventDefault()}>
             <DialogHeader>
               <DialogTitle>Add Expense</DialogTitle>
             </DialogHeader>

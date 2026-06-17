@@ -14,26 +14,15 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Badge } from "@/components/ui/badge";
-import { inr, type Girvi, useLocalState } from "@/lib/storage";
+import { inr, type Girvi, type GirviItem, useLocalState } from "@/lib/storage";
 import { useApi, useApiMutation } from "@/hooks/useApi";
-import { girviAPI, customerAPI, inventoryAPI } from "@/lib/api";
+import { girviAPI, customerAPI } from "@/lib/api";
 import { useMemo, useState } from "react";
 import { Plus, Trash2, Printer, Pencil, Search, Image as ImageIcon, Wallet, Scale, Landmark, TrendingUp } from "lucide-react";
-import { formatDate } from "@/lib/utils";
+import { calculateCompoundInterest, formatDate } from "@/lib/utils";
 import { toast } from "sonner";
 import { PaymentQr } from "@/components/PaymentQr";
 import { InvoiceTerms, ShopHeader } from "@/components/InvoiceBranding";
-
-function getElapsedDays(dateStr: string) {
-  if (!dateStr) return 0;
-  const start = new Date(dateStr);
-  start.setHours(0, 0, 0, 0);
-  const now = new Date();
-  now.setHours(0, 0, 0, 0);
-  const diffTime = now.getTime() > start.getTime() ? now.getTime() - start.getTime() : 0;
-  return Math.round(diffTime / (1000 * 60 * 60 * 24));
-}
 
 function getElapsedMonthsAndDays(dateStr: string) {
   if (!dateStr) return { months: 0, days: 0 };
@@ -56,6 +45,16 @@ function getElapsedMonthsAndDays(dateStr: string) {
   return { months, days };
 }
 
+function getElapsedDays(dateStr: string) {
+  if (!dateStr) return 0;
+  const start = new Date(dateStr);
+  start.setHours(0, 0, 0, 0);
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  if (now.getTime() <= start.getTime()) return 0;
+  return Math.round((now.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+}
+
 function getElapsedTimeString(dateStr: string) {
   const { months, days } = getElapsedMonthsAndDays(dateStr);
   
@@ -66,16 +65,20 @@ function getElapsedTimeString(dateStr: string) {
 
 function calculateInterest(girvi: any) {
   const isDaily = girvi.interestPeriod === "Daily" || girvi.note?.includes("[IntPeriod:Daily]");
+  const P = girvi.loanAmount;
+  const monthlyRatePct = girvi.interestPct;
+
+  if (!girvi.date || !P || !monthlyRatePct) return 0;
+
   if (isDaily) {
-    const diffDays = getElapsedDays(girvi.date);
-    const interestPerDay = girvi.loanAmount * (girvi.interestPct / 100);
-    return Math.round(interestPerDay * diffDays);
-  } else {
-    const { months, days } = getElapsedMonthsAndDays(girvi.date);
-    const interestPerMonth = girvi.loanAmount * (girvi.interestPct / 100);
-    const interestForDays = (interestPerMonth / 30) * days;
-    return Math.round((months * interestPerMonth) + interestForDays);
+    const elapsedDays = getElapsedDays(girvi.date);
+    const dailyRate = monthlyRatePct / 100;
+    return Math.round(Math.pow(1 + dailyRate, elapsedDays) * P - P);
   }
+
+  const { months, days } = getElapsedMonthsAndDays(girvi.date);
+  const totalMonths = months + days / 30;
+  return Math.round(calculateCompoundInterest(P, monthlyRatePct, totalMonths).interest);
 }
 
 function isGirviForwardedSettled(girvi: any) {
@@ -83,19 +86,33 @@ function isGirviForwardedSettled(girvi: any) {
 }
 
 function calculateForwardedInterest(girvi: any) {
-  if (isGirviForwardedSettled(girvi)) return girvi.forwardedSettledInterest || 0;
-  if (!girvi.forwardedAmount || !girvi.forwardedInterestPct) return 0;
-  const isDaily = girvi.forwardedInterestPeriod === "Daily" || girvi.note?.includes("[FwdIntPeriod:Daily]");
-  if (isDaily) {
-    const diffDays = getElapsedDays(girvi.date);
-    const interestPerDay = girvi.forwardedAmount * (girvi.forwardedInterestPct / 100);
-    return Math.round(interestPerDay * diffDays);
-  } else {
-    const { months, days } = getElapsedMonthsAndDays(girvi.date);
-    const interestPerMonth = girvi.forwardedAmount * (girvi.forwardedInterestPct / 100);
-    const interestForDays = (interestPerMonth / 30) * days;
-    return Math.round((months * interestPerMonth) + interestForDays);
+  if (isGirviForwardedSettled(girvi)) {
+    if (girvi.forwardedSettledInterest !== undefined) return girvi.forwardedSettledInterest;
+    const match = girvi.note?.match(/cleared on .*? - Paid (.*?)\]/);
+    if (match && match[1]) {
+      const parsedTotal = parseFloat(match[1].replace(/[^\d.-]/g, ''));
+      if (!isNaN(parsedTotal)) return Math.max(0, parsedTotal - (girvi.forwardedAmount || 0));
+    }
+    return 0;
   }
+  if (!girvi.forwardedAmount || !girvi.forwardedInterestPct) return 0;
+
+  const isDaily = girvi.forwardedInterestPeriod === "Daily" || girvi.note?.includes("[FwdIntPeriod:Daily]");
+  const P = girvi.forwardedAmount;
+  const monthlyRatePct = girvi.forwardedInterestPct;
+  const startDate = girvi.forwardedDate || girvi.date;
+
+  if (!startDate) return 0;
+
+  if (isDaily) {
+    const elapsedDays = getElapsedDays(startDate);
+    const dailyRate = monthlyRatePct / 100;
+    return Math.round(Math.pow(1 + dailyRate, elapsedDays) * P - P);
+  }
+
+  const { months, days } = getElapsedMonthsAndDays(startDate);
+  const totalMonths = months + days / 30;
+  return Math.round(calculateCompoundInterest(P, monthlyRatePct, totalMonths).interest);
 }
 
 export default function GirviPage() {
@@ -107,8 +124,6 @@ export default function GirviPage() {
   const updateMutation = useApiMutation((data: { id: string; body: Girvi }) => girviAPI.update(data.id, data.body), ["girvis"]);
   const deleteMutation = useApiMutation((id: string) => girviAPI.delete(id), ["girvis"]);
   const createCustomerMutation = useApiMutation((data: any) => customerAPI.create(data), ["customers"]);
-  const createInventoryMutation = useApiMutation((data: any) => inventoryAPI.create(data), ["inventory"]);
-  const [newCust, setNewCust] = useState({ name: "", phone: "", phone2: "", address: "" });
 
   const [filter, setFilter] = useState<"All" | Girvi["status"]>("All");
   const [q, setQ] = useState("");
@@ -116,24 +131,26 @@ export default function GirviPage() {
   const [viewing, setViewing] = useState<Girvi | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [searchCust, setSearchCust] = useState("");
-  const [form, setForm] = useState<Omit<Girvi, "id">>({
+  const [newCust, setNewCust] = useState({ name: "", phone: "", phone2: "", address: "" });
+  const [form, setForm] = useState<Omit<Girvi, "id"> & { interestType?: "Simple" | "Compound", forwardedInterestType?: "Simple" | "Compound" }>({
     date: new Date().toISOString().slice(0, 10),
     loanNo: `GL-${Date.now().toString().slice(-6)}`,
     customerName: "",
     customerMobile: "",
     customerMobile2: "",
     customerAddress: "",
-    itemType: "Gold",
-    itemCategory: "",
-    itemDescription: "",
-    grossWeight: 0,
-    netWeight: 0,
-    purity: "22K",
-    marketValue: 0,
+    items: [{
+      itemType: "Gold",
+      itemCategory: "",
+      itemDescription: "",
+      grossWeight: 0,
+      netWeight: 0,
+      purity: "22K",
+    }],
     loanAmount: 0,
     interestPct: 1.5,
     interestPeriod: "Monthly",
-    tenureMonths: 12,
+    interestType: "Simple",
     documentType: "Invoice",
     documentNumber: "",
     imageUrl: "",
@@ -144,20 +161,59 @@ export default function GirviPage() {
     forwardedShopName: "",
     forwardedShopGstNo: "",
     forwardedShopAddress: "",
+    forwardedDate: "",
     forwardedAmount: 0,
     forwardedInterestPct: 0,
     forwardedInterestPeriod: "Monthly",
+    forwardedInterestType: "Simple",
     forwardedImageUrl: "",
     customerSignature: "",
     authorizedSignatory: "",
   });
-  const [categories, setCategories] = useState(["Gold Jewellery", "Silver Jewellery", "Pendants", "Rings"]);
-  const [addCategoryOpen, setAddCategoryOpen] = useState(false);
-  const [newCategory, setNewCategory] = useState("");
+  const categories = ["Gold Jewellery", "Silver Jewellery", "Pendants", "Rings"];
   const [imagePreview, setImagePreview] = useState("");
   const [dateFocused, setDateFocused] = useState(false);
   const [forwardedImagePreview, setForwardedImagePreview] = useState("");
   const [page, setPage] = useState(1);
+
+  function addItem() {
+    setForm((prev) => ({
+      ...prev,
+      items: [
+        ...(prev.items || []),
+        {
+          itemType: "Gold",
+          itemCategory: "",
+          itemDescription: "",
+          grossWeight: 0,
+          netWeight: 0,
+          purity: "22K",
+        },
+      ],
+    }));
+  }
+
+  function removeItem(index: number) {
+    setForm((prev) => ({
+      ...prev,
+      items: (prev.items || []).filter((_, i) => i !== index),
+    }));
+  }
+
+  function updateItem(index: number, updates: Partial<GirviItem>) {
+    setForm((prev) => ({
+      ...prev,
+      items: (prev.items || []).map((item, i) => (i === index ? { ...item, ...updates } : item)),
+    }));
+  }
+
+  function getTotalWeights() {
+    const items = form.items || [];
+    return {
+      totalGross: items.reduce((sum, item) => sum + (item.grossWeight || 0), 0),
+      totalNet: items.reduce((sum, item) => sum + (item.netWeight || 0), 0),
+    };
+  }
 
   const totals = useMemo(() => {
     const active = girvis.filter((g) => g.status === "Active");
@@ -165,8 +221,18 @@ export default function GirviPage() {
     return {
       activeCount: active.length,
       principal: active.reduce((s, g) => s + g.loanAmount, 0),
-      pledgedWeight: active.reduce((s, g) => s + g.netWeight, 0),
-      collateralValue: active.reduce((s, g) => s + g.marketValue, 0),
+      pledgedWeight: active.reduce((s, g) => {
+        if (g.items && g.items.length > 0) {
+          return s + g.items.reduce((sum, item) => sum + (item.netWeight || 0), 0);
+        }
+        return s + (g.netWeight || 0);
+      }, 0),
+      collateralValue: active.reduce((s, g) => {
+        if (g.items && g.items.length > 0) {
+          return s + g.items.reduce((sum, item) => sum + (item.marketValue || 0), 0);
+        }
+        return s + (g.marketValue || 0);
+      }, 0),
       forwardedPrincipal: forwarded.reduce((s, g) => s + (g.forwardedAmount || 0), 0),
       forwardedInterest: forwarded.reduce((s, g) => s + calculateForwardedInterest(g), 0),
     };
@@ -191,8 +257,24 @@ export default function GirviPage() {
   const paginated = filtered.slice((currentPage - 1) * 10, currentPage * 10);
 
   async function add(createInvoice = false) {
-    if (!form.loanAmount) return;
-    if (form.customerMobile !== "NEW" && !form.customerName) return;
+    if (!form.loanAmount) {
+      toast.error("Loan amount is required.");
+      return;
+    }
+    if (form.customerMobile !== "NEW" && !form.customerName) {
+      toast.error("Customer selection is required.");
+      return;
+    }
+    if (!form.items || form.items.length === 0) {
+      toast.error("At least one item is required.");
+      return;
+    }
+    for (const item of form.items) {
+      if (!item.itemDescription) {
+        toast.error("Item description is required for all items.");
+        return;
+      }
+    }
 
     let custName = form.customerName;
     let custMobile = form.customerMobile;
@@ -219,11 +301,7 @@ export default function GirviPage() {
       }
     }
 
-    const dueDate = form.dueDate || (() => {
-      const d = new Date(form.date);
-      d.setMonth(d.getMonth() + form.tenureMonths);
-      return d.toISOString().slice(0, 10);
-    })();
+    const dueDate = form.dueDate || undefined;
     const payload: any = { ...form, customerName: custName, customerMobile: custMobile, customerMobile2: custMobile2, customerAddress: custAddress, dueDate };
     if (createInvoice) {
       payload.documentType = payload.documentType || "Bill";
@@ -231,11 +309,11 @@ export default function GirviPage() {
     }
 
     let safeNote = form.note || "";
+    // Clean old period and type flags
     safeNote = safeNote.replace(/\[IntPeriod:.*?\]/g, "").trim();
     safeNote = safeNote.replace(/\[FwdIntPeriod:.*?\]/g, "").trim();
-    
-    if (form.interestPeriod === "Daily") safeNote += ` [IntPeriod:Daily]`;
-    if (form.forwardedInterestPeriod === "Daily") safeNote += ` [FwdIntPeriod:Daily]`;
+    safeNote = safeNote.replace(/\[IntType:.*?\]/g, "").trim();
+    safeNote = safeNote.replace(/\[FwdIntType:.*?\]/g, "").trim();
     payload.note = safeNote.trim();
 
     try {
@@ -246,32 +324,6 @@ export default function GirviPage() {
       } else {
         saved = await createMutation.mutateAsync(payload);
         toast.success("Girvi loan saved successfully!");
-        
-        // Sync the newly received Girvi item directly to the Inventory
-        try {
-          await createInventoryMutation.mutateAsync({
-            barcode: `GRV-${saved?.loanNo || payload.loanNo}`,
-            name: `Girvi: ${payload.itemDescription}`,
-            category: payload.itemType === "Silver" ? "Silver" : "Gold",
-            subcategory: payload.itemCategory || "Girvi",
-            note: `Pledged under Girvi Loan ${saved?.loanNo || payload.loanNo} by ${custName}`,
-            purity: payload.purity || "22K",
-            grossWeight: payload.grossWeight || 0,
-            netWeight: payload.netWeight || 0,
-            stoneWeight: Math.max(0, (payload.grossWeight || 0) - (payload.netWeight || 0)),
-            makingCharge: 0,
-            makingChargePct: 0,
-            gstPct: 0,
-            ratePerGram: 0,
-            stock: 1,
-            huid: "",
-            imageUrl: payload.imageUrl || "",
-            imageUrls: payload.imageUrl ? [payload.imageUrl] : [],
-          });
-          toast.success("Girvi item successfully added to Inventory!");
-        } catch (invErr) {
-          console.error("Failed to sync girvi to inventory", invErr);
-        }
       }
       setForm({
         ...form,
@@ -280,15 +332,20 @@ export default function GirviPage() {
         customerMobile: "",
         customerMobile2: "",
         customerAddress: "",
-        itemCategory: "",
-        itemDescription: "",
-        grossWeight: 0,
-        netWeight: 0,
-        marketValue: 0,
+        items: [
+          {
+            itemType: "Gold",
+            itemCategory: "",
+            itemDescription: "",
+            grossWeight: 0,
+            netWeight: 0,
+            purity: "22K",
+          },
+        ],
         loanAmount: 0,
         interestPct: 1.5,
         interestPeriod: "Monthly",
-        tenureMonths: 12,
+        interestType: "Simple",
         documentType: "Invoice",
         documentNumber: "",
         imageUrl: "",
@@ -297,9 +354,11 @@ export default function GirviPage() {
         forwardedShopName: "",
         forwardedShopGstNo: "",
         forwardedShopAddress: "",
+        forwardedDate: "",
         forwardedAmount: 0,
         forwardedInterestPct: 0,
         forwardedInterestPeriod: "Monthly",
+        forwardedInterestType: "Simple",
         forwardedImageUrl: "",
         customerSignature: "",
         authorizedSignatory: "",
@@ -317,14 +376,7 @@ export default function GirviPage() {
       toast.error("Failed to connect to backend server. Is it running?");
     }
   }
-  function addCategory() {
-    const trimmed = newCategory.trim();
-    if (!trimmed) return;
-    setCategories((prev) => [...prev, trimmed]);
-    setForm((prev) => ({ ...prev, itemCategory: trimmed }));
-    setNewCategory("");
-    setAddCategoryOpen(false);
-  }
+  
   function handleImageChange(file?: File) {
     if (!file) return;
     const reader = new FileReader();
@@ -414,17 +466,20 @@ export default function GirviPage() {
       customerMobile: "",
       customerMobile2: "",
       customerAddress: "",
-      itemType: "Gold",
-      itemCategory: "",
-      itemDescription: "",
-      grossWeight: 0,
-      netWeight: 0,
-      purity: "22K",
-      marketValue: 0,
+      items: [
+        {
+          itemType: "Gold",
+          itemCategory: "",
+          itemDescription: "",
+          grossWeight: 0,
+          netWeight: 0,
+          purity: "22K",
+        },
+      ],
       loanAmount: 0,
       interestPct: 1.5,
       interestPeriod: "Monthly",
-      tenureMonths: 12,
+      interestType: "Simple",
       documentType: "Invoice",
       documentNumber: "",
       imageUrl: "",
@@ -435,9 +490,11 @@ export default function GirviPage() {
       forwardedShopName: "",
       forwardedShopGstNo: "",
       forwardedShopAddress: "",
+      forwardedDate: "",
       forwardedAmount: 0,
       forwardedInterestPct: 0,
       forwardedInterestPeriod: "Monthly",
+      forwardedInterestType: "Simple",
       forwardedImageUrl: "",
       customerSignature: "",
       authorizedSignatory: "",
@@ -452,19 +509,25 @@ export default function GirviPage() {
   const startEdit = (g: Girvi) => {
     setEditingId((g as any)._id || g.id);
     
-    let ip = g.interestPeriod || "Monthly";
-    let fip = g.forwardedInterestPeriod || "Monthly";
-    if (g.note) {
-      if (g.note.includes("[IntPeriod:Daily]")) ip = "Daily";
-      if (g.note.includes("[FwdIntPeriod:Daily]")) fip = "Daily";
-    }
-
     setForm({
       ...g,
-      interestPeriod: ip as any,
-      forwardedInterestPeriod: fip as any,
-      note: g.note ? g.note.replace(/\[IntPeriod:.*?\]/g, '').replace(/\[FwdIntPeriod:.*?\]/g, '').trim() : "",
+      items: g.items && g.items.length > 0 ? g.items : [
+        {
+          itemType: (g.itemType || "Gold") as any,
+          itemCategory: g.itemCategory,
+          itemDescription: g.itemDescription || "",
+          grossWeight: g.grossWeight || 0,
+          netWeight: g.netWeight || 0,
+          purity: g.purity || "22K",
+        },
+      ],
+      interestPeriod: "Monthly" as any,
+      forwardedInterestPeriod: "Monthly" as any,
+      interestType: "Simple" as any,
+      forwardedInterestType: "Simple" as any,
+      note: g.note ? g.note.replace(/\[(IntPeriod|FwdIntPeriod|IntType|FwdIntType):.*?\]/g, '').trim() : "",
       date: g.date ? new Date(g.date).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10),
+      forwardedDate: g.forwardedDate ? new Date(g.forwardedDate).toISOString().slice(0, 10) : "",
       dueDate: g.dueDate ? new Date(g.dueDate).toISOString().slice(0, 10) : "",
     });
     setImagePreview(g.imageUrl || "");
@@ -488,7 +551,7 @@ export default function GirviPage() {
               <Plus className="w-4 h-4 mr-2" /> New Girvi
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-3xl max-h-[75vh] overflow-y-auto" aria-describedby={undefined}>
+          <DialogContent className="max-w-3xl max-h-[75vh] overflow-y-auto" aria-describedby={undefined} onInteractOutside={(e) => e.preventDefault()}>
             <DialogHeader>
               <DialogTitle>{editingId ? "Edit Girvi Loan" : "New Girvi Loan"}</DialogTitle>
             </DialogHeader>
@@ -564,99 +627,106 @@ export default function GirviPage() {
                   <Label>Mobile 2</Label>
                   <Input value={form.customerMobile2} onChange={(e) => setForm({ ...form, customerMobile2: e.target.value })} />
                 </div>
-                <div>
-                  <Label>Item Type</Label>
-                  <Select value={form.itemType} onValueChange={(v) => setForm({ ...form, itemType: v as Girvi["itemType"] })}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Gold">Gold</SelectItem>
-                      <SelectItem value="Silver">Silver</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <div className="grid grid-cols-[1fr_auto] gap-2">
-                <div>
-                  <Label>Item Category</Label>
-                  <Select value={form.itemCategory || ""} onValueChange={(v) => setForm({ ...form, itemCategory: v })}>
-                    <SelectTrigger><SelectValue placeholder="Select category" /></SelectTrigger>
-                    <SelectContent>
-                      {categories.map((category) => (
-                        <SelectItem value={category} key={category}>{category}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="self-end">
-                  <Dialog open={addCategoryOpen} onOpenChange={setAddCategoryOpen}>
-                    <DialogTrigger asChild>
-                      <Button variant="outline" className="h-10">Add</Button>
-                    </DialogTrigger>
-                    <DialogContent className="max-w-md max-h-[60vh] overflow-y-auto" aria-describedby={undefined}>
-                      <DialogHeader>
-                        <DialogTitle>Add Category</DialogTitle>
-                      </DialogHeader>
-                      <div className="space-y-3">
-                        <Input value={newCategory} onChange={(e) => setNewCategory(e.target.value)} placeholder="Category name" autoFocus />
-                        <div className="flex justify-end gap-2">
-                          <Button variant="outline" onClick={() => setAddCategoryOpen(false)}>Cancel</Button>
-                          <Button onClick={addCategory}>Save</Button>
-                        </div>
-                      </div>
-                    </DialogContent>
-                  </Dialog>
-                </div>
               </div>
               <div>
                 <Label>Address</Label>
                 <Textarea rows={2} value={form.customerAddress} onChange={(e) => setForm({ ...form, customerAddress: e.target.value })} />
               </div>
-              <div>
-                <Label>Description</Label>
-                <Textarea rows={2} value={form.itemDescription} onChange={(e) => setForm({ ...form, itemDescription: e.target.value })} placeholder="2 bangles, 1 chain..." />
+
+              <div className="border-t pt-4 mt-4">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-sm font-medium">Item Details</h3>
+                  <Button variant="outline" size="sm" onClick={addItem} className="gap-1">
+                    <Plus className="w-3 h-3" /> Add Item
+                  </Button>
+                </div>
+                
+                <div className="space-y-4">
+                  {(form.items || []).map((item, idx) => (
+                    <div key={idx} className="p-3 rounded-md border border-input bg-muted/30 space-y-3 relative">
+                      <div className="absolute top-2 right-2">
+                        <Button variant="ghost" size="sm" onClick={() => removeItem(idx)} className="h-6 w-6 p-0">
+                          <Trash2 className="w-3 h-3 text-destructive" />
+                        </Button>
+                      </div>
+                      
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <Label className="text-xs">Type</Label>
+                          <Select value={item.itemType} onValueChange={(v) => updateItem(idx, { itemType: v as any })}>
+                            <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="Gold">Gold</SelectItem>
+                              <SelectItem value="Silver">Silver</SelectItem>
+                              <SelectItem value="Mixed">Mixed</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div>
+                          <Label className="text-xs">Category</Label>
+                          <Select value={item.itemCategory || ""} onValueChange={(v) => updateItem(idx, { itemCategory: v })}>
+                            <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Select" /></SelectTrigger>
+                            <SelectContent>
+                              {categories.map((cat) => (
+                                <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                      
+                      <div>
+                        <Label className="text-xs">Description *</Label>
+                        <Input className="h-8 text-xs" value={item.itemDescription} onChange={(e) => updateItem(idx, { itemDescription: e.target.value })} placeholder="e.g. 2 bangles, 1 chain" />
+                      </div>
+                      
+                      <div className="grid grid-cols-3 gap-2">
+                        <div>
+                          <Label className="text-xs">Gross (g)</Label>
+                          <Input type="number" className="h-8 text-xs" value={item.grossWeight || ""} onChange={(e) => updateItem(idx, { grossWeight: +e.target.value })} />
+                        </div>
+                        <div>
+                          <Label className="text-xs">Net (g)</Label>
+                          <Input type="number" className="h-8 text-xs" value={item.netWeight || ""} onChange={(e) => updateItem(idx, { netWeight: +e.target.value })} />
+                        </div>
+                        <div>
+                          <Label className="text-xs">Purity</Label>
+                          <Input className="h-8 text-xs" value={item.purity} onChange={(e) => updateItem(idx, { purity: e.target.value })} />
+                        </div>
+                      </div>
+                      
+                    </div>
+                  ))}
+                </div>
+                
+                {(form.items || []).length > 0 && (
+                  <div className="mt-3 p-2 rounded-md bg-muted/50 text-xs">
+                    <div className="grid grid-cols-2 gap-2 font-medium">
+                      <div>Total Gross: {getTotalWeights().totalGross.toFixed(3)} g</div>
+                      <div>Total Net: {getTotalWeights().totalNet.toFixed(3)} g</div>
+                    </div>
+                  </div>
+                )}
               </div>
-              <div className="grid grid-cols-3 gap-2">
+
+              <div className="grid grid-cols-[1fr_1fr_auto_auto] gap-2">
                 <div>
-                  <Label>Gross Weight (g)</Label>
-                  <Input type="number" value={form.grossWeight || ""} onChange={(e) => setForm({ ...form, grossWeight: +e.target.value })} />
-                </div>
-                <div>
-                  <Label>Net Weight (g)</Label>
-                  <Input type="number" value={form.netWeight || ""} onChange={(e) => setForm({ ...form, netWeight: +e.target.value })} />
-                </div>
-                <div>
-                  <Label>Purity</Label>
-                  <Input value={form.purity} onChange={(e) => setForm({ ...form, purity: e.target.value })} />
-                </div>
-              </div>
-              <div className="grid grid-cols-[1fr_1fr_auto] gap-2">
-                <div>
-                  <Label>Loan Amount</Label>
+                  <Label>Loan Amount *</Label>
                   <Input type="number" value={form.loanAmount || ""} onChange={(e) => setForm({ ...form, loanAmount: +e.target.value })} />
                 </div>
                 <div>
-                  <Label>Interest Rate</Label>
-                  <Input type="number" step="0.1" value={form.interestPct || ""} onChange={(e) => setForm({ ...form, interestPct: +e.target.value })} />
-                </div>
-                <div>
-                  <Label>Per</Label>
-                  <Select value={form.interestPeriod || "Monthly"} onValueChange={(v) => setForm({ ...form, interestPeriod: v as any })}>
-                    <SelectTrigger className="w-24"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Monthly">Month</SelectItem>
-                      <SelectItem value="Daily">Day</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <Label>Interest Rate (%)</Label>
+                  <Input type="number" step="0.1" value={form.interestPct || ""} onChange={(e) => setForm({ ...form, interestPct: +e.target.value })} placeholder="e.g. 12" />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <Label>Tenure (months)</Label>
-                  <Input type="number" value={form.tenureMonths || ""} onChange={(e) => setForm({ ...form, tenureMonths: +e.target.value })} />
-                </div>
-                <div>
                   <Label>Bill / Invoice No.</Label>
                   <Input value={form.documentNumber || ""} onChange={(e) => setForm({ ...form, documentNumber: e.target.value })} placeholder="INV-12345" />
+                </div>
+                <div>
+                  <Label>Due Date</Label>
+                  <Input type="date" value={form.dueDate || ""} onChange={(e) => setForm({ ...form, dueDate: e.target.value })} />
                 </div>
               </div>
               <div>
@@ -698,24 +768,18 @@ export default function GirviPage() {
                   <Label>Shop Address</Label>
                   <Textarea rows={2} value={form.forwardedShopAddress || ""} onChange={(e) => setForm({ ...form, forwardedShopAddress: e.target.value })} placeholder="Address" />
                 </div>
-                <div className="grid grid-cols-[1fr_1fr_auto] gap-2 mb-2">
+                <div className="grid grid-cols-2 gap-2 mb-2">
+                  <div>
+                    <Label>Forwarded Date</Label>
+                    <Input type="date" value={form.forwardedDate || ""} onChange={(e) => setForm({ ...form, forwardedDate: e.target.value })} />
+                  </div>
                   <div>
                     <Label>Forwarded Amount ₹</Label>
                     <Input type="number" value={form.forwardedAmount || ""} onChange={(e) => setForm({ ...form, forwardedAmount: +e.target.value })} />
                   </div>
                   <div>
-                    <Label>Shop Interest Rate</Label>
-                    <Input type="number" step="0.1" value={form.forwardedInterestPct || ""} onChange={(e) => setForm({ ...form, forwardedInterestPct: +e.target.value })} />
-                  </div>
-                  <div>
-                    <Label>Per</Label>
-                    <Select value={form.forwardedInterestPeriod || "Monthly"} onValueChange={(v) => setForm({ ...form, forwardedInterestPeriod: v as any })}>
-                      <SelectTrigger className="w-24"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Monthly">Month</SelectItem>
-                        <SelectItem value="Daily">Day</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    <Label>Shop Interest Rate (%)</Label>
+                    <Input type="number" step="0.1" value={form.forwardedInterestPct || ""} onChange={(e) => setForm({ ...form, forwardedInterestPct: +e.target.value })} placeholder="e.g. 12" />
                   </div>
                 </div>
                 <div>
@@ -829,12 +893,17 @@ export default function GirviPage() {
                   <tbody>
                 {paginated.map((g) => {
                       const interestAmt = calculateInterest(g);
+                      const hasMultipleItems = g.items && g.items.length > 0;
+                      const totalNetWeight = hasMultipleItems
+                        ? (g.items || []).reduce((sum, item) => sum + (item.netWeight || 0), 0)
+                        : (g.netWeight || 0);
+
                       const statusColors = {
                         Active: "bg-amber-100 text-amber-800 border-amber-200",
                         Closed: "bg-green-100 text-green-800 border-green-200",
                         Auctioned: "bg-rose-100 text-rose-800 border-rose-200",
                       };
-                      
+
                       return (
                         <tr key={(g as any)._id || g.id} className="border-b border-border/50 last:border-0 align-top hover:bg-muted/20 transition-colors">
                           <td className="py-3 px-4 font-medium text-foreground whitespace-nowrap">{g.loanNo}</td>
@@ -849,20 +918,16 @@ export default function GirviPage() {
                           </td>
                           <td className="py-3 px-4">
                             <div className="flex items-center gap-3">
-                              {g.imageUrl ? (
-                                <img src={g.imageUrl} alt="Item" className="w-10 h-10 rounded-md object-cover border border-border shadow-sm shrink-0" />
-                              ) : (
-                                <div className="w-10 h-10 rounded-md bg-muted/50 flex items-center justify-center border border-border shadow-sm shrink-0">
-                                  <ImageIcon className="w-4 h-4 text-muted-foreground/50" />
-                                </div>
-                              )}
+                              <div className="w-10 h-10 rounded-md bg-muted/50 flex items-center justify-center border border-border shadow-sm shrink-0">
+                                {g.imageUrl ? <img src={g.imageUrl} alt="Item" className="w-full h-full object-cover" /> : <ImageIcon className="w-4 h-4 text-muted-foreground/50" />}
+                              </div>
                               <div>
-                                <div className="font-medium text-foreground whitespace-nowrap flex items-center gap-2">
-                                  {g.itemType} {g.purity}
-                                  {g.itemType === "Gold" && <Badge variant="outline" className="text-[10px] h-4 px-1 py-0 bg-amber-50 text-amber-600 border-amber-200 shadow-none">Gold</Badge>}
-                                  {g.itemType === "Silver" && <Badge variant="outline" className="text-[10px] h-4 px-1 py-0 bg-slate-50 text-slate-600 border-slate-200 shadow-none">Silver</Badge>}
-                                </div>
-                                <div className="text-xs text-muted-foreground line-clamp-1 max-w-40 mt-0.5" title={g.itemDescription}>{g.itemDescription}</div>
+                                {hasMultipleItems ? (
+                                  <div className="font-medium text-foreground whitespace-nowrap">{g.items?.length || 0} items</div>
+                                ) : (
+                                  <div className="font-medium text-foreground whitespace-nowrap">{g.itemType} {g.purity}</div>
+                                )}
+                                <div className="text-xs text-muted-foreground line-clamp-1 max-w-40 mt-0.5" title={hasMultipleItems ? (g.items || []).map(it => it.itemDescription).join(', ') : g.itemDescription}>{hasMultipleItems ? (g.items || []).map(it => it.itemDescription).join(', ') : g.itemDescription}</div>
                               {(g.forwardedShopName || g.forwardedTo) && (
                                 <div className={`mt-1 text-[10px] font-semibold border inline-block px-1.5 py-0.5 rounded truncate max-w-40 ${(g as any).isForwardedSettled ? "text-green-700 border-green-200 bg-green-50" : "text-purple-700 border-purple-200 bg-purple-50"}`} title={g.forwardedShopName || g.forwardedTo}>
                                   Fwd: {g.forwardedShopName || g.forwardedTo} {(g as any).isForwardedSettled ? "(Settled)" : ""}
@@ -871,11 +936,11 @@ export default function GirviPage() {
                               </div>
                             </div>
                           </td>
-                          <td className="py-3 px-4 text-right font-medium text-foreground whitespace-nowrap">{g.netWeight.toFixed(3)} g</td>
+                          <td className="py-3 px-4 text-right font-medium text-foreground whitespace-nowrap">{(totalNetWeight || 0).toFixed(3)} g</td>
                           <td className="py-3 px-4 text-right font-semibold text-foreground whitespace-nowrap">{inr(g.loanAmount)}</td>
                           <td className="py-3 px-4 text-right whitespace-nowrap">
                             <div className="font-semibold text-amber-600">{inr(interestAmt)}</div>
-                            <div className="text-[11px] text-muted-foreground font-medium mt-0.5">@ {g.interestPct}%/mo</div>
+                            <div className="text-[11px] text-muted-foreground font-medium mt-0.5">@ {g.interestPct}% per month (compound yearly)</div>
                           </td>
                           <td className="py-3 px-4 text-center">
                             <Select value={g.status} onValueChange={(v) => setStatus((g as any)._id || g.id, v as Girvi["status"])}>
@@ -949,13 +1014,14 @@ function GirviModal({ girvi, authUser, onClose }: { girvi: Girvi; authUser: any;
   const forwardedInterest = calculateForwardedInterest(girvi);
   const forwardedTotal = (girvi.forwardedAmount || 0) + forwardedInterest;
 
-  const displayNote = girvi.note?.replace(/\[(IntPeriod|FwdIntPeriod):.*?\]/g, '').trim();
+  const displayNote = girvi.note?.replace(/\[(IntPeriod|FwdIntPeriod|IntType|FwdIntType):.*?\]/g, '').trim();
 
   return (
     <div className="fixed inset-0 z-100 bg-black/50 flex justify-center items-start p-2 sm:p-4 print:bg-white print:p-0 overflow-y-auto pointer-events-auto">
       <div className="bg-white w-full max-w-3xl rounded-lg shadow-xl print:shadow-none print:max-w-none text-slate-900 my-auto relative flex flex-col max-h-[95vh] print:max-h-none print:block">
-        <div className="p-5 border-2 border-slate-800 m-2 print:m-0 rounded-sm bg-white overflow-y-auto flex-1 print:overflow-visible">
-          <ShopHeader documentLabel="Girvi / Pawn Ticket" compact />
+        <style>{`@media print { @page { margin: 4mm; } body { zoom: 0.9; } }`}</style>
+        <div className="p-5 border-2 border-slate-800 m-2 print:m-0 print:p-2 rounded-sm bg-white overflow-y-auto flex-1 print:overflow-visible">
+          <ShopHeader documentLabel="Girvi / Pawn Ticket" compact rightElement={<PaymentQr amount={girvi.status === "Closed" ? 0 : total} compact />} />
           
           {/* Meta Info */}
           <div className="flex justify-between items-end mb-4 text-xs">
@@ -999,7 +1065,7 @@ function GirviModal({ girvi, authUser, onClose }: { girvi: Girvi; authUser: any;
           <div className="mb-4">
             <h3 className="font-bold text-xs uppercase text-slate-500 mb-3 tracking-wider">Pledged Item Details</h3>
             <div className="overflow-x-auto w-full">
-              <table className="w-full text-xs border-collapse border border-slate-300 min-w-125">
+              <table className="w-full text-xs border-collapse border border-slate-300 min-w-125 print:min-w-full">
                 <thead className="bg-slate-50">
                 <tr>
                   <th className="border border-slate-300 p-1.5 text-left font-semibold">Description</th>
@@ -1010,13 +1076,22 @@ function GirviModal({ girvi, authUser, onClose }: { girvi: Girvi; authUser: any;
                 </tr>
               </thead>
               <tbody>
-                <tr>
-                  <td className="border border-slate-300 p-1.5">{girvi.itemDescription}</td>
-                  <td className="border border-slate-300 p-1.5">{girvi.itemType} {girvi.itemCategory ? `- ${girvi.itemCategory}` : ""}</td>
-                  <td className="border border-slate-300 p-1.5 text-right">{girvi.grossWeight}g</td>
-                  <td className="border border-slate-300 p-1.5 text-right font-bold">{girvi.netWeight}g</td>
-                  <td className="border border-slate-300 p-1.5 text-right">{girvi.purity}</td>
-                </tr>
+                {(girvi.items && girvi.items.length > 0 ? girvi.items : [{
+                  itemDescription: girvi.itemDescription || "",
+                  itemType: girvi.itemType || "",
+                  itemCategory: girvi.itemCategory || "",
+                  grossWeight: girvi.grossWeight || 0,
+                  netWeight: girvi.netWeight || 0,
+                  purity: girvi.purity || "",
+                }]).map((item: any, idx: number) => (
+                  <tr key={idx}>
+                    <td className="border border-slate-300 p-1.5">{item.itemDescription}</td>
+                    <td className="border border-slate-300 p-1.5">{item.itemType} {item.itemCategory ? `- ${item.itemCategory}` : ""}</td>
+                    <td className="border border-slate-300 p-1.5 text-right">{(item.grossWeight || 0).toFixed ? (item.grossWeight || 0).toFixed(3) : item.grossWeight} g</td>
+                    <td className="border border-slate-300 p-1.5 text-right font-bold">{(item.netWeight || 0).toFixed ? (item.netWeight || 0).toFixed(3) : item.netWeight} g</td>
+                    <td className="border border-slate-300 p-1.5 text-right">{item.purity}</td>
+                  </tr>
+                ))}
               </tbody>
             </table>
             </div>
@@ -1027,19 +1102,15 @@ function GirviModal({ girvi, authUser, onClose }: { girvi: Girvi; authUser: any;
             <div className="border border-slate-300 rounded p-3 text-xs flex flex-col justify-center">
               <div className="flex justify-between mb-2">
                 <span className="text-slate-500">Interest Rate</span>
-                <span className="font-bold">{girvi.interestPct}% / {girvi.interestPeriod === "Daily" || girvi.note?.includes("[IntPeriod:Daily]") ? "day" : "month"}</span>
+                <span className="font-bold">{girvi.interestPct}% per month (compound yearly)</span>
               </div>
               <div className="flex justify-between mb-2">
                 <span className="text-slate-500">Time Elapsed</span>
                 <span className="font-bold">{getElapsedTimeString(girvi.date)}</span>
               </div>
-              <div className="flex justify-between mb-2">
-                <span className="text-slate-500">Loan Tenure</span>
-                <span className="font-bold">{girvi.tenureMonths} months</span>
-              </div>
               <div className="flex justify-between">
                 <span className="text-slate-500">Est. Market Value</span>
-                <span className="font-bold">{inr(girvi.marketValue)}</span>
+                <span className="font-bold">{inr(girvi.marketValue || 0)}</span>
               </div>
               {girvi.status === "Closed" && (
                 <div className="mt-3 p-2 bg-green-50 border border-green-200 text-green-800 text-center font-bold rounded tracking-wide">
@@ -1106,10 +1177,16 @@ function GirviModal({ girvi, authUser, onClose }: { girvi: Girvi; authUser: any;
                 <div>
                   <div className="text-purple-600/80 mb-0.5">Shop Financials</div>
                   <div className="grid grid-cols-2 gap-x-2 gap-y-1">
-                    <span>Principal:</span> <span className="font-bold">{inr(girvi.forwardedAmount || 0)}</span>
-                    <span>Rate:</span> <span className="font-bold">{girvi.forwardedInterestPct || 0}%/{girvi.forwardedInterestPeriod === "Daily" || girvi.note?.includes("[FwdIntPeriod:Daily]") ? "day" : "mo"}</span>
-                    <span>Interest:</span> <span className="font-bold text-amber-700">{inr(forwardedInterest)}</span>
-                    <span className="font-bold pt-1 border-t border-purple-200">Total Owed:</span> <span className="font-bold text-rose-700 pt-1 border-t border-purple-200">{inr(forwardedTotal)}</span>
+                    <span>Forwarded Amount:</span> <span className="font-bold">{inr(girvi.forwardedAmount || 0)}</span>
+                    <span>Fwd Date:</span> <span className="font-bold">{girvi.forwardedDate ? formatDate(girvi.forwardedDate) : formatDate(girvi.date)}</span>
+                    <span>Rate:</span> <span className="font-bold">{girvi.forwardedInterestPct || 0}% per month (compound yearly)</span>
+                    <span>{isGirviForwardedSettled(girvi) ? "Settled Interest:" : "Interest:"}</span> <span className="font-bold text-amber-700">{inr(forwardedInterest)}</span>
+                    {isGirviForwardedSettled(girvi) && ((girvi as any).forwardedSettledDate || girvi.note?.match(/cleared on (.*?) - Paid/)) && (
+                      <>
+                        <span>Settled On:</span> <span className="font-bold">{girvi.note?.match(/cleared on (.*?) - Paid/)?.[1] || formatDate((girvi as any).forwardedSettledDate)}</span>
+                      </>
+                    )}
+                    <span className="font-bold pt-1 border-t border-purple-200">{isGirviForwardedSettled(girvi) ? "Total Settled Amount:" : "Total Owed:"}</span> <span className="font-bold text-rose-700 pt-1 border-t border-purple-200">{inr(forwardedTotal)}</span>
                   </div>
                 </div>
                 <div className="flex justify-end">
@@ -1121,20 +1198,8 @@ function GirviModal({ girvi, authUser, onClose }: { girvi: Girvi; authUser: any;
             </div>
           )}
 
-          <div className="mt-4">
-            {authUser?.termsAndConditions ? (
-              <div className="text-[10px] text-slate-600 whitespace-pre-wrap">{authUser.termsAndConditions}</div>
-            ) : (
-              <InvoiceTerms compact />
-            )}
-          </div>
-
-          <div className="mt-6 flex justify-center border-t border-slate-200 pt-4">
-            <PaymentQr amount={girvi.status === "Closed" ? 0 : total} compact />
-          </div>
-
           {/* Signatures */}
-          <div className="mt-12 flex justify-between items-end text-xs font-bold text-slate-700 uppercase tracking-wider">
+          <div className="mt-12 print:mt-6 flex justify-between items-end text-xs font-bold text-slate-700 uppercase tracking-wider print:break-inside-avoid">
             <div className="text-center">
               {girvi.customerSignature ? (
                 <img src={girvi.customerSignature} alt="Customer Signature" className="h-16 mx-auto mb-2 object-contain" />
@@ -1151,6 +1216,14 @@ function GirviModal({ girvi, authUser, onClose }: { girvi: Girvi; authUser: any;
               )}
               Authorized Signatory
             </div>
+          </div>
+
+          <div className="mt-8 print:mt-2 border-t border-slate-200 pt-4 print:pt-2 text-center text-xs normal-case tracking-normal font-normal text-slate-600 print:break-inside-avoid">
+            {authUser?.termsAndConditions ? (
+              <div className="text-[10px] text-slate-600 whitespace-pre-wrap">{authUser.termsAndConditions}</div>
+            ) : (
+              <InvoiceTerms compact />
+            )}
           </div>
         </div>
 

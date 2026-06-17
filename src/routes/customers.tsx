@@ -13,14 +13,63 @@ import {
 } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useState, useMemo } from "react";
-import { Plus, Trash2, Pencil, Search, Loader2, Eye, Receipt, Wallet, ShoppingBag, UserCheck, Wrench, MessageCircle, Printer } from "lucide-react";
-import { formatDate, useDebounce } from "@/lib/utils";
+import { Plus, Trash2, Pencil, Search, Loader2, Eye, Receipt, Wallet, ShoppingBag, UserCheck, Wrench, MessageCircle, Printer, Landmark } from "lucide-react";
+import { calculateCompoundInterest, formatDate, useDebounce } from "@/lib/utils";
 import { useApi, useApiMutation } from "@/hooks/useApi";
-import { customerAPI, invoicesAPI, ordersAPI, repairsAPI } from "@/lib/api";
-import { inr, calcItem, type Invoice, type Order, type Repair, useLocalState } from "@/lib/storage";
+import { customerAPI, invoicesAPI, ordersAPI, repairsAPI, girviAPI } from "@/lib/api";
+import { inr, calcItem, type Invoice, type Order, type Repair, type Girvi, useLocalState } from "@/lib/storage";
 import { toast } from "sonner";
 import { PaymentQr } from "@/components/PaymentQr";
 import { InvoiceTerms, ShopHeader } from "@/components/InvoiceBranding";
+
+function getElapsedDays(dateStr: string) {
+  if (!dateStr) return 0;
+  const start = new Date(dateStr);
+  start.setHours(0, 0, 0, 0);
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  const diffTime = now.getTime() > start.getTime() ? now.getTime() - start.getTime() : 0;
+  return Math.round(diffTime / (1000 * 60 * 60 * 24));
+}
+
+function getElapsedMonthsAndDays(dateStr: string) {
+  if (!dateStr) return { months: 0, days: 0 };
+  const start = new Date(dateStr);
+  start.setHours(0, 0, 0, 0);
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+
+  if (now.getTime() <= start.getTime()) return { months: 0, days: 0 };
+
+  let months = (now.getFullYear() - start.getFullYear()) * 12 + (now.getMonth() - start.getMonth());
+  let days = now.getDate() - start.getDate();
+
+  if (days < 0) {
+    months--;
+    const prevMonth = new Date(now.getFullYear(), now.getMonth(), 0);
+    days += prevMonth.getDate();
+  }
+
+  return { months, days };
+}
+
+function calculateInterest(girvi: any) {
+  const isDaily = girvi.interestPeriod === "Daily" || girvi.note?.includes("[IntPeriod:Daily]");
+  const P = girvi.loanAmount;
+  const monthlyRatePct = girvi.interestPct;
+
+  if (!girvi.date || !P || !monthlyRatePct) return 0;
+
+  if (isDaily) {
+    const elapsedDays = getElapsedDays(girvi.date);
+    const dailyRate = monthlyRatePct / 100;
+    return Math.round(Math.pow(1 + dailyRate, elapsedDays) * P - P);
+  }
+
+  const { months, days } = getElapsedMonthsAndDays(girvi.date);
+  const totalMonths = months + days / 30;
+  return Math.round(calculateCompoundInterest(P, monthlyRatePct, totalMonths).interest);
+}
 
 interface Customer {
   _id?: string;
@@ -89,6 +138,7 @@ export default function CustomersPage() {
   const { data: allInvoices = [] } = useApi<Invoice[]>(["invoices"], () => invoicesAPI.getAll());
   const { data: orders = [] } = useApi<Order[]>(["orders"], () => ordersAPI.getAll());
   const { data: repairs = [] } = useApi<Repair[]>(["repairs"], () => repairsAPI.getAll());
+  const { data: girvis = [] } = useApi<Girvi[]>(["girvis"], () => girviAPI.getAll());
 
   const isOperator = authUser?.role === "operator";
   const invoices = useMemo(() => allInvoices.filter(i => isOperator ? i.type === "GST" : i.type !== "GST"), [allInvoices, isOperator]);
@@ -207,6 +257,7 @@ export default function CustomersPage() {
   const custInvoices = invoices.filter(i => i.customerId === profileId || i.customerMobile === selectedCustomer?.phone);
   const custOrders = orders.filter(o => o.customerMobile === selectedCustomer?.phone);
   const custRepairs = repairs.filter(r => r.customerMobile === selectedCustomer?.phone);
+  const custGirvis = girvis.filter(g => g.customerMobile === selectedCustomer?.phone);
 
   const filteredCustInvoices = custInvoices.filter(i => {
     if (!profileSearchQuery) return true;
@@ -220,6 +271,8 @@ export default function CustomersPage() {
   const totalSales = custInvoices.filter(i => !i.number?.startsWith("MAN-")).reduce((s, i) => s + i.total, 0);
   const totalPaid = custInvoices.reduce((s, i) => s + (i.amountPaid !== undefined ? i.amountPaid : i.total), 0);
   const totalDue = custInvoices.reduce((s, i) => s + (i.balanceDue || 0), 0);
+  const totalLoanAmount = custGirvis.reduce((s, g) => s + (g.status === 'Active' ? g.loanAmount : 0), 0);
+  const activeLoans = custGirvis.filter(g => g.status === 'Active').length;
 
   const [payModal, setPayModal] = useState<{ type: 'invoice'|'order'|'repair', item: any, due: number } | null>(null);
   const [payAmount, setPayAmount] = useState<number | "">("");
@@ -451,7 +504,7 @@ export default function CustomersPage() {
               <Plus className="w-4 h-4 mr-2" /> Add Customer
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-h-[75vh] overflow-y-auto">
+          <DialogContent className="max-h-[75vh] overflow-y-auto" onInteractOutside={(e) => e.preventDefault()}>
             <DialogHeader>
               <DialogTitle className="font-display text-2xl">
                 {editingId ? "Edit" : "New"} customer
@@ -637,7 +690,7 @@ export default function CustomersPage() {
         if (!val) setProfileId(null);
         setProfileSearchQuery("");
       }}>
-        <DialogContent className="max-w-5xl max-h-[85vh] overflow-y-auto">
+        <DialogContent className="max-w-5xl max-h-[85vh] overflow-y-auto" onInteractOutside={(e) => e.preventDefault()}>
           {selectedCustomer && (
             <>
               <DialogHeader>
@@ -679,7 +732,7 @@ export default function CustomersPage() {
                 </Card>
 
                 {/* Financial Summary */}
-                <div className="md:col-span-2 grid grid-cols-2 lg:grid-cols-3 gap-4">
+                <div className="md:col-span-2 grid grid-cols-2 lg:grid-cols-4 gap-4">
                   <Card className="shadow-none border-border">
                     <CardContent className="pt-6">
                       <div className="text-xs text-muted-foreground flex items-center gap-1"><Receipt className="w-4 h-4"/> Total Sales</div>
@@ -697,6 +750,13 @@ export default function CustomersPage() {
                     <CardContent className="pt-6">
                       <div className="text-xs text-muted-foreground flex items-center gap-1"><Wallet className="w-4 h-4 text-rose-500"/> Balance Due</div>
                       <div className="text-xl font-display mt-1 text-rose-600">{inr(totalDue)}</div>
+                    </CardContent>
+                  </Card>
+                  <Card className="shadow-none border-border">
+                    <CardContent className="pt-6">
+                      <div className="text-xs text-muted-foreground flex items-center gap-1"><Landmark className="w-4 h-4 text-purple-500"/> Active Loans</div>
+                      <div className="text-xl font-display mt-1 text-purple-600">{inr(totalLoanAmount)}</div>
+                      <div className="text-xs text-muted-foreground mt-1">{activeLoans} loans</div>
                     </CardContent>
                   </Card>
                 </div>
@@ -740,50 +800,52 @@ export default function CustomersPage() {
                         {custInvoices.length === 0 ? "No bills for this customer." : "No bills match your search."}
                       </p>
                     ) : (
-                      <table className="w-full text-sm">
-                        <thead className="text-left text-muted-foreground border-b bg-muted/20">
-                          <tr>
-                            <th className="py-2 px-4">Invoice</th>
-                            <th>Date</th>
-                            <th>Type</th>
-                            <th>Items</th>
-                            <th className="text-right">Total</th>
-                            <th className="text-right">Paid</th>
-                            <th className="text-right px-4">Due</th>
-                            <th className="text-right px-4">Action</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {filteredCustInvoices.map((inv) => (
-                            <tr key={inv._id || inv.id || inv.number} className="border-b last:border-0 hover:bg-muted/40">
-                              <td className="py-2 px-4 font-medium">{inv.number}</td>
-                              <td>{formatDate(inv.createdAt)}</td>
-                              <td>{inv.type === "NON-GST" && inv.number?.startsWith("MAN-") ? "Manual Due" : inv.type}</td>
-                              <td className="py-2">
-                                <div className="text-xs text-muted-foreground truncate max-w-40" title={inv.items?.map(it => it.name).join(", ")}>
-                                  {inv.items?.map(it => it.name).join(", ") || "—"}
-                                </div>
-                              </td>
-                              <td className="text-right">{inr(inv.total)}</td>
-                              <td className="text-right text-green-600">{inr(inv.amountPaid !== undefined ? inv.amountPaid : inv.total)}</td>
-                              <td className="text-right px-4 text-rose-600 font-medium">{inr(inv.balanceDue || 0)}</td>
-                              <td className="text-right px-4">
-                                <div className="flex justify-end items-center gap-2">
-                                  <Button size="sm" variant="ghost" onClick={() => setViewingInvoice(inv)} title="View Invoice">
-                                    <Eye className="w-4 h-4" />
-                                  </Button>
-                                  {(inv.balanceDue || 0) > 0 && (
-                                    <Button size="sm" variant="outline" onClick={() => openPayModal('invoice', inv, inv.balanceDue || 0)}>Pay Due</Button>
-                                  )}
-                                  {(inv.balanceDue || 0) <= 0 && (
-                                    <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded text-[10px] font-semibold uppercase inline-block">Paid</span>
-                                  )}
-                                </div>
-                              </td>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead className="text-left text-muted-foreground border-b bg-muted/20">
+                            <tr>
+                              <th className="py-2 px-4">Invoice</th>
+                              <th>Date</th>
+                              <th>Type</th>
+                              <th>Items</th>
+                              <th className="text-right">Total</th>
+                              <th className="text-right">Paid</th>
+                              <th className="text-right px-4">Due</th>
+                              <th className="text-right px-4">Action</th>
                             </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                          </thead>
+                          <tbody>
+                            {filteredCustInvoices.map((inv) => (
+                              <tr key={inv._id || inv.id || inv.number} className="border-b last:border-0 hover:bg-muted/40">
+                                <td className="py-2 px-4 font-medium">{inv.number}</td>
+                                <td>{formatDate(inv.createdAt)}</td>
+                                <td>{inv.type === "NON-GST" && inv.number?.startsWith("MAN-") ? "Manual Due" : inv.type}</td>
+                                <td className="py-2">
+                                  <div className="text-xs text-muted-foreground truncate max-w-40" title={inv.items?.map(it => it.name).join(", ")}>
+                                    {inv.items?.map(it => it.name).join(", ") || "—"}
+                                  </div>
+                                </td>
+                                <td className="text-right">{inr(inv.total)}</td>
+                                <td className="text-right text-green-600">{inr(inv.amountPaid !== undefined ? inv.amountPaid : inv.total)}</td>
+                                <td className="text-right px-4 text-rose-600 font-medium">{inr(inv.balanceDue || 0)}</td>
+                                <td className="text-right px-4">
+                                  <div className="flex justify-end items-center gap-2">
+                                    <Button size="sm" variant="ghost" onClick={() => setViewingInvoice(inv)} title="View Invoice">
+                                      <Eye className="w-4 h-4" />
+                                    </Button>
+                                    {(inv.balanceDue || 0) > 0 && (
+                                      <Button size="sm" variant="outline" onClick={() => openPayModal('invoice', inv, inv.balanceDue || 0)}>Pay Due</Button>
+                                    )}
+                                    {(inv.balanceDue || 0) <= 0 && (
+                                      <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded text-[10px] font-semibold uppercase inline-block">Paid</span>
+                                    )}
+                                  </div>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
                     )}
                   </CardContent>
                 </Card>
@@ -812,26 +874,28 @@ export default function CustomersPage() {
                                 </Button>
                               </div>
                             </div>
-                            <table className="w-full text-sm">
-                              <thead className="text-left text-muted-foreground border-b border-border/50">
-                                <tr>
-                                  <th className="py-2 px-4 w-1/4">Date</th>
-                                  <th className="w-1/4">Mode</th>
-                                  <th className="w-1/4">Note</th>
-                                  <th className="text-right px-4 w-1/4">Amount Paid</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {pmts.map((p, idx) => (
-                                  <tr key={`${invNo}-${p.date}-${p.amount}-${p.mode}-${idx}`} className="border-b border-border/50 last:border-0 hover:bg-muted/40">
-                                    <td className="py-2 px-4">{formatDate(p.date)}</td>
-                                    <td>{p.mode}</td>
-                                    <td className="text-muted-foreground">{p.note || "—"}</td>
-                                    <td className="text-right px-4 text-green-600 font-medium">{inr(p.amount)}</td>
+                            <div className="overflow-x-auto">
+                              <table className="w-full text-sm">
+                                <thead className="text-left text-muted-foreground border-b border-border/50">
+                                  <tr>
+                                    <th className="py-2 px-4 w-1/4">Date</th>
+                                    <th className="w-1/4">Mode</th>
+                                    <th className="w-1/4">Note</th>
+                                    <th className="text-right px-4 w-1/4">Amount Paid</th>
                                   </tr>
-                                ))}
-                              </tbody>
-                            </table>
+                                </thead>
+                                <tbody>
+                                  {pmts.map((p, idx) => (
+                                    <tr key={`${invNo}-${p.date}-${p.amount}-${p.mode}-${idx}`} className="border-b border-border/50 last:border-0 hover:bg-muted/40">
+                                      <td className="py-2 px-4">{formatDate(p.date)}</td>
+                                      <td>{p.mode}</td>
+                                      <td className="text-muted-foreground">{p.note || "—"}</td>
+                                      <td className="text-right px-4 text-green-600 font-medium">{inr(p.amount)}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -848,47 +912,49 @@ export default function CustomersPage() {
                     {custOrders.length === 0 ? (
                       <p className="text-sm text-muted-foreground py-6 text-center">No orders.</p>
                     ) : (
-                      <table className="w-full text-sm">
-                        <thead className="text-left text-muted-foreground border-b bg-muted/20">
-                          <tr>
-                            <th className="py-2 px-4">Order No</th>
-                            <th>Date</th>
-                            <th>Item Details</th>
-                            <th className="text-right">Paid</th>
-                            <th className="text-center px-4">Status</th>
-                            <th className="text-right px-4">Action</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {custOrders.map((o) => {
-                            return (
-                            <tr key={o.id || o.orderNo} className="border-b last:border-0 hover:bg-muted/40">
-                              <td className="py-2 px-4 font-medium">{o.orderNo}</td>
-                              <td>{formatDate(o.date)}</td>
-                              <td>
-                                <div className="font-medium">{o.itemDescription}</div>
-                                <div className="text-xs text-muted-foreground">{o.metal} {o.purity}</div>
-                              </td>
-                              <td className="text-right text-green-600">
-                                <div>{inr(o.advancePaid)}</div>
-                                {o.status === "Delivered" && (o.advancePaid || 0) > 0 && (
-                                  <span className="inline-block mt-0.5 bg-green-100 text-green-800 px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase">Settled</span>
-                                )}
-                              </td>
-                              <td className="text-center px-4">
-                                <span className="inline-block px-2 py-1 bg-muted rounded-full text-xs">{o.status}</span>
-                              </td>
-                              <td className="text-right px-4">
-                                <div className="flex justify-end items-center gap-2">
-                                  <Button size="sm" variant="ghost" onClick={() => setViewingOrder(o)} title="View Order">
-                                    <Eye className="w-4 h-4" />
-                                  </Button>
-                                </div>
-                              </td>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead className="text-left text-muted-foreground border-b bg-muted/20">
+                            <tr>
+                              <th className="py-2 px-4">Order No</th>
+                              <th>Date</th>
+                              <th>Item Details</th>
+                              <th className="text-right">Paid</th>
+                              <th className="text-center px-4">Status</th>
+                              <th className="text-right px-4">Action</th>
                             </tr>
-                          )})}
-                        </tbody>
-                      </table>
+                          </thead>
+                          <tbody>
+                            {custOrders.map((o) => {
+                              return (
+                              <tr key={o.id || o.orderNo} className="border-b last:border-0 hover:bg-muted/40">
+                                <td className="py-2 px-4 font-medium">{o.orderNo}</td>
+                                <td>{formatDate(o.date)}</td>
+                                <td>
+                                  <div className="font-medium">{o.itemDescription}</div>
+                                  <div className="text-xs text-muted-foreground">{o.metal} {o.purity}</div>
+                                </td>
+                                <td className="text-right text-green-600">
+                                  <div>{inr(o.advancePaid)}</div>
+                                  {o.status === "Delivered" && (o.advancePaid || 0) > 0 && (
+                                    <span className="inline-block mt-0.5 bg-green-100 text-green-800 px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase">Settled</span>
+                                  )}
+                                </td>
+                                <td className="text-center px-4">
+                                  <span className="inline-block px-2 py-1 bg-muted rounded-full text-xs">{o.status}</span>
+                                </td>
+                                <td className="text-right px-4">
+                                  <div className="flex justify-end items-center gap-2">
+                                    <Button size="sm" variant="ghost" onClick={() => setViewingOrder(o)} title="View Order">
+                                      <Eye className="w-4 h-4" />
+                                    </Button>
+                                  </div>
+                                </td>
+                              </tr>
+                            )})}
+                          </tbody>
+                        </table>
+                      </div>
                     )}
                   </CardContent>
                 </Card>
@@ -902,48 +968,97 @@ export default function CustomersPage() {
                     {custRepairs.length === 0 ? (
                       <p className="text-sm text-muted-foreground py-6 text-center">No repairs.</p>
                     ) : (
-                      <table className="w-full text-sm">
-                        <thead className="text-left text-muted-foreground border-b bg-muted/20">
-                          <tr>
-                            <th className="py-2 px-4">Ticket No</th>
-                            <th>Date</th>
-                            <th>Item Details</th>
-                            <th>Problem</th>
-                            <th className="text-right">Paid</th>
-                            <th className="text-center px-4">Status</th>
-                            <th className="text-right px-4">Action</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {custRepairs.map((r) => (
-                            <tr key={r.id || r._id || r.ticketNo} className="border-b last:border-0 hover:bg-muted/40">
-                              <td className="py-2 px-4 font-medium">{r.ticketNo}</td>
-                              <td>{formatDate(r.date)}</td>
-                              <td>
-                                <div className="font-medium">{r.itemDescription}</div>
-                                <div className="text-xs text-muted-foreground">{r.itemWeight}g</div>
-                              </td>
-                              <td className="text-rose-500 max-w-37.5 truncate" title={r.problem}>{r.problem}</td>
-                              <td className="text-right text-green-600">
-                                <div>{inr(r.advance)}</div>
-                                {r.status === "Delivered" && (r.advance || 0) > 0 && (
-                                  <span className="inline-block mt-0.5 bg-green-100 text-green-800 px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase">Settled</span>
-                                )}
-                              </td>
-                              <td className="text-center px-4">
-                                <span className="inline-block px-2 py-1 bg-muted rounded-full text-xs">{r.status}</span>
-                              </td>
-                              <td className="text-right px-4">
-                                <div className="flex justify-end items-center gap-2">
-                                  <Button size="sm" variant="ghost" onClick={() => setViewingRepair(r)} title="View Repair">
-                                    <Eye className="w-4 h-4" />
-                                  </Button>
-                                </div>
-                              </td>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead className="text-left text-muted-foreground border-b bg-muted/20">
+                            <tr>
+                              <th className="py-2 px-4">Ticket No</th>
+                              <th>Date</th>
+                              <th>Item Details</th>
+                              <th>Problem</th>
+                              <th className="text-right">Paid</th>
+                              <th className="text-center px-4">Status</th>
+                              <th className="text-right px-4">Action</th>
                             </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                          </thead>
+                          <tbody>
+                            {custRepairs.map((r) => (
+                              <tr key={r.id || r._id || r.ticketNo} className="border-b last:border-0 hover:bg-muted/40">
+                                <td className="py-2 px-4 font-medium">{r.ticketNo}</td>
+                                <td>{formatDate(r.date)}</td>
+                                <td>
+                                  <div className="font-medium">{r.itemDescription}</div>
+                                  <div className="text-xs text-muted-foreground">{r.itemWeight}g</div>
+                                </td>
+                                <td className="text-rose-500 max-w-37.5 truncate" title={r.problem}>{r.problem}</td>
+                                <td className="text-right text-green-600">
+                                  <div>{inr(r.advance)}</div>
+                                  {r.status === "Delivered" && (r.advance || 0) > 0 && (
+                                    <span className="inline-block mt-0.5 bg-green-100 text-green-800 px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase">Settled</span>
+                                  )}
+                                </td>
+                                <td className="text-center px-4">
+                                  <span className="inline-block px-2 py-1 bg-muted rounded-full text-xs">{r.status}</span>
+                                </td>
+                                <td className="text-right px-4">
+                                  <div className="flex justify-end items-center gap-2">
+                                    <Button size="sm" variant="ghost" onClick={() => setViewingRepair(r)} title="View Repair">
+                                      <Eye className="w-4 h-4" />
+                                    </Button>
+                                  </div>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Girvi History */}
+              <div className="mt-4">
+                <h3 className="font-display text-lg mb-3 flex items-center gap-2"><Landmark className="w-5 h-5"/> Girvi / Loan History</h3>
+                <Card className="shadow-none border-border">
+                  <CardContent className="p-0">
+                    {custGirvis.length === 0 ? (
+                      <p className="text-sm text-muted-foreground py-6 text-center">No loans for this customer.</p>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead className="text-left text-muted-foreground border-b bg-muted/20">
+                            <tr>
+                              <th className="py-2 px-4">Loan No</th>
+                              <th>Date</th>
+                              <th>Item</th>
+                              <th className="text-right">Principal</th>
+                              <th className="text-right">Interest</th>
+                              <th className="text-center px-4">Status</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {custGirvis.map((g) => {
+                                const interest = calculateInterest(g);
+                                return (
+                                  <tr key={(g as any)._id || g.id} className="border-b last:border-0 hover:bg-muted/40">
+                                      <td className="py-2 px-4 font-medium">{g.loanNo}</td>
+                                      <td>{formatDate(g.date)}</td>
+                                      <td>
+                                          <div className="font-medium">{g.itemDescription}</div>
+                                          <div className="text-xs text-muted-foreground">{g.itemType} {g.purity}</div>
+                                      </td>
+                                      <td className="text-right">{inr(g.loanAmount)}</td>
+                                      <td className="text-right text-amber-600">{inr(interest)}</td>
+                                      <td className="text-center px-4">
+                                          <span className={`inline-block px-2 py-1 rounded-full text-xs ${g.status === 'Active' ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-700'}`}>{g.status}</span>
+                                      </td>
+                                  </tr>
+                                )
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
                     )}
                   </CardContent>
                 </Card>
@@ -955,7 +1070,7 @@ export default function CustomersPage() {
 
       {/* Record Payment Dialog */}
       <Dialog open={!!payModal} onOpenChange={(v) => !v && setPayModal(null)}>
-        <DialogContent className="max-w-md" aria-describedby={undefined}>
+        <DialogContent className="max-w-md" aria-describedby={undefined} onInteractOutside={(e) => e.preventDefault()}>
           {payModal && (
             <>
               <DialogHeader>
@@ -996,7 +1111,7 @@ export default function CustomersPage() {
 
       {/* Add Manual Due Dialog */}
       <Dialog open={manualDueOpen} onOpenChange={setManualDueOpen}>
-        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto" aria-describedby={undefined}>
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto" aria-describedby={undefined} onInteractOutside={(e) => e.preventDefault()}>
           <DialogHeader>
             <DialogTitle>Add Manual Due</DialogTitle>
           </DialogHeader>
@@ -1112,9 +1227,10 @@ function InvoiceModal({ inv, onClose }: { inv: any; onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-100 bg-black/50 flex justify-center items-start p-2 sm:p-4 print:bg-white print:p-0 overflow-y-auto pointer-events-auto">
       <div className="bg-white w-full max-w-4xl rounded-lg shadow-xl print:shadow-none print:max-w-none text-slate-900 my-auto relative flex flex-col max-h-[95vh] print:max-h-none print:block">
-        <div className="p-4 sm:p-6 print:p-0 border-2 border-transparent print:border-none m-2 print:m-0 bg-white overflow-y-auto flex-1 print:overflow-visible">
+        <style>{`@media print { @page { margin: 4mm; } body { zoom: 0.9; } }`}</style>
+        <div className="p-4 sm:p-6 print:p-2 border-2 border-transparent print:border-none m-2 print:m-0 bg-white overflow-y-auto flex-1 print:overflow-visible">
           
-          <ShopHeader documentLabel={inv.type === "GST" ? "Tax Invoice" : "Invoice"} compact />
+          <ShopHeader documentLabel={inv.type === "GST" ? "Tax Invoice" : "Invoice"} compact rightElement={<PaymentQr amount={inv.balanceDue || 0} compact />} />
 
           {/* Invoice Meta & Customer Details */}
           <div className="flex justify-between items-start mb-3 text-sm">
@@ -1137,7 +1253,7 @@ function InvoiceModal({ inv, onClose }: { inv: any; onClose: () => void }) {
 
           {/* Items Table */}
           <div className="overflow-x-auto w-full mb-3">
-            <table className="w-full text-xs border-collapse border border-slate-300 min-w-150">
+            <table className="w-full text-xs border-collapse border border-slate-300 min-w-150 print:min-w-full">
               <thead className="bg-slate-100">
               <tr>
                 <th className="border border-slate-300 py-1 px-1.5 text-center w-8 text-slate-600">#</th>
@@ -1275,13 +1391,9 @@ function InvoiceModal({ inv, onClose }: { inv: any; onClose: () => void }) {
             </div>
           </div>
 
-          <div className="mt-4 flex justify-center border-t border-slate-200 pt-3">
-            <PaymentQr amount={inv.balanceDue || 0} compact />
-          </div>
-
           {/* Signatures */}
-          <div className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-4 items-end text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-            <div className="text-center order-2 sm:order-1">
+          <div className="mt-12 print:mt-6 grid grid-cols-1 sm:grid-cols-2 gap-8 items-end text-[10px] font-bold text-slate-500 uppercase tracking-wider print:break-inside-avoid">
+            <div className="text-center">
               {inv.customerSignature ? (
                 <img src={inv.customerSignature} alt="Customer Signature" className="h-10 mx-auto mb-1 object-contain" />
               ) : (
@@ -1289,10 +1401,7 @@ function InvoiceModal({ inv, onClose }: { inv: any; onClose: () => void }) {
               )}
               Customer Signature
             </div>
-            <div className="normal-case tracking-normal font-normal text-left text-slate-800 order-1 sm:order-2">
-              <InvoiceTerms compact />
-            </div>
-            <div className="text-center order-3 sm:order-3">
+            <div className="text-center">
               {inv.authorizedSignatory ? (
                 <img src={inv.authorizedSignatory} alt="Authorized Signatory" className="h-10 mx-auto mb-1 object-contain" />
               ) : (
@@ -1300,6 +1409,9 @@ function InvoiceModal({ inv, onClose }: { inv: any; onClose: () => void }) {
               )}
               Authorized Signatory
             </div>
+          </div>
+          <div className="mt-4 print:mt-2 border-t border-slate-200 pt-2 print:pt-1 text-center text-[10px] normal-case tracking-normal font-normal text-slate-600 print:break-inside-avoid">
+            <InvoiceTerms compact />
           </div>
         </div>
         
@@ -1319,8 +1431,9 @@ function OrderInvoiceModal({ order, onClose }: { order: Order; onClose: () => vo
   return (
     <div className="fixed inset-0 z-100 bg-black/50 flex justify-center items-start p-2 sm:p-4 print:bg-white print:p-0 overflow-y-auto pointer-events-auto">
       <div className="bg-white w-full max-w-4xl rounded-lg shadow-xl print:shadow-none print:max-w-none text-slate-900 my-auto relative flex flex-col max-h-[95vh] print:max-h-none print:block">
-        <div className="p-6 sm:p-10 print:p-0 border-2 border-transparent print:border-none m-2 print:m-0 bg-white overflow-y-auto flex-1 print:overflow-visible">
-          <ShopHeader documentLabel="Custom Order Receipt" />
+        <style>{`@media print { @page { margin: 4mm; } body { zoom: 0.9; } }`}</style>
+        <div className="p-6 sm:p-10 print:p-2 border-2 border-transparent print:border-none m-2 print:m-0 bg-white overflow-y-auto flex-1 print:overflow-visible">
+          <ShopHeader documentLabel="Custom Order Receipt" compact rightElement={<PaymentQr amount={order.fixedPrice ? Math.max(0, order.fixedPrice - (order.advancePaid || 0)) : 0} compact />} />
           <div className="flex justify-between items-start mb-6 text-sm">
             <div>
               <div className="font-bold text-xs text-slate-500 uppercase tracking-wider mb-1">Customer Details:</div>
@@ -1373,22 +1486,27 @@ function OrderInvoiceModal({ order, onClose }: { order: Order; onClose: () => vo
               </table>
             </div>
           </div>
-          <div className="mt-12 grid grid-cols-1 sm:grid-cols-3 gap-6 items-end text-xs font-bold text-slate-500 uppercase tracking-wider">
-            <div className="text-center order-2 sm:order-1">
+          {/* Signatures */}
+          <div className="mt-12 print:mt-6 grid grid-cols-1 sm:grid-cols-2 gap-8 items-end text-xs font-bold text-slate-500 uppercase tracking-wider print:break-inside-avoid">
+            <div className="text-center">
               {order.customerSignature ? (
                 <img src={order.customerSignature} alt="Customer Signature" className="h-16 mx-auto mb-2 object-contain" />
-              ) : <div className="w-48 border-t-2 border-slate-300 mb-2 mx-auto"></div>}
+              ) : (
+                <div className="w-48 border-t-2 border-slate-300 mb-2 mx-auto"></div>
+              )}
               Customer Signature
             </div>
-            <div className="normal-case tracking-normal font-normal text-left text-slate-800 order-1 sm:order-2">
-              <InvoiceTerms compact />
-            </div>
-            <div className="text-center order-3 sm:order-3">
+            <div className="text-center">
               {order.authorizedSignatory ? (
                 <img src={order.authorizedSignatory} alt="Authorized Signatory" className="h-16 mx-auto mb-2 object-contain" />
-              ) : <div className="w-48 border-t-2 border-slate-300 mb-2 mx-auto"></div>}
+              ) : (
+                <div className="w-48 border-t-2 border-slate-300 mb-2 mx-auto"></div>
+              )}
               Authorized Signatory
             </div>
+          </div>
+          <div className="mt-8 print:mt-2 border-t border-slate-200 pt-4 print:pt-2 text-center text-xs normal-case tracking-normal font-normal text-slate-600 print:break-inside-avoid">
+            <InvoiceTerms compact />
           </div>
         </div>
         <div className="shrink-0 bg-slate-100 p-4 border-t border-slate-200 rounded-b-lg flex justify-end gap-3 print:hidden">
@@ -1404,8 +1522,9 @@ function RepairInvoiceModal({ repair, onClose }: { repair: Repair; onClose: () =
   return (
     <div className="fixed inset-0 z-100 bg-black/50 flex justify-center items-start p-2 sm:p-4 print:bg-white print:p-0 overflow-y-auto pointer-events-auto">
       <div className="bg-white w-full max-w-4xl rounded-lg shadow-xl print:shadow-none print:max-w-none text-slate-900 my-auto relative flex flex-col max-h-[95vh] print:max-h-none print:block">
-        <div className="p-6 sm:p-10 print:p-0 border-2 border-transparent print:border-none m-2 print:m-0 bg-white overflow-y-auto flex-1 print:overflow-visible">
-          <ShopHeader documentLabel="Repair Receipt" />
+        <style>{`@media print { @page { margin: 4mm; } body { zoom: 0.9; } }`}</style>
+        <div className="p-6 sm:p-10 print:p-2 border-2 border-transparent print:border-none m-2 print:m-0 bg-white overflow-y-auto flex-1 print:overflow-visible">
+          <ShopHeader documentLabel="Repair Receipt" compact rightElement={<PaymentQr amount={Math.max(0, (repair.estimate || 0) - (repair.advance || 0))} compact />} />
           <div className="flex justify-between items-start mb-6 text-sm">
             <div>
               <div className="font-bold text-xs text-slate-500 uppercase tracking-wider mb-1">Customer Details:</div>
@@ -1460,22 +1579,27 @@ function RepairInvoiceModal({ repair, onClose }: { repair: Repair; onClose: () =
               </table>
             </div>
           </div>
-          <div className="mt-12 grid grid-cols-1 sm:grid-cols-3 gap-6 items-end text-xs font-bold text-slate-500 uppercase tracking-wider">
-            <div className="text-center order-2 sm:order-1">
+          {/* Signatures */}
+          <div className="mt-12 print:mt-6 grid grid-cols-1 sm:grid-cols-2 gap-8 items-end text-xs font-bold text-slate-500 uppercase tracking-wider print:break-inside-avoid">
+            <div className="text-center">
               {repair.customerSignature ? (
                 <img src={repair.customerSignature} alt="Customer Signature" className="h-16 mx-auto mb-2 object-contain" />
-              ) : <div className="w-48 border-t-2 border-slate-300 mb-2 mx-auto"></div>}
+              ) : (
+                <div className="w-48 border-t-2 border-slate-300 mb-2 mx-auto"></div>
+              )}
               Customer Signature
             </div>
-            <div className="normal-case tracking-normal font-normal text-left text-slate-800 order-1 sm:order-2">
-              <InvoiceTerms compact />
-            </div>
-            <div className="text-center order-3 sm:order-3">
+            <div className="text-center">
               {repair.authorizedSignatory ? (
                 <img src={repair.authorizedSignatory} alt="Authorized Signatory" className="h-16 mx-auto mb-2 object-contain" />
-              ) : <div className="w-48 border-t-2 border-slate-300 mb-2 mx-auto"></div>}
+              ) : (
+                <div className="w-48 border-t-2 border-slate-300 mb-2 mx-auto"></div>
+              )}
               Authorized Signatory
             </div>
+          </div>
+          <div className="mt-8 print:mt-2 border-t border-slate-200 pt-4 print:pt-2 text-center text-xs normal-case tracking-normal font-normal text-slate-600 print:break-inside-avoid">
+            <InvoiceTerms compact />
           </div>
         </div>
         <div className="shrink-0 bg-slate-100 p-4 border-t border-slate-200 rounded-b-lg flex justify-end gap-3 print:hidden">

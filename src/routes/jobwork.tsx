@@ -61,7 +61,7 @@ export default function JobWorkPage() {
         <div><h1 className="text-4xl">Job Work</h1><p className="text-muted-foreground mt-1">Metal issued to karigars & received back.</p></div>
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild><Button size="lg" className="w-full sm:w-auto" onClick={() => { setForm(empty); setSearchKar(""); }}><Plus className="w-4 h-4 mr-2"/>New Job</Button></DialogTrigger>
-          <DialogContent className="max-w-2xl max-h-[75vh] overflow-y-auto" aria-describedby={undefined}><DialogHeader><DialogTitle>Issue Job Work</DialogTitle></DialogHeader>
+          <DialogContent className="max-w-2xl max-h-[75vh] overflow-y-auto" aria-describedby={undefined} onInteractOutside={(e) => e.preventDefault()}><DialogHeader><DialogTitle>Issue Job Work</DialogTitle></DialogHeader>
             <div className="grid grid-cols-2 gap-3">
               <div className="col-span-2 grid grid-cols-2 gap-3">
                 <div>

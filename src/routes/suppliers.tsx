@@ -289,7 +289,7 @@ export default function SuppliersPage() {
               <Plus className="w-4 h-4 mr-2"/> Add Supplier
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-2xl max-h-[75vh] overflow-y-auto">
+          <DialogContent className="max-w-2xl max-h-[75vh] overflow-y-auto" onInteractOutside={(e) => e.preventDefault()}>
             <DialogHeader>
               <DialogTitle className="font-display text-2xl">{editingId ? "Edit" : "New"} supplier</DialogTitle>
               <DialogDescription>Add or update supplier information</DialogDescription>
@@ -316,7 +316,7 @@ export default function SuppliersPage() {
                         <Plus className="w-4 h-4" />
                       </Button>
                     </DialogTrigger>
-                    <DialogContent className="max-h-[60vh] overflow-y-auto">
+                    <DialogContent className="max-h-[60vh] overflow-y-auto" onInteractOutside={(e) => e.preventDefault()}>
                       <DialogHeader>
                         <DialogTitle>Add Category</DialogTitle>
                         <DialogDescription>Add a new category label for your suppliers.</DialogDescription>
@@ -401,7 +401,7 @@ export default function SuppliersPage() {
       </Card>
 
       <Dialog open={!!ledgerShop} onOpenChange={(v) => { if (!v) { setLedgerShop(null); setGoldPage(1); setSilverPage(1); setTxSearchQuery(""); setTxSearchDate(""); } }}>
-        <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto" aria-describedby={undefined}>
+        <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto" aria-describedby={undefined} onInteractOutside={(e) => e.preventDefault()}>
           {ledgerShop && (
             <>
               <DialogHeader>

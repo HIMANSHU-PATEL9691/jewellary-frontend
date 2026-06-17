@@ -6,10 +6,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { inr, type Girvi, useLocalState, uid } from "@/lib/storage";
-import { formatDate } from "@/lib/utils";
+import { calculateCompoundInterest, formatDate } from "@/lib/utils";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { girviAPI } from "@/lib/api";
-import { Store, Eye, ArrowUpRight, Plus, MapPin, FileText, Phone, Printer, Trash2 } from "lucide-react";
+import { Store, Eye, ArrowUpRight, Plus, MapPin, FileText, Phone, Printer, Trash2, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import { PaymentQr } from "@/components/PaymentQr";
 import { InvoiceTerms, ShopHeader } from "@/components/InvoiceBranding";
@@ -35,31 +35,49 @@ function getElapsedMonthsAndDays(dateStr: string) {
   return { months, days };
 }
 
+function getElapsedDays(dateStr: string) {
+  if (!dateStr) return 0;
+  const start = new Date(dateStr);
+  start.setHours(0, 0, 0, 0);
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+
+  if (now.getTime() <= start.getTime()) return 0;
+  return Math.round((now.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+}
+
 function isGirviForwardedSettled(girvi: any) {
   return girvi.isForwardedSettled || (girvi.note && /\[Forwarding to .*? cleared on .*? - Paid .*?\]/.test(girvi.note));
 }
 
 function calculateForwardedInterest(girvi: any) {
-  if (isGirviForwardedSettled(girvi)) return girvi.forwardedSettledInterest || 0;
+  if (isGirviForwardedSettled(girvi)) {
+    if (girvi.forwardedSettledInterest !== undefined) return girvi.forwardedSettledInterest;
+    const match = girvi.note?.match(/cleared on .*? - Paid (.*?)\]/);
+    if (match && match[1]) {
+      const parsedTotal = parseFloat(match[1].replace(/[^\d.-]/g, ''));
+      if (!isNaN(parsedTotal)) return Math.max(0, parsedTotal - (girvi.forwardedAmount || 0));
+    }
+    return 0;
+  }
   if (!girvi.forwardedAmount || !girvi.forwardedInterestPct) return 0;
   
   const isDaily = girvi.forwardedInterestPeriod === "Daily" || girvi.note?.includes("[FwdIntPeriod:Daily]");
-  if (isDaily) {
-    const start = new Date(girvi.date);
-    start.setHours(0, 0, 0, 0);
-    const now = new Date();
-    now.setHours(0, 0, 0, 0);
-    const diffTime = now.getTime() > start.getTime() ? now.getTime() - start.getTime() : 0;
-    const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
+  const P = girvi.forwardedAmount;
+  const monthlyRatePct = girvi.forwardedInterestPct;
+  const startDate = girvi.forwardedDate || girvi.date;
 
-    const interestPerDay = girvi.forwardedAmount * (girvi.forwardedInterestPct / 100);
-    return Math.round(interestPerDay * diffDays);
-  } else {
-    const { months, days } = getElapsedMonthsAndDays(girvi.date);
-    const interestPerMonth = girvi.forwardedAmount * (girvi.forwardedInterestPct / 100);
-    const interestForDays = (interestPerMonth / 30) * days;
-    return Math.round((months * interestPerMonth) + interestForDays);
+  if (!startDate) return 0;
+
+  if (isDaily) {
+    const elapsedDays = getElapsedDays(startDate);
+    const dailyRate = monthlyRatePct / 100;
+    return Math.round(Math.pow(1 + dailyRate, elapsedDays) * P - P);
   }
+
+  const { months, days } = getElapsedMonthsAndDays(startDate);
+  const totalMonths = months + days / 30;
+  return Math.round(calculateCompoundInterest(P, monthlyRatePct, totalMonths).interest);
 }
 
 export type ForwardedShopProfile = {
@@ -139,7 +157,7 @@ export default function ForwardedShopsPage() {
         totalInterest,
       };
     })
-    .filter(shop => shop.profileId || shop.activeRecords.length > 0 || shop.settledRecords.length > 0)
+    .filter(shop => shop.profileId || shop.activeRecords.length > 0)
     .sort((a, b) => (a.name || "").localeCompare(b.name || ""));
   }, [girvis, profiles]);
 
@@ -185,8 +203,8 @@ export default function ForwardedShopsPage() {
       toast.error("Cannot delete a shop with active forwarded items.");
       return;
     }
-    if (window.confirm(`Are you sure you want to delete the profile for ${shop.name}?`)) {
-      setProfiles(profiles.filter(p => p.name.toLowerCase().trim() !== shop.name.toLowerCase().trim()));
+    if (window.confirm(`Are you sure you want to delete the profile for ${shop.name}? This will not affect existing girvi records.`)) {
+      setProfiles(profiles.filter(p => p.id !== shop.profileId));
       toast.success("Shop profile deleted");
       if (selectedShop === shop.name) setSelectedShop(null);
     }
@@ -205,7 +223,7 @@ export default function ForwardedShopsPage() {
               <Plus className="w-4 h-4 mr-2" /> Add Shop Profile
             </Button>
           </DialogTrigger>
-          <DialogContent>
+          <DialogContent onInteractOutside={(e) => e.preventDefault()}>
             <DialogHeader><DialogTitle>{form.id ? "Edit Shop Profile" : "New Shop Profile"}</DialogTitle></DialogHeader>
             <div className="space-y-3">
               <div><Label>Shop Name *</Label><Input value={form.name} onChange={e => setForm({...form, name: e.target.value})} placeholder="E.g., ABC Jewellers" /></div>
@@ -261,49 +279,61 @@ export default function ForwardedShopsPage() {
           ) : shops.length === 0 ? (
             <p className="text-center text-muted-foreground py-12">No items have been forwarded to other shops yet.</p>
           ) : (
-            <table className="w-full text-sm">
-              <thead className="text-left text-muted-foreground border-b bg-muted/20">
-                <tr>
-                  <th className="py-3 px-4 font-medium">Shop Name</th>
-                  <th className="py-3 font-medium">Items</th>
-                  <th className="py-3 font-medium text-right">Principal Taken</th>
-                  <th className="py-3 font-medium text-right">Interest Due</th>
-                  <th className="py-3 font-medium text-right text-rose-600">Total Owed</th>
-                  <th className="py-3 px-4 text-right"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {shops.map((shop) => (
-                  <tr key={shop.name} className="border-b last:border-0 hover:bg-muted/40">
-                    <td className="py-3 px-4 font-medium text-primary">{shop.name}</td>
-                    <td className="py-3">
-                      <div>{shop.activeRecords.length} active</div>
-                      {shop.settledRecords.length > 0 && <div className="text-xs text-muted-foreground">{shop.settledRecords.length} settled</div>}
-                    </td>
-                    <td className="py-3 text-right">{inr(shop.totalPrincipal)}</td>
-                    <td className="py-3 text-right text-amber-600">{inr(shop.totalInterest)}</td>
-                    <td className="py-3 text-right font-medium text-rose-600">{inr(shop.totalPrincipal + shop.totalInterest)}</td>
-                    <td className="py-3 px-4 text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        <Button size="sm" variant="outline" onClick={() => setSelectedShop(shop.name)}>
-                          <Eye className="w-4 h-4 mr-2" /> View Profile
-                        </Button>
-                        <Button size="icon" variant="ghost" className="text-rose-500 hover:text-rose-600 hover:bg-rose-50" onClick={() => handleDelete(shop)}>
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </td>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="text-left text-muted-foreground border-b bg-muted/20">
+                  <tr>
+                    <th className="py-3 px-4 font-medium">Shop Name</th>
+                    <th className="py-3 font-medium">Items</th>
+                    <th className="py-3 font-medium text-right">Principal Taken</th>
+                    <th className="py-3 font-medium text-right">Interest Due</th>
+                    <th className="py-3 font-medium text-right text-rose-600">Total Owed</th>
+                    <th className="py-3 px-4 text-right"></th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {shops.map((shop) => (
+                    <tr key={shop.name} className="border-b last:border-0 hover:bg-muted/40">
+                      <td className="py-3 px-4 font-medium text-primary">
+                        {shop.name}
+                      </td>
+                      <td className="py-3">
+                        <div>{shop.activeRecords.length} active</div>
+                        {shop.settledRecords.length > 0 && <div className="text-xs text-muted-foreground">{shop.settledRecords.length} settled</div>}
+                      </td>
+                      <td className="py-3 text-right">{inr(shop.totalPrincipal)}</td>
+                      <td className="py-3 text-right text-amber-600">{inr(shop.totalInterest)}</td>
+                      <td className="py-3 text-right font-medium text-rose-600">{inr(shop.totalPrincipal + shop.totalInterest)}</td>
+                      <td className="py-3 px-4 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          <Button size="sm" variant="outline" onClick={() => setSelectedShop(shop.name)}>
+                            <Eye className="w-4 h-4 mr-2" /> View Profile
+                          </Button>
+                          {shop.profileId && (
+                            <Button size="icon" variant="ghost" onClick={() => {
+                              const profile = profiles.find(p => p.id === shop.profileId);
+                              if (profile) { setForm(profile); setOpenNew(true); }
+                            }} title="Edit Profile">
+                              <Pencil className="w-4 h-4 text-muted-foreground hover:text-primary" />
+                            </Button>
+                          )}
+                          <Button size="icon" variant="ghost" className="text-rose-500 hover:text-rose-600 hover:bg-rose-50" onClick={() => handleDelete(shop)} disabled={!shop.profileId} title={!shop.profileId ? "Cannot delete a shop without a profile" : "Delete Profile"}>
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </CardContent>
       </Card>
 
       {/* Shop Profile Dialog */}
       <Dialog open={!!selectedShop} onOpenChange={(v) => !v && setSelectedShop(null)}>
-        <DialogContent className="max-w-5xl max-h-[85vh] overflow-y-auto">
+        <DialogContent className="max-w-5xl max-h-[85vh] overflow-y-auto" onInteractOutside={(e) => e.preventDefault()}>
           {activeProfile && (
             <>
               <DialogHeader>
@@ -366,7 +396,7 @@ export default function ForwardedShopsPage() {
                               </span>
                             </div>
                           </td>
-                          <td className="py-2 text-right">{r.forwardedInterestPct}%/{r.forwardedInterestPeriod === "Daily" || r.note?.includes("[FwdIntPeriod:Daily]") ? "day" : "mo"}</td>
+                          <td className="py-2 text-right">{r.forwardedInterestPct}%/{r.forwardedInterestPeriod === "Daily" || r.note?.includes("[FwdIntPeriod:Daily]") ? "day" : r.forwardedInterestPeriod === "Yearly" || r.note?.includes("[FwdIntPeriod:Yearly]") ? "yr" : "mo"} {r.note?.includes("[FwdIntType:Compound]") ? "(C)" : "(S)"}</td>
                           <td className="py-2 text-right">{inr(r.forwardedAmount || 0)}</td>
                           <td className="py-2 text-right text-amber-600">{inr(interest)}</td>
                           <td className="py-2 px-3 text-right font-medium text-rose-600">{inr((r.forwardedAmount || 0) + interest)}</td>
@@ -441,7 +471,7 @@ export default function ForwardedShopsPage() {
       </Dialog>
 
       <Dialog open={!!settlingItem} onOpenChange={(v) => !v && setSettlingItem(null)}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md" onInteractOutside={(e) => e.preventDefault()}>
           <DialogHeader>
             <DialogTitle>Settle Forwarded Item</DialogTitle>
           </DialogHeader>
@@ -483,8 +513,9 @@ function ForwardingReceiptModal({ data, onClose }: { data: any, onClose: () => v
   return (
     <div className="fixed inset-0 z-100 bg-black/50 flex justify-center items-start p-2 sm:p-4 print:bg-white print:p-0 overflow-y-auto pointer-events-auto">
       <div className="bg-white w-full max-w-3xl rounded-lg shadow-xl print:shadow-none print:max-w-none text-slate-900 my-auto relative flex flex-col max-h-[95vh] print:max-h-none print:block">
-        <div className="p-8 print:p-0 bg-white overflow-y-auto flex-1 print:overflow-visible">
-          <ShopHeader documentLabel="Forwarding Settlement" />
+        <style>{`@media print { @page { margin: 4mm; } body { zoom: 0.9; } }`}</style>
+        <div className="p-8 print:p-2 bg-white overflow-y-auto flex-1 print:overflow-visible">
+          <ShopHeader documentLabel="Forwarding Settlement" compact rightElement={<PaymentQr amount={total} compact />} />
           
           {/* Meta */}
           <div className="flex justify-between items-start mb-6 text-sm">
@@ -499,6 +530,7 @@ function ForwardingReceiptModal({ data, onClose }: { data: any, onClose: () => v
               <table className="ml-auto text-left text-slate-700">
                 <tbody>
                   <tr><td className="pr-4 py-0.5 text-right font-medium text-slate-500">Ref Loan No:</td><td className="font-semibold text-slate-900">{girvi.loanNo}</td></tr>
+                  <tr><td className="pr-4 py-0.5 text-right font-medium text-slate-500">Forwarded On:</td><td className="font-semibold text-slate-900">{formatDate(girvi.forwardedDate || girvi.date)}</td></tr>
                   <tr><td className="pr-4 py-0.5 text-right font-medium text-slate-500">Settlement Date:</td><td className="font-semibold text-slate-900">{formatDate(date)}</td></tr>
                 </tbody>
               </table>
@@ -507,7 +539,7 @@ function ForwardingReceiptModal({ data, onClose }: { data: any, onClose: () => v
 
           {/* Details */}
           <div className="overflow-x-auto w-full mb-6">
-            <table className="w-full text-sm border-collapse border border-slate-300 min-w-125">
+            <table className="w-full text-sm border-collapse border border-slate-300 min-w-125 print:min-w-full">
               <thead className="bg-slate-100">
               <tr>
                 <th className="border border-slate-300 py-2 px-3 text-left text-slate-600">Item Description</th>
@@ -521,7 +553,7 @@ function ForwardingReceiptModal({ data, onClose }: { data: any, onClose: () => v
               <tr className="border-b border-slate-300">
                 <td className="border border-slate-300 py-2 px-3 font-medium">{girvi.itemDescription}</td>
                 <td className="border border-slate-300 py-2 px-3 text-right">{girvi.netWeight} g</td>
-                <td className="border border-slate-300 py-2 px-3 text-right">{girvi.forwardedInterestPct}% / {girvi.forwardedInterestPeriod === "Daily" || girvi.note?.includes("[FwdIntPeriod:Daily]") ? "day" : "mo"}</td>
+                <td className="border border-slate-300 py-2 px-3 text-right">{girvi.forwardedInterestPct}% / {girvi.forwardedInterestPeriod === "Daily" || girvi.note?.includes("[FwdIntPeriod:Daily]") ? "day" : girvi.forwardedInterestPeriod === "Yearly" || girvi.note?.includes("[FwdIntPeriod:Yearly]") ? "year" : "mo"} {girvi.note?.includes("[FwdIntType:Compound]") ? "(Compound)" : "(Simple)"}</td>
                 <td className="border border-slate-300 py-2 px-3 text-right">{inr(principal)}</td>
                 <td className="border border-slate-300 py-2 px-3 text-right">{inr(interest)}</td>
               </tr>
@@ -544,15 +576,11 @@ function ForwardingReceiptModal({ data, onClose }: { data: any, onClose: () => v
              </div>
           </div>
 
-          <div className="mt-8 flex justify-center border-t border-slate-200 pt-5">
-            <PaymentQr amount={total} />
-          </div>
-
-          <div className="mt-6">
-            <InvoiceTerms />
+          <div className="mt-8 print:mt-2 border-t border-slate-200 pt-4 print:pt-2 text-center text-xs normal-case tracking-normal font-normal text-slate-600 print:break-inside-avoid">
+            <InvoiceTerms compact />
           </div>
           
-          <div className="mt-12 text-center text-sm font-bold text-slate-400 uppercase tracking-widest border-t-2 border-dashed border-slate-200 pt-4">
+          <div className="mt-12 print:mt-4 text-center text-sm font-bold text-slate-400 uppercase tracking-widest border-t-2 border-dashed border-slate-200 pt-4 print:pt-2 print:break-inside-avoid">
             End of Receipt
           </div>
        </div>

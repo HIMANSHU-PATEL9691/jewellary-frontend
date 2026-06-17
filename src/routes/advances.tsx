@@ -136,7 +136,7 @@ export default function AdvancePage() {
               <Plus className="w-4 h-4 mr-2" /> New Advance
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-2xl max-h-[75vh] overflow-y-auto" aria-describedby={undefined}>
+          <DialogContent className="max-w-2xl max-h-[75vh] overflow-y-auto" aria-describedby={undefined} onInteractOutside={(e) => e.preventDefault()}>
             <DialogHeader>
               <DialogTitle>New Advance Payment</DialogTitle>
             </DialogHeader>
