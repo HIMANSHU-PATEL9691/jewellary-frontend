@@ -546,6 +546,8 @@ export default function InventoryPage() {
                   <th>Category</th>
                   <th>Subcat</th>
                   <th>Purity</th>
+                  <th>Gross Wt</th>
+                  <th>less Wt</th>
                   <th>Net Wt</th>
                   <th>Stock</th>
                   <th></th>
@@ -570,6 +572,8 @@ export default function InventoryPage() {
                     <td><Badge variant="secondary">{p.category}</Badge></td>
                     <td>{p.subcategory || "—"}</td>
                     <td>{p.purity}</td>
+                    <td>{p.grossWeight || 0} g</td>
+                    <td>{p.stoneWeight || 0} g</td>
                     <td>{p.netWeight} g</td>
                     <td>{p.stock}</td>
                     <td>

@@ -1391,6 +1391,39 @@ function InvoiceModal({ inv, onClose }: { inv: any; onClose: () => void }) {
             </div>
           </div>
 
+          {/* Payment Details Table - AFTER BALANCE DUE */}
+          {((inv.payments?.length > 0) || (inv.amountPaid > 0)) && (
+            <div className="mb-4 mt-4">
+              <h4 className="font-bold text-[10px] text-slate-500 uppercase tracking-wider mb-2 border-b border-slate-200 pb-1">Payment Details</h4>
+              <table className="w-full text-xs border-collapse border border-slate-200">
+                <thead className="bg-slate-50">
+                  <tr>
+                    <th className="border border-slate-200 py-1.5 px-2 text-left text-slate-600 font-semibold">Date</th>
+                    <th className="border border-slate-200 py-1.5 px-2 text-left text-slate-600 font-semibold">Payment Mode</th>
+                    <th className="border border-slate-200 py-1.5 px-2 text-right text-slate-600 font-semibold">Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {inv.payments && inv.payments.length > 0 ? (
+                    inv.payments.map((p: any, i: number) => (
+                      <tr key={i}>
+                        <td className="border border-slate-200 py-1.5 px-2">{formatDate(p.date)}</td>
+                        <td className="border border-slate-200 py-1.5 px-2">{p.mode} {p.note && <span className="text-[10px] text-slate-400 ml-1">({p.note})</span>}</td>
+                        <td className="border border-slate-200 py-1.5 px-2 text-right font-medium text-slate-800">{inr(p.amount)}</td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td className="border border-slate-200 py-1.5 px-2">{formatDate(inv.createdAt)}</td>
+                      <td className="border border-slate-200 py-1.5 px-2">{inv.paymentMode}</td>
+                      <td className="border border-slate-200 py-1.5 px-2 text-right font-medium text-slate-800">{inr(inv.amountPaid)}</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
+
           {/* Signatures */}
           <div className="mt-12 print:mt-6 grid grid-cols-1 sm:grid-cols-2 gap-8 items-end text-[10px] font-bold text-slate-500 uppercase tracking-wider print:break-inside-avoid">
             <div className="text-center">
@@ -1471,7 +1504,8 @@ function OrderInvoiceModal({ order, onClose }: { order: Order; onClose: () => vo
           </table>
           </div>
           <div className="flex flex-col sm:flex-row justify-between items-start text-sm gap-6">
-            <div className="w-full sm:w-1/2 sm:pr-8 order-2 sm:order-1"></div>
+            <div className="w-full sm:w-1/2 sm:pr-8 order-2 sm:order-1">
+            </div>
             <div className="w-full sm:w-1/2 max-w-sm order-1 sm:order-2">
               <table className="w-full">
                 <tbody>
@@ -1486,6 +1520,29 @@ function OrderInvoiceModal({ order, onClose }: { order: Order; onClose: () => vo
               </table>
             </div>
           </div>
+
+          {/* Payment Details Table - AFTER BALANCE DUE */}
+          {((order.advancePaid || 0) > 0) && (
+            <div className="mb-4 mt-4">
+              <h4 className="font-bold text-[10px] text-slate-500 uppercase tracking-wider mb-2 border-b border-slate-200 pb-1">Payment Details</h4>
+              <table className="w-full text-xs border-collapse border border-slate-200">
+                <thead className="bg-slate-50">
+                  <tr>
+                    <th className="border border-slate-200 py-1.5 px-2 text-left text-slate-600 font-semibold">Date</th>
+                    <th className="border border-slate-200 py-1.5 px-2 text-left text-slate-600 font-semibold">Payment Mode</th>
+                    <th className="border border-slate-200 py-1.5 px-2 text-right text-slate-600 font-semibold">Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td className="border border-slate-200 py-1.5 px-2">{formatDate(order.date)}</td>
+                    <td className="border border-slate-200 py-1.5 px-2">Advance / Payment</td>
+                    <td className="border border-slate-200 py-1.5 px-2 text-right font-medium text-slate-800">{inr(order.advancePaid)}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          )}
           {/* Signatures */}
           <div className="mt-12 print:mt-6 grid grid-cols-1 sm:grid-cols-2 gap-8 items-end text-xs font-bold text-slate-500 uppercase tracking-wider print:break-inside-avoid">
             <div className="text-center">
@@ -1564,7 +1621,8 @@ function RepairInvoiceModal({ repair, onClose }: { repair: Repair; onClose: () =
           </table>
           </div>
           <div className="flex flex-col sm:flex-row justify-between items-start text-sm gap-6">
-            <div className="w-full sm:w-1/2 sm:pr-8 order-2 sm:order-1"></div>
+            <div className="w-full sm:w-1/2 sm:pr-8 order-2 sm:order-1">
+            </div>
             <div className="w-full sm:w-1/2 max-w-sm order-1 sm:order-2">
               <table className="w-full">
                 <tbody>
@@ -1579,6 +1637,29 @@ function RepairInvoiceModal({ repair, onClose }: { repair: Repair; onClose: () =
               </table>
             </div>
           </div>
+
+          {/* Payment Details Table - AFTER BALANCE DUE */}
+          {((repair.advance || 0) > 0) && (
+            <div className="mb-4 mt-4">
+              <h4 className="font-bold text-[10px] text-slate-500 uppercase tracking-wider mb-2 border-b border-slate-200 pb-1">Payment Details</h4>
+              <table className="w-full text-xs border-collapse border border-slate-200">
+                <thead className="bg-slate-50">
+                  <tr>
+                    <th className="border border-slate-200 py-1.5 px-2 text-left text-slate-600 font-semibold">Date</th>
+                    <th className="border border-slate-200 py-1.5 px-2 text-left text-slate-600 font-semibold">Payment Mode</th>
+                    <th className="border border-slate-200 py-1.5 px-2 text-right text-slate-600 font-semibold">Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td className="border border-slate-200 py-1.5 px-2">{formatDate(repair.date)}</td>
+                    <td className="border border-slate-200 py-1.5 px-2">Advance / Payment</td>
+                    <td className="border border-slate-200 py-1.5 px-2 text-right font-medium text-slate-800">{inr(repair.advance)}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          )}
           {/* Signatures */}
           <div className="mt-12 print:mt-6 grid grid-cols-1 sm:grid-cols-2 gap-8 items-end text-xs font-bold text-slate-500 uppercase tracking-wider print:break-inside-avoid">
             <div className="text-center">

@@ -43,6 +43,7 @@ export default function BillingPage() {
   const { data: repairs = [] } = useApi<any[]>(["repairs"], () => repairsAPI.getAll());
   const latestRates = ratesList[0];
   
+  const createCustomerMutation = useApiMutation((data: any) => customerAPI.create(data), ["customers"]);
   const createMutation = useApiMutation((data: any) => invoicesAPI.create(data), ["invoices"]);
   const deleteMutation = useApiMutation((id: string) => invoicesAPI.delete(id), ["invoices"]);
   const updateProductMutation = useApiMutation((data: { id: string; body: any }) => inventoryAPI.update(data.id, data.body), ["inventory"]);
@@ -73,6 +74,7 @@ export default function BillingPage() {
   const [nonGstFilter, setNonGstFilter] = useState<"All" | "INV" | "MAN">("All");
   const [searchQuery, setSearchQuery] = useState("");
   const debouncedSearchQuery = useDebounce(searchQuery, 300);
+  const [newCust, setNewCust] = useState({ name: "", phone: "", phone2: "", address: "" });
   
   const [openCustomItemDialog, setOpenCustomItemDialog] = useState(false);
   const [customItemSearch, setCustomItemSearch] = useState("");
@@ -263,6 +265,7 @@ export default function BillingPage() {
     setSearchProd("");
     setCustomItemSearch("");
     setOpenCustomItemDialog(false);
+    setNewCust({ name: "", phone: "", phone2: "", address: "" });
   };
 
   useEffect(() => {
@@ -333,10 +336,39 @@ export default function BillingPage() {
       return;
     }
 
-    const cust = customers.find((c) => (c._id || c.id) === customerId);
-    if (!cust) {
-      toast.error("Selected customer not found.");
-      return;
+    let finalCustomerId = customerId;
+    let custName = "";
+    let custMobile = "";
+    let custAddress = "";
+
+    if (customerId === "NEW") {
+      if (!newCust.name) {
+        toast.error("Customer name is required for a new customer.");
+        return;
+      }
+      if (!newCust.address) {
+        toast.error("Customer address is required for a new customer.");
+        return;
+      }
+      try {
+        const created = await createCustomerMutation.mutateAsync(newCust);
+        finalCustomerId = created._id || created.id;
+        custName = created.name;
+        custMobile = created.phone || created.mobile || "";
+        custAddress = created.address || "";
+      } catch (e) {
+        toast.error("Failed to create new customer");
+        return;
+      }
+    } else {
+      const cust = customers.find((c) => (c._id || c.id) === finalCustomerId);
+      if (!cust) {
+        toast.error("Selected customer not found.");
+        return;
+      }
+      custName = cust.name;
+      custMobile = cust.mobile || cust.phone || "";
+      custAddress = cust.address || "";
     }
 
     const existingInv = editingId ? invoices.find(i => (i._id || i.id) === editingId) : null;
@@ -390,10 +422,10 @@ export default function BillingPage() {
     const inv: any = {
       number: newNumber,
       type,
-      customerId: cust?._id || cust?.id,
-      customerName: cust?.name,
-      customerMobile: cust?.mobile || cust?.phone || "",
-      customerAddress: cust?.address || "",
+      customerId: finalCustomerId,
+      customerName: custName,
+      customerMobile: custMobile,
+      customerAddress: custAddress,
       items: cleanItems,
       discount: Number(discount) || 0,
       oldGoldAmount: Number(oldGoldAmount) || 0,
@@ -573,6 +605,7 @@ export default function BillingPage() {
                           <SelectValue placeholder="Select customer" />
                         </SelectTrigger>
                         <SelectContent>
+                          <SelectItem value="NEW" className="font-semibold text-primary">+ Create New Customer</SelectItem>
                           {customers
                             .filter(
                               (c) =>
@@ -590,7 +623,16 @@ export default function BillingPage() {
                       </Select>
                     </div>
 
-                    {customerId && (
+                    {customerId === "NEW" && (
+                      <div className="p-3 rounded-md bg-primary/5 border border-primary/20 text-sm space-y-3 mt-2">
+                        <div className="space-y-1.5"><Label className="text-xs">Full Name *</Label><Input value={newCust.name} onChange={e => setNewCust({...newCust, name: e.target.value})} className="h-8 bg-background" /></div>
+                        <div className="space-y-1.5"><Label className="text-xs">Mobile No (optional)</Label><Input value={newCust.phone} onChange={e => setNewCust({...newCust, phone: e.target.value})} className="h-8 bg-background" /></div>
+                        <div className="space-y-1.5"><Label className="text-xs">Mobile No 2 (optional)</Label><Input value={newCust.phone2} onChange={e => setNewCust({...newCust, phone2: e.target.value})} className="h-8 bg-background" /></div>
+                        <div className="space-y-1.5"><Label className="text-xs">Address *</Label><Input value={newCust.address} onChange={e => setNewCust({...newCust, address: e.target.value})} className="h-8 bg-background" /></div>
+                      </div>
+                    )}
+
+                    {customerId && customerId !== "NEW" && (
                       <div className="p-3 rounded-md bg-background border border-border text-sm">
                         {(() => {
                           if (!selectedCust) return null;
@@ -612,7 +654,7 @@ export default function BillingPage() {
                         })()}
                       </div>
                     )}
-                    {customerId && customerOrdersAndRepairs.length > 0 && !editingId && (
+                    {customerId && customerId !== "NEW" && customerOrdersAndRepairs.length > 0 && !editingId && (
                       <div className="mt-2 space-y-1.5 p-3 rounded-md bg-primary/5 border border-primary/20">
                         <Label className="text-xs text-primary font-semibold">Link Active Order / Repair (Apply Advance)</Label>
                         <Select value={linkedOrderId || "none"} onValueChange={(v) => {
@@ -1456,6 +1498,39 @@ function InvoiceModal({ inv, onClose }: { inv: any; onClose: () => void }) {
               </table>
             </div>
           </div>
+
+          {/* Payment Details Table - AFTER BALANCE DUE */}
+          {((inv.payments?.length > 0) || (inv.amountPaid > 0)) && (
+            <div className="mb-4 mt-4">
+              <h4 className="font-bold text-[10px] text-slate-500 uppercase tracking-wider mb-2 border-b border-slate-200 pb-1">Payment Details</h4>
+              <table className="w-full text-xs border-collapse border border-slate-200">
+                <thead className="bg-slate-50">
+                  <tr>
+                    <th className="border border-slate-200 py-1.5 px-2 text-left text-slate-600 font-semibold">Date</th>
+                    <th className="border border-slate-200 py-1.5 px-2 text-left text-slate-600 font-semibold">Payment Mode</th>
+                    <th className="border border-slate-200 py-1.5 px-2 text-right text-slate-600 font-semibold">Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {inv.payments && inv.payments.length > 0 ? (
+                    inv.payments.map((p: any, i: number) => (
+                      <tr key={i}>
+                        <td className="border border-slate-200 py-1.5 px-2">{formatDate(p.date)}</td>
+                        <td className="border border-slate-200 py-1.5 px-2">{p.mode} {p.note && <span className="text-[10px] text-slate-400 ml-1">({p.note})</span>}</td>
+                        <td className="border border-slate-200 py-1.5 px-2 text-right font-medium text-slate-800">{inr(p.amount)}</td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td className="border border-slate-200 py-1.5 px-2">{formatDate(inv.createdAt)}</td>
+                      <td className="border border-slate-200 py-1.5 px-2">{inv.paymentMode}</td>
+                      <td className="border border-slate-200 py-1.5 px-2 text-right font-medium text-slate-800">{inr(inv.amountPaid)}</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
 
           {/* Signatures */}
           <div className="mt-12 print:mt-6 grid grid-cols-1 sm:grid-cols-2 gap-8 items-end text-[10px] font-bold text-slate-500 uppercase tracking-wider print:break-inside-avoid">
