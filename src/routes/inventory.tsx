@@ -79,13 +79,27 @@ export default function InventoryPage() {
   const [parsedProducts, setParsedProducts] = useState<Product[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const products = useMemo(() => (Array.isArray(allItems) ? allItems : []), [allItems]);
+  const products = useMemo(() => {
+    if (!Array.isArray(allItems)) return [];
+    // Filter out Girvi and other non-product items that might accidentally be in the inventory data
+    return allItems.filter((p: any) => 
+      !p.loanNo && 
+      !p.loanAmount && 
+      !p.orderNo && 
+      !p.ticketNo && 
+      !p.billNo && 
+      !p.customerName &&
+      (p.category || "").toLowerCase().trim() !== "girvi" &&
+      !String(p.name || "").toLowerCase().includes("girvi") &&
+      !String(p.note || "").toLowerCase().includes("girvi")
+    );
+  }, [allItems]);
 
   const filtered = products.filter(
     (p) =>
       (catFilter === "All" || p.category === catFilter) &&
-      (p.name.toLowerCase().includes(debouncedQ.toLowerCase()) ||
-      p.barcode.toLowerCase().includes(debouncedQ.toLowerCase()) ||
+      ((p.name || "").toLowerCase().includes(debouncedQ.toLowerCase()) ||
+      (p.barcode || "").toLowerCase().includes(debouncedQ.toLowerCase()) ||
       (p.huid || "").toLowerCase().includes(debouncedQ.toLowerCase()))
   ).sort((a, b) => (a.name || "").localeCompare(b.name || ""));
 

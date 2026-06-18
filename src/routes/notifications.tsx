@@ -14,10 +14,21 @@ import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 
 export default function NotificationsPage() {
-  const { data: products = [], isLoading: isLoadingP } = useApi<Product[]>(["inventory"], () => inventoryAPI.getAll());
+  const { data: rawProducts = [], isLoading: isLoadingP } = useApi<Product[]>(["inventory"], () => inventoryAPI.getAll());
+  const products = useMemo(() => rawProducts.filter((p: any) => 
+      !p.loanNo && 
+      !p.loanAmount && 
+      !p.orderNo && 
+      !p.ticketNo && 
+      !p.billNo && 
+      !p.customerName &&
+      (p.category || "").toLowerCase().trim() !== "girvi" &&
+      !String(p.name || "").toLowerCase().includes("girvi") &&
+      !String(p.note || "").toLowerCase().includes("girvi")
+  ), [rawProducts]);
   const { data: invoices = [], isLoading: isLoadingI } = useApi<Invoice[]>(["invoices"], () => invoicesAPI.getAll());
   const { data: repairs = [], isLoading: isLoadingR } = useApi<Repair[]>(["repairs"], () => repairsAPI.getAll());
   const { data: orders = [], isLoading: isLoadingO } = useApi<Order[]>(["orders"], () => ordersAPI.getAll());
@@ -34,7 +45,7 @@ export default function NotificationsPage() {
   const dueOrders = orders.filter(o => o.dueDate && o.dueDate <= todayIso && !["Delivered", "Cancelled"].includes(o.status));
   const dueRepairs = repairs.filter(r => r.deliveryDate && r.deliveryDate <= todayIso && r.status !== "Delivered");
   const unpaidInvoices = invoices.filter(i => (i.balanceDue || 0) > 0);
-  const lowStock = products.filter(p => p.stock <= 2);
+  const lowStock = products.filter((p: Product) => p.stock <= 2);
 
   const totalNotifications = readyOrders.length + readyRepairs.length + dueOrders.length + dueRepairs.length + unpaidInvoices.length + lowStock.length;
 
@@ -343,7 +354,7 @@ export default function NotificationsPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {displayLowStock.map(p => (
+                      {displayLowStock.map((p: Product) => (
                         <tr key={p.id || (p as any)._id} className="border-b border-border/50 last:border-0 hover:bg-muted/20 transition-colors">
                           <td className="py-3 px-4 font-medium text-foreground">{p.name}</td>
                           <td className="py-3 px-4 text-muted-foreground">{p.category} {p.subcategory ? `> ${p.subcategory}` : ""}</td>

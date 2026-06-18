@@ -42,7 +42,18 @@ const defaultRates: any = { updatedAt: new Date().toISOString(), gold24: 7850, g
 
 export default function Dashboard() {
   const [authUser] = useLocalState<any>("ajms.auth", null);
-  const { data: products = [] } = useApi<any[]>(["inventory"], () => inventoryAPI.getAll());
+  const { data: rawProducts = [] } = useApi<any[]>(["inventory"], () => inventoryAPI.getAll());
+  const products = useMemo(() => rawProducts.filter((p: any) => 
+      !p.loanNo && 
+      !p.loanAmount && 
+      !p.orderNo && 
+      !p.ticketNo && 
+      !p.billNo && 
+      !p.customerName &&
+      (p.category || "").toLowerCase().trim() !== "girvi" &&
+      !String(p.name || "").toLowerCase().includes("girvi") &&
+      !String(p.note || "").toLowerCase().includes("girvi")
+  ), [rawProducts]);
   const { data: customers = [] } = useApi<any[]>(["customers"], () => customerAPI.getAll());
   const { data: allInvoices = [] } = useApi<any[]>(["invoices"], () => invoicesAPI.getAll());
   const { data: expenses = [] } = useApi<any[]>(["expenses"], () => expensesAPI.getAll());

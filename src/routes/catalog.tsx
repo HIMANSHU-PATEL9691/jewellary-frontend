@@ -19,7 +19,21 @@ export default function CatalogPage() {
   const createMutation = useApiMutation((data: Product) => inventoryAPI.create(data), ["inventory"]);
   const deleteMutation = useApiMutation((id: string) => inventoryAPI.delete(id), ["inventory"]);
   
-  const products = useMemo(() => (Array.isArray(allItems) ? allItems : []), [allItems]);
+  const products = useMemo(() => {
+    if (!Array.isArray(allItems)) return [];
+    // Filter out Girvi and other non-product items that might accidentally be in the inventory data
+    return allItems.filter((p: any) => 
+      !p.loanNo && 
+      !p.loanAmount && 
+      !p.orderNo && 
+      !p.ticketNo && 
+      !p.billNo && 
+      !p.customerName &&
+      (p.category || "").toLowerCase().trim() !== "girvi" &&
+      !String(p.name || "").toLowerCase().includes("girvi") &&
+      !String(p.note || "").toLowerCase().includes("girvi")
+    );
+  }, [allItems]);
   const [q, setQ] = useState("");
   const debouncedQ = useDebounce(q, 300);
   const [category, setCategory] = useState<string>("All");
@@ -42,12 +56,12 @@ export default function CatalogPage() {
   });
   
   const categories = useMemo(() => {
-    const cats = new Set(["Gold", "Silver", ...products.map(p => p.category)]);
+    const cats = new Set(["Gold", "Silver", ...products.map(p => p.category).filter(Boolean)]);
     return ["All", ...Array.from(cats).filter(Boolean)];
   }, [products]);
 
   const filtered = products.filter(p => {
-    const matchesSearch = p.name.toLowerCase().includes(debouncedQ.toLowerCase()) || 
+    const matchesSearch = (p.name || "").toLowerCase().includes(debouncedQ.toLowerCase()) || 
                           (p.huid || "").toLowerCase().includes(debouncedQ.toLowerCase());
     const matchesCategory = category === "All" || p.category === category;
     

@@ -36,7 +36,18 @@ import { InvoiceTerms, ShopHeader } from "@/components/InvoiceBranding";
 export default function BillingPage() {
   const [authUser] = useLocalState<any>("ajms.auth", null);
   const { data: invoices = [] } = useApi<any[]>(["invoices"], () => invoicesAPI.getAll());
-  const { data: products = [] } = useApi<any[]>(["inventory"], () => inventoryAPI.getAll());
+  const { data: rawProducts = [] } = useApi<any[]>(["inventory"], () => inventoryAPI.getAll());
+  const products = useMemo(() => rawProducts.filter((p: any) => 
+      !p.loanNo && 
+      !p.loanAmount && 
+      !p.orderNo && 
+      !p.ticketNo && 
+      !p.billNo && 
+      !p.customerName &&
+      (p.category || "").toLowerCase().trim() !== "girvi" &&
+      !String(p.name || "").toLowerCase().includes("girvi") &&
+      !String(p.note || "").toLowerCase().includes("girvi")
+  ), [rawProducts]);
   const { data: customers = [] } = useApi<any[]>(["customers"], () => customerAPI.getAll());
   const { data: ratesList = [] } = useApi<any[]>(["goldRates"], () => goldRatesAPI.getAll());
   const { data: orders = [] } = useApi<any[]>(["orders"], () => ordersAPI.getAll());
@@ -74,6 +85,8 @@ export default function BillingPage() {
   const [nonGstFilter, setNonGstFilter] = useState<"All" | "INV" | "MAN">("All");
   const [searchQuery, setSearchQuery] = useState("");
   const debouncedSearchQuery = useDebounce(searchQuery, 300);
+  const [searchDate, setSearchDate] = useState("");
+  const [searchDateFocused, setSearchDateFocused] = useState(false);
   const [newCust, setNewCust] = useState({ name: "", phone: "", phone2: "", address: "" });
   
   const [openCustomItemDialog, setOpenCustomItemDialog] = useState(false);
@@ -172,7 +185,7 @@ export default function BillingPage() {
         if (nameToSearch !== "") {
           const matchedProduct = products.find(
             (p) =>
-              p.name.toLowerCase() === nameToSearch ||
+              (p.name || "").toLowerCase() === nameToSearch ||
               (p.barcode || "").toLowerCase() === nameToSearch ||
               (p.huid || "").toLowerCase() === nameToSearch
           );
@@ -517,8 +530,11 @@ export default function BillingPage() {
       const q = debouncedSearchQuery.toLowerCase().trim();
       list = list.filter((i) => (i.number || "").toLowerCase().includes(q) || (i.customerName || "").toLowerCase().includes(q) || (i.customerMobile || "").includes(q) || (i.customerAddress || "").toLowerCase().includes(q));
     }
+    if (searchDate) {
+      list = list.filter((i) => i.createdAt && new Date(i.createdAt).toISOString().slice(0, 10) === searchDate);
+    }
     return list.sort((a, b) => (a.customerName || "").localeCompare(b.customerName || ""));
-  }, [invoices, debouncedSearchQuery]);
+  }, [invoices, debouncedSearchQuery, searchDate]);
 
   const nonGstInvoices = useMemo(() => {
     let list = invoices.filter((i) => i.type === "NON-GST");
@@ -526,8 +542,11 @@ export default function BillingPage() {
       const q = debouncedSearchQuery.toLowerCase().trim();
       list = list.filter((i) => (i.number || "").toLowerCase().includes(q) || (i.customerName || "").toLowerCase().includes(q) || (i.customerMobile || "").includes(q) || (i.customerAddress || "").toLowerCase().includes(q));
     }
+    if (searchDate) {
+      list = list.filter((i) => i.createdAt && new Date(i.createdAt).toISOString().slice(0, 10) === searchDate);
+    }
     return list.sort((a, b) => (a.customerName || "").localeCompare(b.customerName || ""));
-  }, [invoices, debouncedSearchQuery]);
+  }, [invoices, debouncedSearchQuery, searchDate]);
 
   return (
     <Layout>
@@ -755,14 +774,14 @@ export default function BillingPage() {
                             const query = searchProd.toLowerCase().trim();
                           const matches = products.filter(
                             (p) =>
-                              p.name.toLowerCase().includes(query) ||
+                              (p.name || "").toLowerCase().includes(query) ||
                               (p.barcode || "").toLowerCase() === query ||
                               (p.huid || "").toLowerCase() === query
                           );
                           if (matches.length > 0) {
                             const exact = matches.find(
                               (p) =>
-                                p.name.toLowerCase() === query ||
+                                (p.name || "").toLowerCase() === query ||
                                 (p.barcode || "").toLowerCase() === query ||
                                 (p.huid || "").toLowerCase() === query
                             );
@@ -796,7 +815,7 @@ export default function BillingPage() {
                           {products
                             .filter(
                               (p) =>
-                                p.name.toLowerCase().includes(debouncedSearchProd.toLowerCase()) ||
+                                (p.name || "").toLowerCase().includes(debouncedSearchProd.toLowerCase()) ||
                                 (p.barcode || "")
                                   .toLowerCase()
                                   .includes(debouncedSearchProd.toLowerCase()) ||
@@ -840,7 +859,7 @@ export default function BillingPage() {
                               {products
                                 .filter(
                                   (p) =>
-                                    p.name.toLowerCase().includes(debouncedCustomItemSearch.toLowerCase()) ||
+                                    (p.name || "").toLowerCase().includes(debouncedCustomItemSearch.toLowerCase()) ||
                                     (p.barcode || "").toLowerCase().includes(debouncedCustomItemSearch.toLowerCase()) ||
                                     (p.huid || "").toLowerCase().includes(debouncedCustomItemSearch.toLowerCase())
                                 )
@@ -864,7 +883,7 @@ export default function BillingPage() {
                                 ))}
                               {products.filter(
                                 (p) =>
-                                  p.name.toLowerCase().includes(debouncedCustomItemSearch.toLowerCase()) ||
+                                  (p.name || "").toLowerCase().includes(debouncedCustomItemSearch.toLowerCase()) ||
                                   (p.barcode || "").toLowerCase().includes(debouncedCustomItemSearch.toLowerCase()) ||
                                   (p.huid || "").toLowerCase().includes(debouncedCustomItemSearch.toLowerCase())
                               ).length === 0 && (
@@ -1166,18 +1185,39 @@ export default function BillingPage() {
         <KPI label="Today's Revenue" value={inr(todayRevenue)} />
       </div>
 
-      <div className="relative mb-4 w-full sm:max-w-md">
-        <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-        <Input className="pl-9 w-full bg-background border-border shadow-sm" placeholder="Search invoice, name, mobile, or address..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
+      <div className="flex flex-col sm:flex-row gap-3 mb-4 w-full">
+        <div className="relative w-full sm:max-w-md">
+          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <Input className="pl-9 w-full bg-background border-border shadow-sm" placeholder="Search invoice, name, mobile, or address..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
+        </div>
+        <div className="flex items-center gap-2 w-full sm:w-auto">
+          {(() => {
+            let displayValue = searchDate;
+            if (!searchDateFocused && searchDate) {
+              const parts = searchDate.split('-');
+              if (parts.length === 3) {
+                displayValue = `${parts[2]}/${parts[1]}/${parts[0]}`;
+              }
+            }
+            return (
+              <Input type={searchDateFocused ? "date" : "text"} placeholder="DD/MM/YYYY" value={displayValue} onChange={(e) => setSearchDate(e.target.value)} onFocus={() => setSearchDateFocused(true)} onBlur={() => setSearchDateFocused(false)} className="w-full sm:w-40 bg-background border-border shadow-sm" />
+            );
+          })()}
+          {searchDate && (
+            <Button variant="ghost" onClick={() => setSearchDate("")} className="shrink-0">
+              Clear
+            </Button>
+          )}
+        </div>
       </div>
 
       {(isOperator ? [{ title: "GST Invoice History", data: gstInvoices }] : [
         { title: "NON-GST Invoice History", data: nonGstInvoices }
       ]).map(({ title, data }, index) => {
         let tableData = data;
-        const totalPages = Math.ceil(tableData.length / 10) || 1;
+        const totalPages = Math.ceil(tableData.length / 25) || 1;
         const currentPage = Math.min(pages[index] || 1, totalPages);
-        const paginated = tableData.slice((currentPage - 1) * 10, currentPage * 10);
+        const paginated = tableData.slice((currentPage - 1) * 25, currentPage * 25);
         
         return (
         <Card key={title} className={index === 0 ? "mb-6" : ""}>
@@ -1205,6 +1245,7 @@ export default function BillingPage() {
                       <th className="font-medium">Date</th>
                       <th className="font-medium">Customer</th>
                       {title === "NON-GST Invoice History" && <th className="font-medium">Type</th>}
+                      <th className="font-medium">Items</th>
                       <th className="font-medium">Mode</th>
                       <th className="text-right font-medium">Total</th>
                       <th className="text-right font-medium">Due</th>
@@ -1227,6 +1268,11 @@ export default function BillingPage() {
                             )}
                           </td>
                         )}
+                        <td>
+                          <div className="text-xs text-muted-foreground truncate max-w-40" title={i.items?.map((it: any) => it.name).join(", ")}>
+                            {i.items?.map((it: any) => it.name).join(", ") || "—"}
+                          </div>
+                        </td>
                         <td>{i.paymentMode}</td>
                         <td className="text-right font-medium text-green-600">{inr(i.total)}</td>
                         <td className="text-right font-medium text-rose-600">{inr(i.balanceDue || 0)}</td>
@@ -1254,7 +1300,7 @@ export default function BillingPage() {
                 </table>
                 {totalPages > 1 && (
                   <div className="flex items-center justify-between px-4 py-3 border-t border-border">
-                    <div className="text-xs text-muted-foreground">Showing {(currentPage - 1) * 10 + 1} to {Math.min(currentPage * 10, tableData.length)} of {tableData.length} entries</div>
+                    <div className="text-xs text-muted-foreground">Showing {(currentPage - 1) * 25 + 1} to {Math.min(currentPage * 25, tableData.length)} of {tableData.length} entries</div>
                     <div className="flex gap-1">
                       <Button size="sm" variant="outline" onClick={() => setPages(p => ({ ...p, [index]: Math.max(1, currentPage - 1) }))} disabled={currentPage === 1}>Prev</Button>
                       <Button size="sm" variant="outline" onClick={() => setPages(p => ({ ...p, [index]: Math.min(totalPages, currentPage + 1) }))} disabled={currentPage === totalPages}>Next</Button>
