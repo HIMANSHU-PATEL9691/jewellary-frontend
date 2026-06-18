@@ -20,10 +20,7 @@ export function calculateCompoundInterest(
   monthlyRate: number,
   months: number
 ) {
-  const annualRate = (monthlyRate * 12) / 100;
-  const years = months / 12;
-
-  const totalPayable = principal * Math.pow(1 + annualRate, years);
+  const totalPayable = principal * Math.pow(1 + (monthlyRate / 100), months);
   const interest = totalPayable - principal;
 
   return {
@@ -36,3 +33,14 @@ export function calculateCompoundInterest(
 // Re-export debounce hook from a dedicated module.
 export { useDebounce } from "./timing";
 
+export function formatCompactIfLarge(val: number) {
+  const isNeg = val < 0;
+  const absVal = Math.abs(val);
+  if (absVal >= 10000000) return (isNeg ? "-" : "") + `₹${(absVal / 10000000).toFixed(2).replace(/\.00$/, '')} Cr`;
+  if (absVal >= 1500000) return (isNeg ? "-" : "") + `₹${(absVal / 100000).toFixed(2).replace(/\.00$/, '')} Lakh`;
+  return new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
+    maximumFractionDigits: 2,
+  }).format(val || 0);
+}

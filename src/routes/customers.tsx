@@ -1136,7 +1136,7 @@ export default function CustomersPage() {
                       <SelectContent>
                         <SelectItem value="NEW" className="font-semibold text-primary">+ Create New Customer</SelectItem>
                         {[...customers].sort((a: any, b: any) => (a.name || "").localeCompare(b.name || "")).map((c: Customer) => (
-                          <SelectItem key={c._id || c.id} value={c._id || c.id || ""}>{c.name} - {c.phone}</SelectItem>
+                          <SelectItem key={c._id || c.id} value={c._id || c.id || `unknown-id-${c.name}`}>{c.name} {c.phone ? `- ${c.phone}` : ""}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>

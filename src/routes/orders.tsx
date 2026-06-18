@@ -185,11 +185,11 @@ export default function OrdersPage() {
                 </div>
                 <div>
                   <Label className="text-xs">Customer *</Label>
-                  <Select value={form.customerMobile || ""} onValueChange={(val) => {
+              <Select value={form.customerMobile || form.customerName || ""} onValueChange={(val) => {
                     if (val === "NEW") {
                       setForm({...form, customerMobile: "NEW", customerName: "", customerAddress: ""});
                     } else {
-                      const match = customers.find(c => (c.mobile || c.phone) === val);
+                  const match = customers.find(c => (c.mobile || (c as any).phone || c.name) === val);
                       if (match) setForm({...form, customerName: match.name, customerMobile: match.mobile || (match as any).phone || "", customerAddress: match.address || ""});
                     }
                   }}>
@@ -197,7 +197,7 @@ export default function OrdersPage() {
                     <SelectContent>
                       <SelectItem value="NEW" className="font-semibold text-primary">+ Create New Customer</SelectItem>
                       {customers.filter(c => c.name.toLowerCase().includes(debouncedSearchCust.toLowerCase()) || (c.mobile || (c as any).phone || "").includes(debouncedSearchCust) || (c.address || "").toLowerCase().includes(debouncedSearchCust.toLowerCase())).sort((a, b) => (a.name || "").localeCompare(b.name || "")).map((c) => (
-                        <SelectItem key={c.mobile || c.phone} value={c.mobile || c.phone}>{c.name} · {c.mobile || (c as any).phone}</SelectItem>
+                    <SelectItem key={c._id || c.id} value={c.mobile || (c as any).phone || c.name}>{c.name} {c.mobile || (c as any).phone ? `· ${c.mobile || (c as any).phone}` : ""}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>

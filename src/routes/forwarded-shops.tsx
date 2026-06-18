@@ -6,7 +6,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { inr, type Girvi, useLocalState, uid } from "@/lib/storage";
-import { calculateCompoundInterest, formatDate } from "@/lib/utils";
+import { calculateCompoundInterest, formatDate, formatCompactIfLarge } from "@/lib/utils";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { girviAPI } from "@/lib/api";
 import { Store, Eye, ArrowUpRight, Plus, MapPin, FileText, Phone, Printer, Trash2, Pencil } from "lucide-react";
@@ -157,7 +157,7 @@ export default function ForwardedShopsPage() {
         totalInterest,
       };
     })
-    .filter(shop => shop.profileId || shop.activeRecords.length > 0)
+    .filter(shop => shop.profileId || shop.records.length > 0)
     .sort((a, b) => (a.name || "").localeCompare(b.name || ""));
   }, [girvis, profiles]);
 
@@ -199,8 +199,8 @@ export default function ForwardedShopsPage() {
   };
 
   const handleDelete = (shop: any) => {
-    if (shop.activeRecords.length > 0) {
-      toast.error("Cannot delete a shop with active forwarded items.");
+    if (shop.records.length > 0) {
+      toast.error("Cannot delete a shop that has forwarded items (active or settled).");
       return;
     }
     if (window.confirm(`Are you sure you want to delete the profile for ${shop.name}? This will not affect existing girvi records.`)) {
@@ -231,7 +231,8 @@ export default function ForwardedShopsPage() {
               <div><Label>GST No (optional)</Label><Input value={form.gst} onChange={e => setForm({...form, gst: e.target.value})} /></div>
               <div><Label>Address</Label><Input value={form.address} onChange={e => setForm({...form, address: e.target.value})} /></div>
             </div>
-            <div className="mt-4 flex justify-end">
+            <div className="mt-4 flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setOpenNew(false)}>Cancel</Button>
               <Button onClick={() => {
                 if (!form.name) return;
                 if (form.id) {
@@ -256,13 +257,13 @@ export default function ForwardedShopsPage() {
         <Card>
           <CardContent className="pt-6">
             <div className="text-sm text-muted-foreground">Total Market Principal (Active)</div>
-            <div className="text-2xl font-display mt-1 text-purple-700">{inr(totalMarketPrincipal)}</div>
+            <div className="text-2xl font-display mt-1 text-purple-700">{formatCompactIfLarge(totalMarketPrincipal)}</div>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-6">
             <div className="text-sm text-rose-600 font-medium">Total Market Payable (w/ Interest)</div>
-            <div className="text-2xl font-display mt-1 text-rose-700">{inr(totalMarketOwed)}</div>
+            <div className="text-2xl font-display mt-1 text-rose-700">{formatCompactIfLarge(totalMarketOwed)}</div>
           </CardContent>
         </Card>
       </div>
@@ -283,28 +284,28 @@ export default function ForwardedShopsPage() {
               <table className="w-full text-sm">
                 <thead className="text-left text-muted-foreground border-b bg-muted/20">
                   <tr>
-                    <th className="py-3 px-4 font-medium">Shop Name</th>
-                    <th className="py-3 font-medium">Items</th>
-                    <th className="py-3 font-medium text-right">Principal Taken</th>
-                    <th className="py-3 font-medium text-right">Interest Due</th>
-                    <th className="py-3 font-medium text-right text-rose-600">Total Owed</th>
-                    <th className="py-3 px-4 text-right"></th>
+                    <th className="py-3 px-4 font-medium whitespace-nowrap">Shop Name</th>
+                    <th className="py-3 px-2 font-medium whitespace-nowrap">Items</th>
+                    <th className="py-3 px-2 font-medium text-right whitespace-nowrap">Principal Taken</th>
+                    <th className="py-3 px-2 font-medium text-right whitespace-nowrap">Interest Due</th>
+                    <th className="py-3 px-2 font-medium text-right text-rose-600 whitespace-nowrap">Total Owed</th>
+                    <th className="py-3 px-4 text-right whitespace-nowrap"></th>
                   </tr>
                 </thead>
                 <tbody>
                   {shops.map((shop) => (
                     <tr key={shop.name} className="border-b last:border-0 hover:bg-muted/40">
-                      <td className="py-3 px-4 font-medium text-primary">
+                      <td className="py-3 px-4 font-medium text-primary whitespace-nowrap">
                         {shop.name}
                       </td>
-                      <td className="py-3">
+                      <td className="py-3 px-2 whitespace-nowrap">
                         <div>{shop.activeRecords.length} active</div>
                         {shop.settledRecords.length > 0 && <div className="text-xs text-muted-foreground">{shop.settledRecords.length} settled</div>}
                       </td>
-                      <td className="py-3 text-right">{inr(shop.totalPrincipal)}</td>
-                      <td className="py-3 text-right text-amber-600">{inr(shop.totalInterest)}</td>
-                      <td className="py-3 text-right font-medium text-rose-600">{inr(shop.totalPrincipal + shop.totalInterest)}</td>
-                      <td className="py-3 px-4 text-right">
+                      <td className="py-3 px-2 text-right whitespace-nowrap">{formatCompactIfLarge(shop.totalPrincipal)}</td>
+                      <td className="py-3 px-2 text-right text-amber-600 whitespace-nowrap">{formatCompactIfLarge(shop.totalInterest)}</td>
+                      <td className="py-3 px-2 text-right font-medium text-rose-600 whitespace-nowrap">{formatCompactIfLarge(shop.totalPrincipal + shop.totalInterest)}</td>
+                      <td className="py-3 px-4 text-right whitespace-nowrap">
                         <div className="flex items-center justify-end gap-2">
                           <Button size="sm" variant="outline" onClick={() => setSelectedShop(shop.name)}>
                             <Eye className="w-4 h-4 mr-2" /> View Profile
@@ -352,26 +353,30 @@ export default function ForwardedShopsPage() {
                 <table className="w-full text-sm">
                   <thead className="text-left text-muted-foreground border-b bg-muted/20">
                     <tr>
-                      <th className="py-2 px-3 font-medium">Original Loan</th>
-                      <th className="py-2 font-medium">Item Details</th>
-                      <th className="py-2 font-medium text-center">Status</th>
-                      <th className="py-2 font-medium text-right">Rate</th>
-                      <th className="py-2 font-medium text-right">Principal</th>
-                      <th className="py-2 font-medium text-right">Accrued Interest</th>
-                      <th className="py-2 px-3 font-medium text-right">Payable</th>
-                      <th className="py-2 px-3 font-medium text-right">Action</th>
+                      <th className="py-2 px-3 font-medium whitespace-nowrap">Original Loan</th>
+                      <th className="py-2 px-2 font-medium whitespace-nowrap">Item Details</th>
+                      <th className="py-2 px-2 font-medium text-center whitespace-nowrap">Status</th>
+                      <th className="py-2 px-2 font-medium text-right whitespace-nowrap">Rate</th>
+                      <th className="py-2 px-2 font-medium text-right whitespace-nowrap">Principal</th>
+                      <th className="py-2 px-2 font-medium text-right whitespace-nowrap">Accrued Interest</th>
+                      <th className="py-2 px-3 font-medium text-right whitespace-nowrap">Payable</th>
+                      <th className="py-2 px-3 font-medium text-right whitespace-nowrap">Action</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {activeProfile.activeRecords.map((r: Girvi) => {
+                    {activeProfile.activeRecords.length === 0 ? (
+                      <tr>
+                        <td colSpan={8} className="py-8 text-center text-muted-foreground">No active forwarded items.</td>
+                      </tr>
+                    ) : activeProfile.activeRecords.map((r: Girvi) => {
                       const interest = calculateForwardedInterest(r);
                       return (
                         <tr key={r.id || (r as any)._id} className="border-b last:border-0 hover:bg-muted/40">
-                          <td className="py-2 px-3">
+                          <td className="py-2 px-3 whitespace-nowrap">
                             <div className="font-medium">{r.loanNo}</div>
                             <div className="text-xs text-muted-foreground">{formatDate(r.date)}</div>
                           </td>
-                          <td className="py-2">
+                          <td className="py-2 px-2 min-w-40">
                             <div className="flex items-center gap-3">
                               {r.forwardedImageUrl ? (
                                 <img src={r.forwardedImageUrl} alt="Forwarded Item" className="w-10 h-10 rounded object-cover border border-border shrink-0" />
@@ -381,12 +386,12 @@ export default function ForwardedShopsPage() {
                                 <div className="w-10 h-10 rounded bg-muted flex items-center justify-center border border-border shrink-0 text-[10px] text-muted-foreground">No img</div>
                               )}
                               <div>
-                                <div className="font-medium text-primary">{r.itemDescription}</div>
+                                <div className="font-medium text-primary line-clamp-1" title={r.itemDescription}>{r.itemDescription}</div>
                                 <div className="text-xs text-muted-foreground">{r.itemType} {r.purity} • {r.netWeight}g</div>
                               </div>
                             </div>
                           </td>
-                          <td className="py-2 text-center">
+                          <td className="py-2 px-2 text-center whitespace-nowrap">
                             <div className="flex flex-col gap-1 items-center">
                               <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase bg-blue-100 text-blue-800">
                                 Fwd: Active
@@ -396,11 +401,14 @@ export default function ForwardedShopsPage() {
                               </span>
                             </div>
                           </td>
-                          <td className="py-2 text-right">{r.forwardedInterestPct}%/{r.forwardedInterestPeriod === "Daily" || r.note?.includes("[FwdIntPeriod:Daily]") ? "day" : r.forwardedInterestPeriod === "Yearly" || r.note?.includes("[FwdIntPeriod:Yearly]") ? "yr" : "mo"} {r.note?.includes("[FwdIntType:Compound]") ? "(C)" : "(S)"}</td>
-                          <td className="py-2 text-right">{inr(r.forwardedAmount || 0)}</td>
-                          <td className="py-2 text-right text-amber-600">{inr(interest)}</td>
-                          <td className="py-2 px-3 text-right font-medium text-rose-600">{inr((r.forwardedAmount || 0) + interest)}</td>
-                          <td className="py-2 px-3 text-right">
+                          <td className="py-2 px-2 text-right whitespace-nowrap">
+                            <div>{r.forwardedInterestPct}%/mo</div>
+                            <div className="text-[10px] text-muted-foreground mt-0.5">(compound mo)</div>
+                          </td>
+                          <td className="py-2 px-2 text-right whitespace-nowrap">{formatCompactIfLarge(r.forwardedAmount || 0)}</td>
+                          <td className="py-2 px-2 text-right text-amber-600 whitespace-nowrap">{formatCompactIfLarge(interest)}</td>
+                          <td className="py-2 px-3 text-right font-medium text-rose-600 whitespace-nowrap">{formatCompactIfLarge((r.forwardedAmount || 0) + interest)}</td>
+                          <td className="py-2 px-3 text-right whitespace-nowrap">
                                 {isGirviForwardedSettled(r) ? (
                                   <span className="bg-green-100 text-green-800 px-2 py-0.5 rounded text-[10px] font-semibold uppercase inline-block">Settled</span>
                                 ) : (
@@ -423,27 +431,48 @@ export default function ForwardedShopsPage() {
                     <table className="w-full text-sm">
                       <thead className="text-left text-muted-foreground border-b bg-muted/20">
                         <tr>
-                          <th className="py-2 px-3 font-medium">Original Loan</th>
-                          <th className="py-2 font-medium">Item Details</th>
-                          <th className="py-2 font-medium text-center">Status</th>
-                          <th className="py-2 font-medium text-right pr-3">Settlement Details</th>
+                          <th className="py-2 px-3 font-medium whitespace-nowrap">Original Loan</th>
+                          <th className="py-2 px-2 font-medium whitespace-nowrap">Item Details</th>
+                          <th className="py-2 px-2 font-medium text-center whitespace-nowrap">Status</th>
+                          <th className="py-2 px-2 font-medium text-right whitespace-nowrap">Principal</th>
+                          <th className="py-2 px-2 font-medium text-right whitespace-nowrap">Interest Paid</th>
+                          <th className="py-2 px-3 font-medium text-right whitespace-nowrap">Settled Total</th>
                         </tr>
                       </thead>
                       <tbody>
                         {activeProfile.settledRecords.map((r: Girvi) => {
                           const match = r.note?.match(/cleared on (.*?) - Paid (.*?)\]/);
                           const clearedDate = match ? match[1] : (r as any).forwardedSettledDate ? formatDate((r as any).forwardedSettledDate) : "—";
-                          const paidAmount = match ? match[2] : inr((r.forwardedAmount || 0) + ((r as any).forwardedSettledInterest || 0));
+                          const paidAmountStr = match ? match[2] : inr((r.forwardedAmount || 0) + ((r as any).forwardedSettledInterest || 0));
+                          
+                          let settledTotalNum = 0;
+                          if (typeof paidAmountStr === 'string') {
+                            settledTotalNum = parseFloat(paidAmountStr.replace(/[^\d.-]/g, ''));
+                          }
+                          const principal = r.forwardedAmount || 0;
+                          const interest = (r as any).forwardedSettledInterest !== undefined ? (r as any).forwardedSettledInterest : Math.max(0, settledTotalNum - principal);
+
                           return (
                             <tr key={r.id || (r as any)._id} className="border-b last:border-0 hover:bg-muted/40">
-                              <td className="py-2 px-3">
+                              <td className="py-2 px-3 whitespace-nowrap">
                                 <div className="font-medium">{r.loanNo}</div>
                               </td>
-                              <td className="py-2">
-                                <div className="font-medium text-primary">{r.itemDescription}</div>
-                                <div className="text-xs text-muted-foreground">{r.itemType} {r.purity}</div>
+                              <td className="py-2 px-2 min-w-40">
+                                <div className="flex items-center gap-3">
+                                  {r.forwardedImageUrl ? (
+                                    <img src={r.forwardedImageUrl} alt="Forwarded Item" className="w-10 h-10 rounded object-cover border border-border shrink-0" />
+                                  ) : r.imageUrl ? (
+                                    <img src={r.imageUrl} alt="Pledged Item" className="w-10 h-10 rounded object-cover border border-border shrink-0" />
+                                  ) : (
+                                    <div className="w-10 h-10 rounded bg-muted flex items-center justify-center border border-border shrink-0 text-[10px] text-muted-foreground">No img</div>
+                                  )}
+                                  <div>
+                                    <div className="font-medium text-primary line-clamp-1" title={r.itemDescription}>{r.itemDescription}</div>
+                                    <div className="text-xs text-muted-foreground">{r.itemType} {r.purity} • {r.netWeight}g</div>
+                                  </div>
+                                </div>
                               </td>
-                              <td className="py-2 text-center">
+                              <td className="py-2 px-2 text-center whitespace-nowrap">
                                 <div className="flex flex-col gap-1 items-center">
                                   <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase bg-green-100 text-green-800">
                                     Fwd: Settled
@@ -453,8 +482,14 @@ export default function ForwardedShopsPage() {
                                   </span>
                                 </div>
                               </td>
-                              <td className="py-2 text-right pr-3">
-                                <div className="text-green-700 font-medium">Paid {paidAmount}</div>
+                              <td className="py-2 px-2 text-right whitespace-nowrap">
+                                {formatCompactIfLarge(principal)}
+                              </td>
+                              <td className="py-2 px-2 text-right text-amber-600 whitespace-nowrap">
+                                {formatCompactIfLarge(interest)}
+                              </td>
+                              <td className="py-2 px-3 text-right whitespace-nowrap">
+                                <div className="text-green-700 font-medium">{formatCompactIfLarge(settledTotalNum)}</div>
                                 <div className="text-xs text-muted-foreground">on {clearedDate}</div>
                               </td>
                             </tr>
@@ -483,15 +518,15 @@ export default function ForwardedShopsPage() {
               <div className="bg-muted/30 p-4 rounded-md border border-border space-y-2">
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Principal Taken:</span>
-                  <span className="font-medium">{inr(settlingItem.forwardedAmount || 0)}</span>
+                    <span className="font-medium">{inr(settlingItem.forwardedAmount || 0)}</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Interest Accrued:</span>
-                  <span className="font-medium text-amber-600">{inr(calculateForwardedInterest(settlingItem))}</span>
+                    <span className="font-medium text-amber-600">{inr(calculateForwardedInterest(settlingItem))}</span>
                 </div>
                 <div className="flex justify-between text-base font-bold pt-2 border-t mt-2">
                   <span>Total to Pay:</span>
-                  <span className="text-rose-600">{inr((settlingItem.forwardedAmount || 0) + calculateForwardedInterest(settlingItem))}</span>
+                    <span className="text-rose-600">{inr((settlingItem.forwardedAmount || 0) + calculateForwardedInterest(settlingItem))}</span>
                 </div>
               </div>
               <div className="flex justify-end gap-2 pt-2">
@@ -553,7 +588,7 @@ function ForwardingReceiptModal({ data, onClose }: { data: any, onClose: () => v
               <tr className="border-b border-slate-300">
                 <td className="border border-slate-300 py-2 px-3 font-medium">{girvi.itemDescription}</td>
                 <td className="border border-slate-300 py-2 px-3 text-right">{girvi.netWeight} g</td>
-                <td className="border border-slate-300 py-2 px-3 text-right">{girvi.forwardedInterestPct}% / {girvi.forwardedInterestPeriod === "Daily" || girvi.note?.includes("[FwdIntPeriod:Daily]") ? "day" : girvi.forwardedInterestPeriod === "Yearly" || girvi.note?.includes("[FwdIntPeriod:Yearly]") ? "year" : "mo"} {girvi.note?.includes("[FwdIntType:Compound]") ? "(Compound)" : "(Simple)"}</td>
+                <td className="border border-slate-300 py-2 px-3 text-right">{girvi.forwardedInterestPct}% / mo (Compound Mo)</td>
                 <td className="border border-slate-300 py-2 px-3 text-right">{inr(principal)}</td>
                 <td className="border border-slate-300 py-2 px-3 text-right">{inr(interest)}</td>
               </tr>

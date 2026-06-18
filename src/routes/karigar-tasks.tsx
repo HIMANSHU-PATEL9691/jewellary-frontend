@@ -87,7 +87,7 @@ export default function KarigarTasksPage() {
               </SelectTrigger>
               <SelectContent>
                 {karigars.map(k => (
-                  <SelectItem key={k._id || k.id} value={k._id || k.id || ""}>
+                  <SelectItem key={k._id || k.id} value={k._id || k.id || `unknown-${k.name}`}>
                     {k.name} ({k.specialty || k.category || "General"})
                   </SelectItem>
                 ))}

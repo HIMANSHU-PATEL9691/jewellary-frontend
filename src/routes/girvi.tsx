@@ -19,7 +19,7 @@ import { useApi, useApiMutation } from "@/hooks/useApi";
 import { girviAPI, customerAPI } from "@/lib/api";
 import { useMemo, useState } from "react";
 import { Plus, Trash2, Printer, Pencil, Search, Image as ImageIcon, Wallet, Scale, Landmark, TrendingUp } from "lucide-react";
-import { calculateCompoundInterest, formatDate } from "@/lib/utils";
+import { calculateCompoundInterest, formatDate, formatCompactIfLarge } from "@/lib/utils";
 import { toast } from "sonner";
 import { PaymentQr } from "@/components/PaymentQr";
 import { InvoiceTerms, ShopHeader } from "@/components/InvoiceBranding";
@@ -586,11 +586,11 @@ export default function GirviPage() {
                 </div>
                 <div>
                   <Label className="text-xs">Customer *</Label>
-                  <Select value={form.customerMobile || ""} onValueChange={(val) => {
+              <Select value={form.customerMobile || form.customerName || ""} onValueChange={(val) => {
                     if (val === "NEW") {
                       setForm({...form, customerMobile: "NEW", customerName: "", customerMobile2: "", customerAddress: ""});
                     } else {
-                      const match = customers.find(c => (c.mobile || c.phone) === val);
+                  const match = customers.find(c => (c.mobile || c.phone || c.name) === val);
                       if (match) setForm({...form, customerName: match.name, customerMobile: match.mobile || match.phone || "", customerMobile2: match.phone2 || "", customerAddress: match.address || ""});
                     }
                   }}>
@@ -598,7 +598,7 @@ export default function GirviPage() {
                     <SelectContent>
                       <SelectItem value="NEW" className="font-semibold text-primary">+ Create New Customer</SelectItem>
                       {customers.filter(c => c.name.toLowerCase().includes(searchCust.toLowerCase()) || (c.mobile || c.phone || "").includes(searchCust) || (c.address || "").toLowerCase().includes(searchCust.toLowerCase())).sort((a, b) => (a.name || "").localeCompare(b.name || "")).map((c) => (
-                        <SelectItem key={c.mobile || c.phone} value={c.mobile || c.phone}>{c.name} · {c.mobile || c.phone}</SelectItem>
+                    <SelectItem key={c._id || c.id} value={c.mobile || c.phone || c.name}>{c.name} {c.mobile || c.phone ? `· ${c.mobile || c.phone}` : ""}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -709,7 +709,7 @@ export default function GirviPage() {
                 )}
               </div>
 
-              <div className="grid grid-cols-[1fr_1fr_auto_auto] gap-2">
+              <div className="grid grid-cols-2 gap-2">
                 <div>
                   <Label>Loan Amount *</Label>
                   <Input type="number" value={form.loanAmount || ""} onChange={(e) => setForm({ ...form, loanAmount: +e.target.value })} />
@@ -768,7 +768,7 @@ export default function GirviPage() {
                   <Label>Shop Address</Label>
                   <Textarea rows={2} value={form.forwardedShopAddress || ""} onChange={(e) => setForm({ ...form, forwardedShopAddress: e.target.value })} placeholder="Address" />
                 </div>
-                <div className="grid grid-cols-2 gap-2 mb-2">
+                <div className="grid grid-cols-3 gap-2 mb-2">
                   <div>
                     <Label>Forwarded Date</Label>
                     <Input type="date" value={form.forwardedDate || ""} onChange={(e) => setForm({ ...form, forwardedDate: e.target.value })} />
@@ -830,17 +830,18 @@ export default function GirviPage() {
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <KPI label="Active Loans" value={totals.activeCount} icon={Landmark} colorClass="text-primary" />
-        <KPI label="Principal Out" value={inr(totals.principal)} icon={Wallet} colorClass="text-amber-600" />
+        <KPI label="Principal Out" value={formatCompactIfLarge(totals.principal)} icon={Wallet} colorClass="text-amber-600" />
         <KPI label="Pledged Weight" value={`${totals.pledgedWeight.toFixed(3)} g`} icon={Scale} colorClass="text-blue-600" />
-        <KPI label="Collateral Value" value={inr(totals.collateralValue)} icon={TrendingUp} colorClass="text-emerald-600" />
-        {totals.forwardedPrincipal > 0 && (
-          <>
-            <KPI label="Forwarded Principal" value={inr(totals.forwardedPrincipal)} />
-            <KPI label="Shop Interest Due" value={inr(totals.forwardedInterest)} />
-            <KPI label="Total Shop Payable" value={inr(totals.forwardedPrincipal + totals.forwardedInterest)} />
-          </>
-        )}
+        <KPI label="Collateral Value" value={formatCompactIfLarge(totals.collateralValue)} icon={TrendingUp} colorClass="text-emerald-600" />
       </div>
+
+      {totals.forwardedPrincipal > 0 && (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+          <KPI label="Forwarded Principal" value={formatCompactIfLarge(totals.forwardedPrincipal)} icon={Landmark} colorClass="text-purple-600" />
+          <KPI label="Shop Interest Due" value={formatCompactIfLarge(totals.forwardedInterest)} icon={TrendingUp} colorClass="text-rose-500" />
+          <KPI label="Total Shop Payable" value={formatCompactIfLarge(totals.forwardedPrincipal + totals.forwardedInterest)} icon={Wallet} colorClass="text-rose-700" />
+        </div>
+      )}
 
       <Card className="shadow-sm border-border overflow-hidden flex flex-col">
           <CardHeader className="bg-muted/20 border-b border-border pb-3 pt-4">
@@ -879,15 +880,15 @@ export default function GirviPage() {
                 <table className="w-full text-sm text-left border-collapse">
                   <thead className="bg-muted/40 text-muted-foreground text-[11px] uppercase tracking-wider border-b border-border">
                     <tr>
-                      <th className="py-3 px-4 font-semibold">Loan No</th>
-                      <th className="py-3 px-4 font-semibold">Date & Time</th>
-                      <th className="py-3 px-4 font-semibold">Customer</th>
-                      <th className="py-3 px-4 font-semibold">Item Details</th>
-                      <th className="py-3 px-4 font-semibold text-right">Net Wt.</th>
-                      <th className="py-3 px-4 font-semibold text-right">Principal</th>
-                      <th className="py-3 px-4 font-semibold text-right">Interest</th>
-                      <th className="py-3 px-4 font-semibold text-center">Status</th>
-                      <th className="py-3 px-4 font-semibold text-right">Action</th>
+                      <th className="py-3 px-3 sm:px-4 font-semibold">Loan No</th>
+                      <th className="py-3 px-3 sm:px-4 font-semibold">Date & Time</th>
+                      <th className="py-3 px-3 sm:px-4 font-semibold">Customer</th>
+                      <th className="py-3 px-3 sm:px-4 font-semibold">Item Details</th>
+                      <th className="py-3 px-3 sm:px-4 font-semibold text-right">Net Wt.</th>
+                      <th className="py-3 px-3 sm:px-4 font-semibold text-right">Principal</th>
+                      <th className="py-3 px-3 sm:px-4 font-semibold text-right">Interest</th>
+                      <th className="py-3 px-3 sm:px-4 font-semibold text-center">Status</th>
+                      <th className="py-3 px-3 sm:px-4 font-semibold text-right">Action</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -906,43 +907,43 @@ export default function GirviPage() {
 
                       return (
                         <tr key={(g as any)._id || g.id} className="border-b border-border/50 last:border-0 align-top hover:bg-muted/20 transition-colors">
-                          <td className="py-3 px-4 font-medium text-foreground whitespace-nowrap">{g.loanNo}</td>
-                          <td className="py-3 px-4 whitespace-nowrap">
+                          <td className="py-3 px-3 sm:px-4 font-medium text-foreground break-all min-w-20">{g.loanNo}</td>
+                          <td className="py-3 px-3 sm:px-4 min-w-25">
                             <div className="text-sm">{formatDate(g.date)}</div>
                             <div className="text-[11px] text-muted-foreground font-medium mt-0.5">{getElapsedTimeString(g.date)} elapsed</div>
                             {g.dueDate && <div className="text-[11px] text-rose-500 font-medium mt-0.5">Due: {formatDate(g.dueDate)}</div>}
                           </td>
-                          <td className="py-3 px-4">
-                            <div className="font-medium text-foreground whitespace-nowrap">{g.customerName}</div>
-                            <div className="text-xs text-muted-foreground whitespace-nowrap">{g.customerMobile}</div>
+                          <td className="py-3 px-3 sm:px-4">
+                            <div className="font-medium text-foreground">{g.customerName}</div>
+                            <div className="text-xs text-muted-foreground">{g.customerMobile}</div>
                           </td>
-                          <td className="py-3 px-4">
+                          <td className="py-3 px-3 sm:px-4">
                             <div className="flex items-center gap-3">
                               <div className="w-10 h-10 rounded-md bg-muted/50 flex items-center justify-center border border-border shadow-sm shrink-0">
                                 {g.imageUrl ? <img src={g.imageUrl} alt="Item" className="w-full h-full object-cover" /> : <ImageIcon className="w-4 h-4 text-muted-foreground/50" />}
                               </div>
-                              <div>
+                              <div className="min-w-0">
                                 {hasMultipleItems ? (
-                                  <div className="font-medium text-foreground whitespace-nowrap">{g.items?.length || 0} items</div>
+                                  <div className="font-medium text-foreground">{g.items?.length || 0} items</div>
                                 ) : (
-                                  <div className="font-medium text-foreground whitespace-nowrap">{g.itemType} {g.purity}</div>
+                                  <div className="font-medium text-foreground">{g.itemType} {g.purity}</div>
                                 )}
-                                <div className="text-xs text-muted-foreground line-clamp-1 max-w-40 mt-0.5" title={hasMultipleItems ? (g.items || []).map(it => it.itemDescription).join(', ') : g.itemDescription}>{hasMultipleItems ? (g.items || []).map(it => it.itemDescription).join(', ') : g.itemDescription}</div>
+                                <div className="text-xs text-muted-foreground line-clamp-2 max-w-37.5 lg:max-w-xs mt-0.5" title={hasMultipleItems ? (g.items || []).map(it => it.itemDescription).join(', ') : g.itemDescription}>{hasMultipleItems ? (g.items || []).map(it => it.itemDescription).join(', ') : g.itemDescription}</div>
                               {(g.forwardedShopName || g.forwardedTo) && (
-                                <div className={`mt-1 text-[10px] font-semibold border inline-block px-1.5 py-0.5 rounded truncate max-w-40 ${(g as any).isForwardedSettled ? "text-green-700 border-green-200 bg-green-50" : "text-purple-700 border-purple-200 bg-purple-50"}`} title={g.forwardedShopName || g.forwardedTo}>
+                                <div className={`mt-1 text-[10px] font-semibold border inline-block px-1.5 py-0.5 rounded truncate max-w-37.5 lg:max-w-xs ${(g as any).isForwardedSettled ? "text-green-700 border-green-200 bg-green-50" : "text-purple-700 border-purple-200 bg-purple-50"}`} title={g.forwardedShopName || g.forwardedTo}>
                                   Fwd: {g.forwardedShopName || g.forwardedTo} {(g as any).isForwardedSettled ? "(Settled)" : ""}
                                 </div>
                               )}
                               </div>
                             </div>
                           </td>
-                          <td className="py-3 px-4 text-right font-medium text-foreground whitespace-nowrap">{(totalNetWeight || 0).toFixed(3)} g</td>
-                          <td className="py-3 px-4 text-right font-semibold text-foreground whitespace-nowrap">{inr(g.loanAmount)}</td>
-                          <td className="py-3 px-4 text-right whitespace-nowrap">
-                            <div className="font-semibold text-amber-600">{inr(interestAmt)}</div>
-                            <div className="text-[11px] text-muted-foreground font-medium mt-0.5">@ {g.interestPct}% per month (compound yearly)</div>
+                          <td className="py-3 px-3 sm:px-4 text-right font-medium text-foreground">{(totalNetWeight || 0).toFixed(3)} g</td>
+                          <td className="py-3 px-3 sm:px-4 text-right font-semibold text-foreground">{formatCompactIfLarge(g.loanAmount)}</td>
+                          <td className="py-3 px-3 sm:px-4 text-right min-w-27.5">
+                            <div className="font-semibold text-amber-600">{formatCompactIfLarge(interestAmt)}</div>
+                            <div className="text-[10px] leading-tight text-muted-foreground font-medium mt-0.5">@ {g.interestPct}%/mo<br/>(compound mo)</div>
                           </td>
-                          <td className="py-3 px-4 text-center">
+                          <td className="py-3 px-3 sm:px-4 text-center">
                             <Select value={g.status} onValueChange={(v) => setStatus((g as any)._id || g.id, v as Girvi["status"])}>
                               <SelectTrigger className={`mx-auto h-7 w-24 text-[10px] font-bold uppercase tracking-wider shadow-none border-transparent ${statusColors[g.status] || ""}`}>
                                 <SelectValue />
@@ -954,7 +955,7 @@ export default function GirviPage() {
                               </SelectContent>
                             </Select>
                           </td>
-                          <td className="py-3 px-4 text-right">
+                          <td className="py-3 px-3 sm:px-4 text-right">
                             <div className="flex justify-end gap-1">
                               <Button size="sm" variant="outline" className="h-8 bg-background" onClick={() => setViewing(g as Girvi)}>View</Button>
                               <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => startEdit(g as Girvi)}>
@@ -994,9 +995,9 @@ function KPI({ label, value, icon: Icon, colorClass }: { label: string; value: s
   return (
     <Card className="shadow-sm border-border hover:shadow-md transition-shadow duration-200">
       <CardContent className="p-6 flex items-center justify-between gap-4">
-        <div>
-          <div className="text-sm font-medium text-muted-foreground">{label}</div>
-          <div className={`text-2xl font-display font-bold mt-1 ${colorClass || "text-foreground"}`}>{value}</div>
+        <div className="min-w-0 flex-1">
+          <div className="text-sm font-medium text-muted-foreground truncate" title={label}>{label}</div>
+          <div className={`text-xl lg:text-2xl font-display font-bold mt-1 truncate ${colorClass || "text-foreground"}`} title={String(value)}>{value}</div>
         </div>
         {Icon && (
           <div className={`w-12 h-12 rounded-full flex items-center justify-center ${bgClass} bg-opacity-50 shrink-0`}>
@@ -1102,7 +1103,7 @@ function GirviModal({ girvi, authUser, onClose }: { girvi: Girvi; authUser: any;
             <div className="border border-slate-300 rounded p-3 text-xs flex flex-col justify-center">
               <div className="flex justify-between mb-2">
                 <span className="text-slate-500">Interest Rate</span>
-                <span className="font-bold">{girvi.interestPct}% per month (compound yearly)</span>
+                <span className="font-bold">{girvi.interestPct}% per month (compound monthly)</span>
               </div>
               <div className="flex justify-between mb-2">
                 <span className="text-slate-500">Time Elapsed</span>
@@ -1179,7 +1180,7 @@ function GirviModal({ girvi, authUser, onClose }: { girvi: Girvi; authUser: any;
                   <div className="grid grid-cols-2 gap-x-2 gap-y-1">
                     <span>Forwarded Amount:</span> <span className="font-bold">{inr(girvi.forwardedAmount || 0)}</span>
                     <span>Fwd Date:</span> <span className="font-bold">{girvi.forwardedDate ? formatDate(girvi.forwardedDate) : formatDate(girvi.date)}</span>
-                    <span>Rate:</span> <span className="font-bold">{girvi.forwardedInterestPct || 0}% per month (compound yearly)</span>
+                    <span>Rate:</span> <span className="font-bold">{girvi.forwardedInterestPct || 0}% per month (compound monthly)</span>
                     <span>{isGirviForwardedSettled(girvi) ? "Settled Interest:" : "Interest:"}</span> <span className="font-bold text-amber-700">{inr(forwardedInterest)}</span>
                     {isGirviForwardedSettled(girvi) && ((girvi as any).forwardedSettledDate || girvi.note?.match(/cleared on (.*?) - Paid/)) && (
                       <>
