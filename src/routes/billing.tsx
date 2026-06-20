@@ -66,6 +66,9 @@ export default function BillingPage() {
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
 
+
+
+
   const [type, setType] = useState<"GST" | "NON-GST">("GST");
   const [customerId, setCustomerId] = useState<string>("");
   const [searchCust, setSearchCust] = useState("");
@@ -127,9 +130,10 @@ export default function BillingPage() {
         productId: p.id || p._id,
         name: itemName,
         purity: p.purity,
-        netWeight: p.netWeight,
-        grossWeight: p.grossWeight !== undefined ? p.grossWeight : p.netWeight,
-        stoneWeight: p.stoneWeight || 0,
+        // User ko manually enter karna hai, isliye inventory weights prefill nahi kar rahe
+        netWeight: 0,
+        grossWeight: 0,
+        stoneWeight: 0,
         ratePerGram: currentRate,
         makingCharge: 0,
         makingChargePct: 0,
@@ -1327,7 +1331,9 @@ function Row({ label, v, className, valueClassName }: { label: string; v: string
   );
 }
 
-function NumI({ v, on, className = "w-24 h-8" }: { v: number; on: (n: number) => void; className?: string }) {
+function NumI({ v, on, className = "w-24 h-8" }: { v: number; on: (n: number) => void; className?: string }) { 
+
+
   const safeV = v ?? 0;
   const [val, setVal] = useState(safeV === 0 ? "" : safeV.toString());
 
@@ -1345,8 +1351,11 @@ function NumI({ v, on, className = "w-24 h-8" }: { v: number; on: (n: number) =>
   return (
     <Input
       type="number"
+      inputMode="decimal"
+      step="0.001"
       className={className}
       value={val}
+
       onBlur={() => {
         if (val === "" || isNaN(parseFloat(val))) {
           setVal("");
@@ -1384,7 +1393,7 @@ function InvoiceModal({ inv, onClose }: { inv: any; onClose: () => void }) {
         <style>{`@media print { @page { margin: 4mm; } body { zoom: 0.9; } }`}</style>
         <div className="p-4 sm:p-6 print:p-2 border-2 border-transparent print:border-none m-2 print:m-0 bg-white overflow-y-auto flex-1 print:overflow-visible">
           
-          <ShopHeader documentLabel={inv.type === "GST" ? "Tax Invoice" : "Invoice"} compact rightElement={<PaymentQr amount={inv.balanceDue || 0} compact />} />
+          <ShopHeader documentLabel={inv.type === "GST" ? "Tax Invoice" : "Invoice"} compact />
 
           {/* Invoice Meta & Customer Details */}
           <div className="flex justify-between items-start mb-3 text-sm">
@@ -1545,41 +1554,24 @@ function InvoiceModal({ inv, onClose }: { inv: any; onClose: () => void }) {
             </div>
           </div>
 
-          {/* Payment Details Table - AFTER BALANCE DUE */}
-          {((inv.payments?.length > 0) || (inv.amountPaid > 0)) && (
-            <div className="mb-4 mt-4">
-              <h4 className="font-bold text-[10px] text-slate-500 uppercase tracking-wider mb-2 border-b border-slate-200 pb-1">Payment Details</h4>
-              <table className="w-full text-xs border-collapse border border-slate-200">
-                <thead className="bg-slate-50">
-                  <tr>
-                    <th className="border border-slate-200 py-1.5 px-2 text-left text-slate-600 font-semibold">Date</th>
-                    <th className="border border-slate-200 py-1.5 px-2 text-left text-slate-600 font-semibold">Payment Mode</th>
-                    <th className="border border-slate-200 py-1.5 px-2 text-right text-slate-600 font-semibold">Amount</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {inv.payments && inv.payments.length > 0 ? (
-                    inv.payments.map((p: any, i: number) => (
-                      <tr key={i}>
-                        <td className="border border-slate-200 py-1.5 px-2">{formatDate(p.date)}</td>
-                        <td className="border border-slate-200 py-1.5 px-2">{p.mode} {p.note && <span className="text-[10px] text-slate-400 ml-1">({p.note})</span>}</td>
-                        <td className="border border-slate-200 py-1.5 px-2 text-right font-medium text-slate-800">{inr(p.amount)}</td>
-                      </tr>
-                    ))
-                  ) : (
-                    <tr>
-                      <td className="border border-slate-200 py-1.5 px-2">{formatDate(inv.createdAt)}</td>
-                      <td className="border border-slate-200 py-1.5 px-2">{inv.paymentMode}</td>
-                      <td className="border border-slate-200 py-1.5 px-2 text-right font-medium text-slate-800">{inr(inv.amountPaid)}</td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
+          {/* Barcode + Payment Details (Balance Due ke baad) */}
+          <div className="mt-4 mb-2 grid grid-cols-1 sm:grid-cols-3 gap-4 items-start">
+            <div className="sm:col-span-1">
+              <div className="text-[10px] text-slate-500 uppercase tracking-wider font-bold mb-2 text-center sm:text-left">Scan & Pay</div>
+              <div className="flex justify-center sm:justify-start">
+                {/* PaymentQr and payment details must remain visible on print as well */}
+                <PaymentQr amount={inv.balanceDue || 0} compact={false} />
+              </div>
             </div>
-          )}
+
+            <div className="sm:col-span-2">
+              {/* Requirement: invoice print me Payment Details ko hide/removed */}
+              {null}
+            </div>
+          </div>
 
           {/* Signatures */}
-          <div className="mt-12 print:mt-6 grid grid-cols-1 sm:grid-cols-2 gap-8 items-end text-[10px] font-bold text-slate-500 uppercase tracking-wider print:break-inside-avoid">
+          <div className="mt-8 print:mt-6 grid grid-cols-1 sm:grid-cols-2 gap-8 items-end text-[10px] font-bold text-slate-500 uppercase tracking-wider print:break-inside-avoid">
             <div className="text-center">
               {inv.customerSignature ? (
                 <img src={inv.customerSignature} alt="Customer Signature" className="h-10 mx-auto mb-1 object-contain" />

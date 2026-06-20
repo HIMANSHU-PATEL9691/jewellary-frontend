@@ -299,11 +299,17 @@ export const uid = () =>
   Math.random().toString(36).slice(2, 8) + Date.now().toString(36).slice(-4);
 
 export function calcItem(it: InvoiceItem, isGst: boolean) {
+  // IMPORTANT:
+  // For invoice calculation we MUST NOT multiply by qty/pcs.
+  // Per-item monetary base is:
+  //   netWeight * ratePerGram + makingCharge + stoneCharge
+  // and qty/pcs is only for display.
   const base = it.netWeight * it.ratePerGram + it.makingCharge + it.stoneCharge;
-  const line = base * it.qty;
+  const line = base;
   const gst = isGst ? (line * it.gstPct) / 100 : 0;
   return { line, gst, total: line + gst };
 }
+
 
 export function inr(n: number) {
   return new Intl.NumberFormat("en-IN", {

@@ -36,14 +36,14 @@ function buildUpiUrl() {
   return `upi://pay?${params.toString()}`;
 }
 
-export function PaymentQr({ amount, compact = false }: { amount?: number; compact?: boolean }) {
+export function PaymentQr({ amount, compact = false, hideOnPrint = false }: { amount?: number; compact?: boolean; hideOnPrint?: boolean }) {
   const upiUrl = buildUpiUrl();
   const payableAmount = formatAmount(amount);
   const qrSize = compact ? 84 : 110;
   const qrSrc = `https://api.qrserver.com/v1/create-qr-code/?size=${qrSize}x${qrSize}&margin=4&data=${encodeURIComponent(upiUrl)}`;
 
   return (
-    <div className="w-full max-w-3xl rounded-md border border-slate-300 bg-white text-slate-900 overflow-hidden">
+    <div className={`w-full max-w-3xl rounded-md border border-slate-300 bg-white text-slate-900 overflow-hidden ${hideOnPrint ? "print:hidden" : ""}`}>
       <div className={`flex items-center justify-between gap-3 border-b border-slate-300 bg-slate-100/80 px-3 ${compact ? "py-1.5" : "py-2"}`}>
         <div className="text-[10px] font-bold uppercase tracking-widest text-slate-700">Payment Details</div>
         {payableAmount && (
