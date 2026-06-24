@@ -66,9 +66,6 @@ export default function BillingPage() {
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
 
-
-
-
   const [type, setType] = useState<"GST" | "NON-GST">("GST");
   const [customerId, setCustomerId] = useState<string>("");
   const [searchCust, setSearchCust] = useState("");
@@ -130,7 +127,6 @@ export default function BillingPage() {
         productId: p.id || p._id,
         name: itemName,
         purity: p.purity,
-        // User ko manually enter karna hai, isliye inventory weights prefill nahi kar rahe
         netWeight: 0,
         grossWeight: 0,
         stoneWeight: 0,
@@ -151,10 +147,8 @@ export default function BillingPage() {
 
   const addCustomItemFromDialog = (product?: any) => {
     if (product) {
-      // Add from inventory
       addProduct(product._id || product.id);
     } else {
-      // Add completely blank custom item
       setItems((prev) => [
         ...prev,
         {
@@ -183,7 +177,6 @@ export default function BillingPage() {
       const item = updated[idx];
       if (!item) return prev;
 
-      // If this is a manual custom item and name is being changed, try to fetch from inventory
       if (patch.name !== undefined && item.productId.startsWith("manual-")) {
         const nameToSearch = patch.name.toLowerCase().trim();
         if (nameToSearch !== "") {
@@ -204,7 +197,6 @@ export default function BillingPage() {
               else if ((matchedProduct.category === "Silver" || purityUpper.includes("SILVER") || purityUpper.includes("925")) && latestRates.silver) currentRate = latestRates.silver;
             }
 
-            // Update item with inventory data
             updated[idx] = {
               ...item,
               ...patch,
@@ -220,7 +212,6 @@ export default function BillingPage() {
         }
       }
 
-      // Default: just apply the patch
       updated[idx] = { ...item, ...patch };
       return updated;
     });
@@ -397,19 +388,15 @@ export default function BillingPage() {
     const orderAdvanceAmount = linkedOrder ? (linkedOrder.advancePaid || 0) : linkedRepair ? (linkedRepair.advance || 0) : 0;
     const advanceNote = linkedOrder ? `Order ${linkedOrder.orderNo} Advance` : linkedRepair ? `Repair ${linkedRepair.ticketNo} Advance` : "Advance";
  
-    let safeActualPaid = 0;
-    let finalPaymentMode = "Cash";
+    let safeActualPaid = cAmt + oAmt + orderAdvanceAmount;
+    let finalPaymentMode = oAmt > (cAmt + orderAdvanceAmount) ? onlineMode : "Cash";
     const initialPayment: any[] = [];
  
-      safeActualPaid = cAmt + oAmt + orderAdvanceAmount;
-      finalPaymentMode = oAmt > (cAmt + orderAdvanceAmount) ? onlineMode : "Cash";
- 
-      if (orderAdvanceAmount > 0) initialPayment.push({ date: new Date().toISOString(), amount: orderAdvanceAmount, mode: "Advance", note: advanceNote });
-      if (cAmt > 0) initialPayment.push({ date: new Date().toISOString(), amount: cAmt, mode: "Cash", note: "Initial Cash Payment" });
-      if (oAmt > 0) initialPayment.push({ date: new Date().toISOString(), amount: oAmt, mode: onlineMode, note: `Initial ${onlineMode} Payment` });
+    if (orderAdvanceAmount > 0) initialPayment.push({ date: new Date().toISOString(), amount: orderAdvanceAmount, mode: "Advance", note: advanceNote });
+    if (cAmt > 0) initialPayment.push({ date: new Date().toISOString(), amount: cAmt, mode: "Cash", note: "Initial Cash Payment" });
+    if (oAmt > 0) initialPayment.push({ date: new Date().toISOString(), amount: oAmt, mode: onlineMode, note: `Initial ${onlineMode} Payment` });
     const balanceDue = Math.max(0, totals.gTotal - safeActualPaid);
 
-    // Clean _id from subdocuments to avoid Mongoose immutable _id CastErrors on update
     const cleanItems = items.map((it: any) => {
       const { _id, id, grossWeight, stoneWeight, ...rest } = it;
       const gw = grossWeight !== undefined ? grossWeight : rest.netWeight;
@@ -479,7 +466,6 @@ export default function BillingPage() {
           }
         }
         
-        // Deduct sold quantities from inventory stock
         for (const item of items) {
           const actualPid = item.productId ? item.productId.split("__GW_")[0] : item.productId;
           const p = products.find((x) => (x.id || x._id) === actualPid);
@@ -505,7 +491,6 @@ export default function BillingPage() {
   const removeInvoice = async (invoice: Invoice) => {
     if (window.confirm(`Are you sure you want to delete Invoice ${invoice.number}? This will also add the sold items back to your inventory.`)) {
       try {
-        // Add stock back to inventory
         for (const item of invoice.items) {
           const actualPid = item.productId ? item.productId.split("__GW_")[0] : item.productId;
           const p = products.find((x) => (x.id || x._id) === actualPid);
@@ -582,7 +567,7 @@ export default function BillingPage() {
                     <Label className="text-xs">Search Customer</Label>
                     <Input
                       className="bg-background"
-                    placeholder="Search name, mobile, or address..."
+                      placeholder="Search name, mobile, or address..."
                       value={searchCust}
                       onChange={(e) => {
                         const v = e.target.value;
@@ -776,24 +761,24 @@ export default function BillingPage() {
                           e.preventDefault();
                           if (searchProd.trim() !== "") {
                             const query = searchProd.toLowerCase().trim();
-                          const matches = products.filter(
-                            (p) =>
-                              (p.name || "").toLowerCase().includes(query) ||
-                              (p.barcode || "").toLowerCase() === query ||
-                              (p.huid || "").toLowerCase() === query
-                          );
-                          if (matches.length > 0) {
-                            const exact = matches.find(
+                            const matches = products.filter(
                               (p) =>
-                                (p.name || "").toLowerCase() === query ||
+                                (p.name || "").toLowerCase().includes(query) ||
                                 (p.barcode || "").toLowerCase() === query ||
                                 (p.huid || "").toLowerCase() === query
                             );
-                            addProduct((exact || matches[0])._id || (exact || matches[0]).id);
-                            setSearchProd("");
-                          } else {
-                            toast.error("No product found matching this name or barcode.");
-                          }
+                            if (matches.length > 0) {
+                              const exact = matches.find(
+                                (p) =>
+                                  (p.name || "").toLowerCase() === query ||
+                                  (p.barcode || "").toLowerCase() === query ||
+                                  (p.huid || "").toLowerCase() === query
+                              );
+                              addProduct((exact || matches[0])._id || (exact || matches[0]).id);
+                              setSearchProd("");
+                            } else {
+                              toast.error("No product found matching this name or barcode.");
+                            }
                           }
                         }
                       }}
@@ -942,7 +927,7 @@ export default function BillingPage() {
                         </tr>
                       </thead>
                       <tbody>
-                        {items.map((it, i) => { // Fixed typo: 'it' was previously 'item' but already used 'it' in the map function.
+                        {items.map((it, i) => {
                           const c = calcItem(it, isGst);
                           const amount = it.netWeight * it.ratePerGram;
                           return (
@@ -983,36 +968,36 @@ export default function BillingPage() {
                               <td className="py-2">
                                 <NumI
                                   v={it.netWeight}
-                                on={(v) => {
-                                  const patch: any = { netWeight: v, grossWeight: v + ((it as any).stoneWeight || 0) };
-                                  if (it.makingChargePct) patch.makingCharge = (v * it.ratePerGram * it.makingChargePct) / 100;
-                                  updateItem(i, patch);
-                                }}
+                                  on={(v) => {
+                                    const patch: any = { netWeight: v, grossWeight: v + ((it as any).stoneWeight || 0) };
+                                    if (it.makingChargePct) patch.makingCharge = (v * it.ratePerGram * it.makingChargePct) / 100;
+                                    updateItem(i, patch);
+                                  }}
                                   className="w-16 h-8 bg-background"
                                 />
                               </td>
                               <td className="py-2">
                                 <NumI
                                   v={it.ratePerGram}
-                                on={(v) => {
-                                  const patch: any = { ratePerGram: v };
-                                  if (it.makingChargePct) patch.makingCharge = (it.netWeight * v * it.makingChargePct) / 100;
-                                  updateItem(i, patch);
-                                }}
+                                  on={(v) => {
+                                    const patch: any = { ratePerGram: v };
+                                    if (it.makingChargePct) patch.makingCharge = (it.netWeight * v * it.makingChargePct) / 100;
+                                    updateItem(i, patch);
+                                  }}
                                   className="w-20 h-8 bg-background"
                                 />
                               </td>
                               <td className="py-2 font-medium">{inr(amount)}</td>
-                            <td className="py-2">
-                              <NumI
-                                v={it.makingChargePct || (it.makingCharge > 0 && it.netWeight > 0 && it.ratePerGram > 0 ? Number(((it.makingCharge / (it.netWeight * it.ratePerGram)) * 100).toFixed(2)) : 0)}
-                                on={(v) => {
-                                  const amt = it.netWeight * it.ratePerGram;
-                                  updateItem(i, { makingChargePct: v, makingCharge: (amt * v) / 100 });
-                                }}
-                                className="w-16 h-8 bg-background"
-                              />
-                            </td>
+                              <td className="py-2">
+                                <NumI
+                                  v={it.makingChargePct || (it.makingCharge > 0 && it.netWeight > 0 && it.ratePerGram > 0 ? Number(((it.makingCharge / (it.netWeight * it.ratePerGram)) * 100).toFixed(2)) : 0)}
+                                  on={(v) => {
+                                    const amt = it.netWeight * it.ratePerGram;
+                                    updateItem(i, { makingChargePct: v, makingCharge: (amt * v) / 100 });
+                                  }}
+                                  className="w-16 h-8 bg-background"
+                                />
+                              </td>
                               <td className="py-2 text-right pr-3 font-medium">{inr(c.line)}</td>
                               <td className="py-2 text-right">
                                 <Button
@@ -1332,12 +1317,9 @@ function Row({ label, v, className, valueClassName }: { label: string; v: string
 }
 
 function NumI({ v, on, className = "w-24 h-8" }: { v: number; on: (n: number) => void; className?: string }) { 
-
-
   const safeV = v ?? 0;
   const [val, setVal] = useState(safeV === 0 ? "" : safeV.toString());
 
-  // Update local state if the prop changes externally (e.g., reset)
   useEffect(() => {
     setVal((prev) => {
       const parsedPrev = parseFloat(prev);
@@ -1355,7 +1337,6 @@ function NumI({ v, on, className = "w-24 h-8" }: { v: number; on: (n: number) =>
       step="0.001"
       className={className}
       value={val}
-
       onBlur={() => {
         if (val === "" || isNaN(parseFloat(val))) {
           setVal("");
@@ -1418,56 +1399,56 @@ function InvoiceModal({ inv, onClose }: { inv: any; onClose: () => void }) {
           <div className="overflow-x-auto w-full mb-3">
             <table className="w-full text-xs border-collapse border border-slate-300 min-w-150 print:min-w-full">
               <thead className="bg-slate-100">
-              <tr>
-                <th className="border border-slate-300 py-1 px-1.5 text-center w-8 text-slate-600">#</th>
-                <th className="border border-slate-300 py-1 px-1.5 text-left text-slate-600">Description of Goods</th>
-                <th className="border border-slate-300 py-1 px-1.5 text-right text-slate-600">Pcs</th>
-                <th className="border border-slate-300 py-1 px-1.5 text-right text-slate-600">Gross Wt</th>
-                <th className="border border-slate-300 py-1 px-1.5 text-right text-slate-600">less Wt</th>
-                <th className="border border-slate-300 py-1 px-1.5 text-right text-slate-600">Net Wt</th>
-                <th className="border border-slate-300 py-1 px-1.5 text-right text-slate-600">Rate/g</th>
-                <th className="border border-slate-300 py-1 px-1.5 text-right text-slate-600">Amount</th>
-                <th className="border border-slate-300 py-1 px-1.5 text-right text-slate-600">Making (%)</th>
-                <th className="border border-slate-300 py-1 px-1.5 text-right text-slate-600">Total</th>
-              </tr>
-            </thead>
-            <tbody>
-              {inv.items.map((it: any, i: number) => {
-                let gw = it.grossWeight !== undefined ? it.grossWeight : it.netWeight;
-                let sw = it.stoneWeight || 0;
-                if (it.productId && typeof it.productId === 'string' && it.productId.includes("__GW_")) {
-                  const parts = it.productId.split("__GW_");
-                  const subParts = parts[1].split("__SW_");
-                  gw = Number(subParts[0]);
-                  sw = Number(subParts[1]);
-                }
-                const c = calcItem(it, inv.type === "GST");
-                const amount = it.netWeight * it.ratePerGram;
-                return (
-                  <tr key={i} className="border-b border-slate-300 last:border-0">
-                    <td className="border border-slate-300 py-1 px-1.5 text-center text-slate-600">{i + 1}</td>
-                    <td className="border border-slate-300 py-1 px-1.5">
-                      <div className="font-semibold leading-tight">{it.name}</div>
-                      <div className="text-[10px] text-slate-500">Purity: {it.purity}</div>
-                    </td>
-                    <td className="border border-slate-300 py-1 px-1.5 text-right">{it.qty}</td>
-                    <td className="border border-slate-300 py-1 px-1.5 text-right">{gw} g</td>
-                    <td className="border border-slate-300 py-1 px-1.5 text-right">{sw} g</td>
-                    <td className="border border-slate-300 py-1 px-1.5 text-right">{it.netWeight} g</td>
-                    <td className="border border-slate-300 py-1 px-1.5 text-right">{inr(it.ratePerGram)}</td>
-                    <td className="border border-slate-300 py-1 px-1.5 text-right">{inr(amount)}</td>
-                    <td className="border border-slate-300 py-1 px-1.5 text-right">
-                      {(() => {
-                        const pct = it.makingChargePct || (it.makingCharge > 0 && it.netWeight > 0 && it.ratePerGram > 0 ? (it.makingCharge / (it.netWeight * it.ratePerGram)) * 100 : 0);
-                        return pct > 0 ? `${Number.isInteger(pct) ? pct : pct.toFixed(2)}%` : '0%';
-                      })()}
-                    </td>
-                    <td className="border border-slate-300 py-1 px-1.5 text-right font-bold">{inr(c.line)}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                <tr>
+                  <th className="border border-slate-300 py-1 px-1.5 text-center w-8 text-slate-600">#</th>
+                  <th className="border border-slate-300 py-1 px-1.5 text-left text-slate-600">Description of Goods</th>
+                  <th className="border border-slate-300 py-1 px-1.5 text-right text-slate-600">Pcs</th>
+                  <th className="border border-slate-300 py-1 px-1.5 text-right text-slate-600">Gross Wt</th>
+                  <th className="border border-slate-300 py-1 px-1.5 text-right text-slate-600">less Wt</th>
+                  <th className="border border-slate-300 py-1 px-1.5 text-right text-slate-600">Net Wt</th>
+                  <th className="border border-slate-300 py-1 px-1.5 text-right text-slate-600">Rate/g</th>
+                  <th className="border border-slate-300 py-1 px-1.5 text-right text-slate-600">Amount</th>
+                  <th className="border border-slate-300 py-1 px-1.5 text-right text-slate-600">Making (%)</th>
+                  <th className="border border-slate-300 py-1 px-1.5 text-right text-slate-600">Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {inv.items.map((it: any, i: number) => {
+                  let gw = it.grossWeight !== undefined ? it.grossWeight : it.netWeight;
+                  let sw = it.stoneWeight || 0;
+                  if (it.productId && typeof it.productId === 'string' && it.productId.includes("__GW_")) {
+                    const parts = it.productId.split("__GW_");
+                    const subParts = parts[1].split("__SW_");
+                    gw = Number(subParts[0]);
+                    sw = Number(subParts[1]);
+                  }
+                  const c = calcItem(it, inv.type === "GST");
+                  const amount = it.netWeight * it.ratePerGram;
+                  return (
+                    <tr key={i} className="border-b border-slate-300 last:border-0">
+                      <td className="border border-slate-300 py-1 px-1.5 text-center text-slate-600">{i + 1}</td>
+                      <td className="border border-slate-300 py-1 px-1.5">
+                        <div className="font-semibold leading-tight">{it.name}</div>
+                        <div className="text-[10px] text-slate-500">Purity: {it.purity}</div>
+                      </td>
+                      <td className="border border-slate-300 py-1 px-1.5 text-right">{it.qty}</td>
+                      <td className="border border-slate-300 py-1 px-1.5 text-right">{gw} g</td>
+                      <td className="border border-slate-300 py-1 px-1.5 text-right">{sw} g</td>
+                      <td className="border border-slate-300 py-1 px-1.5 text-right">{it.netWeight} g</td>
+                      <td className="border border-slate-300 py-1 px-1.5 text-right">{inr(it.ratePerGram)}</td>
+                      <td className="border border-slate-300 py-1 px-1.5 text-right">{inr(amount)}</td>
+                      <td className="border border-slate-300 py-1 px-1.5 text-right">
+                        {(() => {
+                          const pct = it.makingChargePct || (it.makingCharge > 0 && it.netWeight > 0 && it.ratePerGram > 0 ? (it.makingCharge / (it.netWeight * it.ratePerGram)) * 100 : 0);
+                          return pct > 0 ? `${Number.isInteger(pct) ? pct : pct.toFixed(2)}%` : '0%';
+                        })()}
+                      </td>
+                      <td className="border border-slate-300 py-1 px-1.5 text-right font-bold">{inr(c.line)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
 
           {/* Calculations & Totals */}
@@ -1505,29 +1486,29 @@ function InvoiceModal({ inv, onClose }: { inv: any; onClose: () => void }) {
                       {(() => {
                         if (inv.payments && inv.payments.length > 0) {
                           const cashPaid = inv.payments.filter((p: any) => p.mode === "Cash").reduce((s: number, p: any) => s + p.amount, 0);
-                        const onlinePaid = inv.payments.filter((p: any) => p.mode !== "Cash" && p.mode !== "Advance" && p.mode !== "Order Advance").reduce((s: number, p: any) => s + p.amount, 0);
-                        const advancePaid = inv.payments.filter((p: any) => p.mode === "Advance" || p.mode === "Order Advance").reduce((s: number, p: any) => s + p.amount, 0);
+                          const onlinePaid = inv.payments.filter((p: any) => p.mode !== "Cash" && p.mode !== "Advance" && p.mode !== "Order Advance").reduce((s: number, p: any) => s + p.amount, 0);
+                          const advancePaid = inv.payments.filter((p: any) => p.mode === "Advance" || p.mode === "Order Advance").reduce((s: number, p: any) => s + p.amount, 0);
                           return (
                             <>
-                            {advancePaid > 0 && (
-                              <tr className="border-t border-slate-200 text-xs">
-                                <td className="py-0.5 text-slate-600">Advance Settled</td>
-                                <td className="py-0.5 text-right font-medium text-green-700">{inr(advancePaid)}</td>
-                              </tr>
-                            )}
+                              {advancePaid > 0 && (
+                                <tr className="border-t border-slate-200 text-xs">
+                                  <td className="py-0.5 text-slate-600">Advance Settled</td>
+                                  <td className="py-0.5 text-right font-medium text-green-700">{inr(advancePaid)}</td>
+                                </tr>
+                              )}
                               {cashPaid > 0 && (
-                              <tr className={advancePaid > 0 ? "text-xs" : "border-t border-slate-200 text-xs"}>
+                                <tr className={advancePaid > 0 ? "text-xs" : "border-t border-slate-200 text-xs"}>
                                   <td className="py-0.5 text-slate-600">Paid (Cash)</td>
                                   <td className="py-0.5 text-right font-medium text-green-700">{inr(cashPaid)}</td>
                                 </tr>
                               )}
                               {onlinePaid > 0 && (
-                              <tr className={(cashPaid > 0 || advancePaid > 0) ? "text-xs" : "border-t border-slate-200 text-xs"}>
+                                <tr className={(cashPaid > 0 || advancePaid > 0) ? "text-xs" : "border-t border-slate-200 text-xs"}>
                                   <td className="py-0.5 text-slate-600">Paid (Online)</td>
                                   <td className="py-0.5 text-right font-medium text-green-700">{inr(onlinePaid)}</td>
                                 </tr>
                               )}
-                            {(cashPaid > 0 || onlinePaid > 0 || advancePaid > 0) && (
+                              {(cashPaid > 0 || onlinePaid > 0 || advancePaid > 0) && (
                                 <tr className="text-xs">
                                   <td className="py-0.5 font-bold text-slate-800">Total Paid</td>
                                   <td className="py-0.5 text-right font-bold text-green-700">{inr(inv.amountPaid)}</td>
@@ -1554,19 +1535,13 @@ function InvoiceModal({ inv, onClose }: { inv: any; onClose: () => void }) {
             </div>
           </div>
 
-          {/* Barcode + Payment Details (Balance Due ke baad) */}
-          <div className="mt-4 mb-2 grid grid-cols-1 sm:grid-cols-3 gap-4 items-start">
-            <div className="sm:col-span-1">
-              <div className="text-[10px] text-slate-500 uppercase tracking-wider font-bold mb-2 text-center sm:text-left">Scan & Pay</div>
-              <div className="flex justify-center sm:justify-start">
-                {/* PaymentQr and payment details must remain visible on print as well */}
-                <PaymentQr amount={inv.balanceDue || 0} compact={false} />
-              </div>
+          {/* Full-Width Barcode & Scan Block */}
+          <div className="mt-4 mb-2 w-full print:break-inside-avoid">
+            <div className="text-[10px] text-slate-500 uppercase tracking-wider font-bold mb-2 text-center sm:text-left">
+              Scan & Pay
             </div>
-
-            <div className="sm:col-span-2">
-              {/* Requirement: invoice print me Payment Details ko hide/removed */}
-              {null}
+            <div className="w-full block">
+              <PaymentQr amount={inv.balanceDue || 0} compact={false} />
             </div>
           </div>
 
