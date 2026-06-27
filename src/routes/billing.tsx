@@ -230,10 +230,10 @@ export default function BillingPage() {
       gst += c.gst;
     });
 
-    const afterAdj = subtotal - (Number(discount) || 0) - (Number(oldGoldAmount) || 0);
-    const preRound = Math.round((afterAdj + gst) * 100) / 100;
+    const preRound = subtotal + gst - (Number(discount) || 0) - (Number(oldGoldAmount) || 0);
     const gTotal = Math.round(preRound);
     const roundOff = Math.round((gTotal - preRound) * 100) / 100;
+
     const cgst = gst / 2;
     const sgst = gst / 2;
 
@@ -522,7 +522,7 @@ export default function BillingPage() {
     if (searchDate) {
       list = list.filter((i) => i.createdAt && new Date(i.createdAt).toISOString().slice(0, 10) === searchDate);
     }
-    return list.sort((a, b) => (a.customerName || "").localeCompare(b.customerName || ""));
+    return list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }, [invoices, debouncedSearchQuery, searchDate]);
 
   const nonGstInvoices = useMemo(() => {
@@ -534,8 +534,14 @@ export default function BillingPage() {
     if (searchDate) {
       list = list.filter((i) => i.createdAt && new Date(i.createdAt).toISOString().slice(0, 10) === searchDate);
     }
-    return list.sort((a, b) => (a.customerName || "").localeCompare(b.customerName || ""));
-  }, [invoices, debouncedSearchQuery, searchDate]);
+    if (nonGstFilter === "INV") {
+      list = list.filter((i) => !i.number?.startsWith("MAN-"));
+    }
+    if (nonGstFilter === "MAN") {
+      list = list.filter((i) => i.number?.startsWith("MAN-"));
+    }
+    return list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }, [invoices, debouncedSearchQuery, searchDate, nonGstFilter]);
 
   return (
     <Layout>
@@ -1053,8 +1059,8 @@ export default function BillingPage() {
                       </>
                     )}
                     
-                    <Row label="Round Off" v={inr(totals.roundOff)} />
-                    
+                    {totals.roundOff !== 0 && <Row label="Round Off" v={inr(totals.roundOff)} />}
+
                     <div className="border-t pt-4 mt-2 flex justify-between items-center font-display text-xl text-primary">
                       <span>Grand Total</span>
                       <span>{inr(totals.gTotal)}</span>
@@ -1250,11 +1256,10 @@ export default function BillingPage() {
                         <td>{i.customerName}</td>
                         {title === "NON-GST Invoice History" && (
                           <td>
-                            {i.number?.startsWith("MAN-") ? (
-                              <span className="bg-amber-100 text-amber-800 px-2 py-0.5 rounded text-[10px] font-semibold uppercase">Manual Due</span>
-                            ) : (
-                              <span className="bg-blue-100 text-blue-800 px-2 py-0.5 rounded text-[10px] font-semibold uppercase">Invoice</span>
-                            )}
+                            {i.number?.startsWith("MAN-") 
+                              ? <span className="text-amber-600 font-medium">Manual Due</span>
+                              : <span className="text-blue-600 font-medium">Invoice</span>
+                            }
                           </td>
                         )}
                         <td>

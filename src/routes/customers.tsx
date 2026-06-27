@@ -94,7 +94,7 @@ const empty: Customer = {
   address: "",
   gstNumber: "",
   pan: "",
-  notes: "",
+  notes: "", // Already correct, no change needed
 };
 
 const defaultManualDue = {
@@ -105,7 +105,7 @@ const defaultManualDue = {
   address: "",
   gstNumber: "",
   pan: "",
-  notes: "",
+  notes: "", // Already correct, no change needed
   itemName: "",
   purity: "22K",
   netWeight: "" as number | "",
@@ -226,7 +226,12 @@ export default function CustomersPage() {
         });
         toast.success("Customer updated successfully");
       } else {
-        await createMutation.mutateAsync(draft);
+        await createMutation.mutateAsync({
+          ...draft,
+          phone: draft.phone || "",
+          phone2: draft.phone2 || "",
+          notes: draft.notes || "",
+        });
         toast.success("Customer is created");
         setQ("");
       }
@@ -266,7 +271,7 @@ export default function CustomersPage() {
     const matchDate = formatDate(i.createdAt).toLowerCase().includes(query);
     const matchItem = (i.items || []).some((it: any) => (it.name || "").toLowerCase().includes(query));
     return matchNo || matchDate || matchItem;
-  });
+  }).sort((a, b) => (b.number || "").localeCompare(a.number || ""));
 
   const totalSales = custInvoices.filter(i => !i.number?.startsWith("MAN-")).reduce((s, i) => s + i.total, 0);
   const totalPaid = custInvoices.reduce((s, i) => s + (i.amountPaid !== undefined ? i.amountPaid : i.total), 0);
@@ -293,6 +298,12 @@ export default function CustomersPage() {
     let cName = manualDue.customerName;
     let cPhone = manualDue.phone;
 
+    // Check if customer with this phone number already exists
+    if ((!cid || cid === "NEW") && cPhone) {
+      const existingCustomer = customers.find((c: any) => c.phone === cPhone || c.mobile === cPhone);
+      if (existingCustomer) cid = existingCustomer._id || existingCustomer.id;
+    }
+
     if (!cid || cid === "NEW") {
       if (!cName) {
          toast.error("Customer name is required for a new customer");
@@ -304,13 +315,13 @@ export default function CustomersPage() {
       }
       try {
         const newCust = await createMutation.mutateAsync({
-          name: cName,
-          phone: cPhone,
-          phone2: manualDue.phone2,
+          name: cName || "",
+          phone: cPhone || "",
+          phone2: manualDue.phone2 || "",
           address: manualDue.address,
           gstNumber: manualDue.gstNumber,
           pan: manualDue.pan,
-          notes: manualDue.notes,
+          notes: manualDue.notes || "",
         } as Customer);
         cid = newCust._id || newCust.id || "";
       } catch (e: any) {
@@ -819,7 +830,13 @@ export default function CustomersPage() {
                               <tr key={inv._id || inv.id || inv.number} className="border-b last:border-0 hover:bg-muted/40">
                                 <td className="py-2 px-4 font-medium">{inv.number}</td>
                                 <td>{formatDate(inv.createdAt)}</td>
-                                <td>{inv.type === "NON-GST" && inv.number?.startsWith("MAN-") ? "Manual Due" : inv.type}</td>
+                                <td>
+                                  {inv.type === "NON-GST" ? (
+                                    inv.number?.startsWith("MAN-") 
+                                      ? <span className="text-amber-600 font-medium">Manual Due</span>
+                                      : <span className="text-blue-600 font-medium">Invoice</span>
+                                  ) : inv.type}
+                                </td>
                                 <td className="py-2">
                                   <div className="text-xs text-muted-foreground truncate max-w-40" title={inv.items?.map(it => it.name).join(", ")}>
                                     {inv.items?.map(it => it.name).join(", ") || "—"}
@@ -1328,15 +1345,6 @@ function InvoiceModal({ inv, onClose }: { inv: any; onClose: () => void }) {
                       <tr><td className="py-0.5 text-slate-600">SGST @ 1.5%</td><td className="py-0.5 text-right font-semibold">{inr(inv.gstAmount / 2)}</td></tr>
                     </>
                   )}
-                  {(() => {
-                    const preRound = Math.round((inv.subtotal - inv.discount - inv.oldGoldAmount + (inv.type === "GST" ? inv.gstAmount : 0)) * 100) / 100;
-                    const roundOff = Math.round((inv.total - preRound) * 100) / 100;
-                    return roundOff !== 0 ? <tr><td className="py-0.5 text-slate-600">Round Off</td><td className="py-0.5 text-right font-semibold">{inr(roundOff)}</td></tr> : null;
-                  })()}
-                  <tr className="border-t-2 border-slate-300 text-sm">
-                    <td className="py-1 font-bold text-slate-900">Grand Total</td>
-                    <td className="py-1 text-right font-bold text-slate-900">{inr(inv.total)}</td>
-                  </tr>
                   {inv.amountPaid !== undefined && (
                     <>
                       {(() => {
@@ -1386,6 +1394,15 @@ function InvoiceModal({ inv, onClose }: { inv: any; onClose: () => void }) {
                       </tr>
                     </>
                   )}
+                  {(() => {
+                    const preRound = inv.subtotal + (inv.type === "GST" ? inv.gstAmount : 0) - (inv.discount || 0) - (inv.oldGoldAmount || 0);
+                    const roundOff = inv.total - preRound;
+                    return Math.abs(roundOff) > 0.001 ? <tr><td className="py-0.5 text-slate-600">Round Off</td><td className="py-0.5 text-right font-semibold">{inr(roundOff)}</td></tr> : null;
+                  })()}
+                  <tr className="border-t-2 border-slate-300 text-sm">
+                    <td className="py-1 font-bold text-slate-900">Grand Total</td>
+                    <td className="py-1 text-right font-bold text-slate-900">{inr(inv.total)}</td>
+                  </tr>
                 </tbody>
               </table>
             </div>
