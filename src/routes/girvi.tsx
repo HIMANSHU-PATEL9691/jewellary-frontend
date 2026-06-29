@@ -244,7 +244,7 @@ export default function GirviPage() {
       const lowerQ = q.toLowerCase().trim();
       list = list.filter((g) => 
         g.customerName.toLowerCase().includes(lowerQ) || 
-        g.loanNo.toLowerCase().includes(lowerQ) || 
+        (g.loanNo || "").toLowerCase().includes(lowerQ) || 
         g.customerMobile.includes(lowerQ) ||
         (g.customerAddress || "").toLowerCase().includes(lowerQ)
       );

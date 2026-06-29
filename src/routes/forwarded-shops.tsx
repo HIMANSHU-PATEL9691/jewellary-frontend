@@ -6,10 +6,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { inr, type Girvi, useLocalState, uid } from "@/lib/storage";
-import { calculateCompoundInterest, formatDate, formatCompactIfLarge } from "@/lib/utils";
+import { calculateCompoundInterest, formatDate, formatCompactIfLarge, useDebounce } from "@/lib/utils";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { girviAPI } from "@/lib/api";
-import { Store, Eye, ArrowUpRight, Plus, MapPin, FileText, Phone, Printer, Trash2, Pencil } from "lucide-react";
+import { Store, Eye, ArrowUpRight, Plus, MapPin, FileText, Phone, Printer, Trash2, Pencil, Search } from "lucide-react";
 import { toast } from "sonner";
 import { PaymentQr } from "@/components/PaymentQr";
 import { InvoiceTerms, ShopHeader } from "@/components/InvoiceBranding";
@@ -96,6 +96,8 @@ export default function ForwardedShopsPage() {
   const [settlingItem, setSettlingItem] = useState<Girvi | null>(null);
   const [receiptData, setReceiptData] = useState<any | null>(null);
   const [openNew, setOpenNew] = useState(false);
+  const [q, setQ] = useState("");
+  const debouncedQ = useDebounce(q, 300);
   const [form, setForm] = useState<ForwardedShopProfile>({ id: "", name: "", phone: "", address: "", gst: "" });
 
   const shops = useMemo(() => {
@@ -134,7 +136,7 @@ export default function ForwardedShopsPage() {
     });
 
     return Array.from(map.values()).map(shop => {
-      const activeRecords = shop.records.filter((r: any) => (r.forwardedAmount || 0) > 0 && !isGirviForwardedSettled(r));
+      const activeRecords = shop.records.filter((r: any) => (r.forwardedAmount || 0) > 0 && !isGirviForwardedSettled(r) && r.status !== 'Closed');
       const settledRecords = shop.records.filter((r: any) => isGirviForwardedSettled(r));
       const totalPrincipal = activeRecords.reduce((s: number, r: Girvi) => s + (r.forwardedAmount || 0), 0);
       const totalInterest = activeRecords.reduce((s: number, r: Girvi) => s + calculateForwardedInterest(r), 0);
@@ -161,10 +163,31 @@ export default function ForwardedShopsPage() {
     .sort((a, b) => (a.name || "").localeCompare(b.name || ""));
   }, [girvis, profiles]);
 
-  const activeProfile = shops.find(s => s.name === selectedShop);
+  const filteredShops = useMemo(() => {
+    if (!debouncedQ.trim()) {
+      return shops;
+    }
+    const lowerQ = debouncedQ.toLowerCase().trim();
+    const results: any[] = [];
 
-  const totalMarketOwed = shops.reduce((s, shop) => s + shop.totalPrincipal + shop.totalInterest, 0);
-  const totalMarketPrincipal = shops.reduce((s, shop) => s + shop.totalPrincipal, 0);
+    for (const shop of shops) {
+      const nameMatch = (shop.name || "").toLowerCase().includes(lowerQ);
+      const matchingRecords = shop.records.filter((record: Girvi) => (record.loanNo || "").toLowerCase().includes(lowerQ));
+
+      if (nameMatch) {
+        // If shop name matches, include the shop with all its records
+        results.push(shop);
+      } else if (matchingRecords.length > 0) {
+        // If only loan numbers match, include the shop but only with the matching records
+        const activeRecords = matchingRecords.filter((r: any) => (r.forwardedAmount || 0) > 0 && !isGirviForwardedSettled(r));
+        const settledRecords = matchingRecords.filter((r: any) => isGirviForwardedSettled(r));
+        results.push({ ...shop, activeRecords, settledRecords });
+      }
+    }
+    return results;
+  }, [shops, debouncedQ]);
+
+  const activeProfile = filteredShops.find(s => s.name === selectedShop);
 
   const handleSettle = async () => {
     if (!settlingItem) return;
@@ -247,6 +270,12 @@ export default function ForwardedShopsPage() {
         </Dialog>
       </header>
 
+      <div className="relative mb-4 max-w-md">
+        <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+        <Input className="pl-9 bg-background" placeholder="Search by shop name or original loan no..." value={q} onChange={(e) => setQ(e.target.value)} />
+      </div>
+
+
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
         <Card>
           <CardContent className="pt-6">
@@ -256,14 +285,14 @@ export default function ForwardedShopsPage() {
         </Card>
         <Card>
           <CardContent className="pt-6">
-            <div className="text-sm text-muted-foreground">Total Market Principal (Active)</div>
-            <div className="text-2xl font-display mt-1 text-purple-700">{formatCompactIfLarge(totalMarketPrincipal)}</div>
+            <div className="text-sm text-muted-foreground">Total Principal (Active)</div>
+            <div className="text-2xl font-display mt-1 text-purple-700">{formatCompactIfLarge(filteredShops.reduce((s, shop) => s + shop.totalPrincipal, 0))}</div>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-6">
-            <div className="text-sm text-rose-600 font-medium">Total Market Payable (w/ Interest)</div>
-            <div className="text-2xl font-display mt-1 text-rose-700">{formatCompactIfLarge(totalMarketOwed)}</div>
+            <div className="text-sm text-rose-600 font-medium">Total Payable (w/ Interest)</div>
+            <div className="text-2xl font-display mt-1 text-rose-700">{formatCompactIfLarge(filteredShops.reduce((s, shop) => s + shop.totalPrincipal + shop.totalInterest, 0))}</div>
           </CardContent>
         </Card>
       </div>
@@ -277,7 +306,7 @@ export default function ForwardedShopsPage() {
         <CardContent className="p-0">
           {isLoading ? (
             <p className="text-center text-muted-foreground py-12">Loading shops...</p>
-          ) : shops.length === 0 ? (
+          ) : filteredShops.length === 0 ? (
             <p className="text-center text-muted-foreground py-12">No items have been forwarded to other shops yet.</p>
           ) : (
             <div className="overflow-x-auto">
@@ -293,7 +322,7 @@ export default function ForwardedShopsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {shops.map((shop) => (
+                  {filteredShops.map((shop) => (
                     <tr key={shop.name} className="border-b last:border-0 hover:bg-muted/40">
                       <td className="py-3 px-4 font-medium text-primary whitespace-nowrap">
                         {shop.name}
