@@ -300,11 +300,11 @@ export const uid = () =>
 
 export function calcItem(it: InvoiceItem, isGst: boolean) {
   // IMPORTANT:
-  // For invoice calculation we MUST NOT multiply by qty/pcs.
-  // Per-item monetary base is:
+  // Per user feedback, the netWeight entered is the FINAL weight for all pieces (qty).
+  // We MUST NOT multiply the line total by qty.
+  // The monetary base for a line item is:
   //   netWeight * ratePerGram + makingCharge + stoneCharge
-  // and qty/pcs is only for display.
-  const base = it.netWeight * it.ratePerGram + it.makingCharge + it.stoneCharge;
+  const base = it.netWeight * it.ratePerGram + it.makingCharge;
   const line = base;
   const gst = isGst ? (line * it.gstPct) / 100 : 0;
   return { line, gst, total: line + gst };
